@@ -1,0 +1,13 @@
+#!/bin/bash
+# fnOS lifecycle entry. No name-based kills, recursive ownership changes or
+# socket permission widening. The helper serializes start/stop in application VAR.
+set -uo pipefail
+TRIM_APPDEST="${TRIM_APPDEST:-/var/apps/hermes-agent}"
+TRIM_PKGHOME="${TRIM_PKGHOME:-/var/apps/hermes-agent/home}"
+TRIM_PKGVAR="${TRIM_PKGVAR:-/var/apps/hermes-agent/var}"
+export PATH=/var/apps/nodejs_v24/target/bin:/var/apps/nodejs_v22/target/bin:/var/apps/nodejs_v20/target/bin:/var/apps/nodejs/target/bin:$PATH
+case "${1:-}" in start|stop|status) ;; *) exit 1 ;; esac
+NODE_BIN=$(command -v node) || exit 1
+PYTHON_BIN="${TRIM_PKGHOME}/data/venv/bin/python3"
+[ -x "$PYTHON_BIN" ] || { echo '应用Python环境不可执行，未修改任何运行进程'; exit 1; }
+exec "$PYTHON_BIN" -B "${TRIM_APPDEST}/server/panel_lifecycle.py" "$1" "$TRIM_APPDEST" "${TRIM_PKGHOME}/data" "$TRIM_PKGVAR" "$NODE_BIN"

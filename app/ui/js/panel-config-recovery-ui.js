@@ -1,0 +1,16 @@
+(function(){
+ 'use strict';
+ var root=document.getElementById('configRecovery'),busy=false,current=null;
+ if(!root)return;
+ function node(tag,text,cls){var e=document.createElement(tag);if(text!==undefined)e.textContent=text;if(cls)e.className=cls;return e;}
+ async function request(body){var r=await fetch(apiUrl('/api/config-recovery'),{method:body?'POST':'GET',cache:'no-store',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:body?JSON.stringify(body):undefined}),data=await r.json();if(!r.ok||!data.ok)throw Error(data.error||'配置恢复状态读取失败');return data;}
+ function button(text,work){var b=node('button',text,'ov-actbtn');b.type='button';b.onclick=work;return b;}
+ async function load(){if(busy)return;busy=true;root.replaceChildren(node('h2','配置保存恢复'),node('p','正在核对上次配置保存…'));try{var data=await request();current=data.pending;render();}catch(e){root.replaceChildren(node('h2','配置保存恢复'),node('p',e.message,'config-recovery-feedback'),button('重新读取',load));}finally{busy=false;}}
+ function render(){root.replaceChildren(node('h2','配置保存恢复'));if(!current){root.append(node('p','没有未完成的配置保存。','pw-hint'));return;}
+  root.append(node('p','上次保存未完成。处理前会校验文件版本，所有原文件和恢复记录都会保留。'),node('p',new Date(current.created_at).toLocaleString(),'pw-hint'));
+  var list=node('div',undefined,'config-recovery-files');current.files.forEach(function(file){var row=node('article');row.append(node('strong',file.name),node('span',{before:'尚未写入',after:'已写入上次保存',external:'保存后又被修改'}[file.state]));var details=node('details');details.append(node('summary','查看校验值'));[['当前',file.current_hash],['保存前',file.before_hash],['原计划保存后',file.after_hash]].forEach(function(pair){details.append(node('p',pair[0]),node('code',pair[1]||'文件不存在'));});row.append(details);list.append(row);});root.append(list);
+  root.append(node('p',current.has_external_changes?'检测到后来的修改。保留当前文件后，请到相应设置核对并重新保存。此处不会覆盖后来的修改。':'可以继续完成上次保存，或恢复到保存前。','pw-hint'));
+  var actions=node('div',undefined,'config-recovery-actions');if(!current.has_external_changes){actions.append(button('完成上次保存',()=>resolve('finish')),button('恢复到保存前',()=>resolve('rollback')));}actions.append(button('保留当前文件',()=>resolve('keep')),button('重新读取',load));root.append(actions,node('p','','config-recovery-feedback'));}
+ async function resolve(choice){if(busy||!current)return;var prompt={finish:'继续写入上次尚未完成的配置和凭证？',rollback:'恢复上次保存前的配置和凭证？恢复记录将保留。',keep:'保留当前文件并结束这次恢复？配置与凭证可能来自不同次保存，请随后到相应设置核对。'}[choice];if(!confirm(prompt))return;busy=true;root.querySelectorAll('button').forEach(b=>b.disabled=true);var feedback=root.querySelector('.config-recovery-feedback');feedback.textContent='正在处理，请稍候…';try{await request({action:'resolve',choice:choice,id:current.id,revision:current.revision});current=null;render();root.append(node('p',choice==='keep'?'已保留当前文件。请核对设置后重启应用生效。':'已完成处理，重启应用后生效。','config-recovery-feedback'));window.panelRuntimeRefresh?.();}catch(e){feedback.textContent=e.message;root.querySelectorAll('button').forEach(b=>b.disabled=false);}finally{busy=false;}}
+ window.renderConfigRecovery=load;var previous=window.renderMaintenancePage;window.renderMaintenancePage=function(){load();return previous?.();};
+}());

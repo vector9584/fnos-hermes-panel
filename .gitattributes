@@ -1,0 +1,2 @@
+# Unified diffs use a single space to represent empty context lines.
+dev/rebuild/*-native.patch whitespace=-blank-at-eol

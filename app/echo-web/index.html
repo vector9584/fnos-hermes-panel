@@ -1,0 +1,2348 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"/>
+<title>回声站 · 星图</title>
+<link rel="icon" href="/assets/favicon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#7b7ae8">
+<style>
+  :root{
+    --bg:#08090a; --ink:#f7f8f8; --muted:#8a8f98; --faint:#62666d;
+    --line:rgba(255,255,255,.08); --line-soft:rgba(255,255,255,.05);
+    --card:rgba(20,21,26,.64); --card-hi:rgba(30,32,38,.71);
+    --brand:#7b7ae8; --brand-hi:#9d9cf5; --accent:var(--brand);
+    --ok:#4ade80; --warn:#fbbf24; --bad:#ff8f88; --star:#ffca6b;
+    --review:#c4a2ff; --stage:#7f9db9;
+    --panel:rgba(14,15,19,.96);
+    font-family:"Inter","SF Pro Display",-apple-system,BlinkMacSystemFont,"PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:var(--bg);color:var(--ink);min-height:100vh;line-height:1.55;-webkit-font-smoothing:antialiased}
+  body.lock{overflow:hidden}
+  body::before{content:"";position:fixed;inset:0;z-index:0;pointer-events:none;
+    background:url(/assets/sky.webp) center top / cover no-repeat;opacity:.22}
+  @media (min-width:761px){body::before{background-position:center 47%}}
+  #starfield{position:fixed;inset:0;z-index:0;pointer-events:none;display:block;opacity:.9}
+  @media (prefers-reduced-motion:reduce){#starfield{opacity:.6}}
+  .wrap{width:100%;max-width:1120px;margin:0 auto;padding:34px 22px 60px;position:relative;z-index:1}
+
+  /* ── 概要 ── */
+  .lead{margin:26px 0 20px}
+  .lead h2{font-size:26px;font-weight:650;letter-spacing:-.02em;line-height:1.3}
+  .lead p{color:var(--muted);font-size:13.5px;margin-top:6px}
+  .counts{display:flex;gap:22px;margin-top:16px;flex-wrap:wrap}
+  .cnt{display:flex;align-items:baseline;gap:7px}
+  .cnt b{font-size:22px;font-weight:620;font-variant-numeric:tabular-nums;letter-spacing:-.01em}
+  .cnt span{font-size:12.5px;color:var(--muted)}
+  .cnt.p b{color:var(--brand-hi)} .cnt.d b{color:var(--warn)} .cnt.f b{color:var(--ok)}
+  .cnt.r b{color:var(--faint)}
+  .cnt em{font-style:normal;font-size:11px;color:var(--warn);margin-left:-2px}
+
+  /* ── 工具条 ── */
+  .bar{display:flex;align-items:center;gap:10px;margin:22px 0 16px}
+  .seg{display:flex;gap:4px;background:rgba(255,255,255,.035);border:1px solid var(--line);
+       border-radius:11px;padding:3px;min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .seg::-webkit-scrollbar{display:none}
+  /* 窄屏：筛选条独占一行铺满，新建按钮挪到上一行右对齐 */
+  @media (max-width:520px){
+    .bar{flex-wrap:wrap}
+    #seg{flex:1 1 100%;order:2;margin-top:2px}
+    #seg button{flex:1 1 auto;text-align:center;padding:7px 6px}
+    .bar > #new{order:1;margin-left:auto}
+  }
+  .seg button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13px;
+       padding:7px 12px;border-radius:8px;cursor:pointer;transition:color .16s,background .16s;white-space:nowrap;flex:0 0 auto}
+  .seg button.on{background:rgba(255,255,255,.09);color:var(--ink)}
+  .seg button:hover:not(.on){color:var(--ink)}
+  .grow{flex:1 1 auto}
+  .btn{border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--ink);
+       font:inherit;font-size:13.5px;padding:9px 16px;border-radius:10px;cursor:pointer;
+       transition:background .16s,border-color .16s,transform .1s;white-space:nowrap;flex:0 0 auto}
+  .btn:hover{background:rgba(255,255,255,.09);border-color:rgba(255,255,255,.16)}
+  .btn:active{transform:scale(.975)}
+  .btn.pri{background:linear-gradient(180deg,var(--brand),#6a69d6);border-color:transparent;color:#fff;font-weight:600;
+       box-shadow:0 8px 22px -12px var(--brand)}
+  .btn.pri:hover{background:linear-gradient(180deg,var(--brand-hi),var(--brand))}
+  .btn.ghost{background:transparent;color:var(--muted)}
+  .btn.danger{color:var(--bad);border-color:rgba(255,143,136,.28)}
+  .btn.danger:hover{background:rgba(255,143,136,.1)}
+  .btn.tiny{font-size:12px;padding:6px 11px;border-radius:8px}
+
+  /* ── 列表 ── */
+  #list{display:flex;flex-direction:column;gap:10px;position:relative}
+  .card{
+    position:relative;background:var(--card);border:1px solid var(--line);border-radius:13px;
+    padding:15px 17px 14px;cursor:pointer;overflow:hidden;
+    transition:background .18s ease,border-color .18s ease,transform .18s ease;
+    transform-origin:center top;
+  }
+  .card:hover{background:var(--card-hi);border-color:rgba(255,255,255,.14)}
+  /* 卡片只有一种长相：没有左侧色条、没有整张换色。
+     状态全部交给右上角那颗胶囊，回复分类交给 entry 的左侧细线 */
+  .card[data-st="dropped"]{opacity:.82}
+  .card[data-st="done"] .ctitle,.card[data-st="dropped"] .ctitle{color:var(--muted)}
+  .card.enter{animation:cardIn .9s cubic-bezier(.4,0,.2,1) both}
+  @keyframes cardIn{from{opacity:0;transform:translateY(-18px) scale(.945)}to{opacity:1;transform:none}}
+  .card.leaving{pointer-events:none;transition:opacity .34s ease,transform .34s cubic-bezier(.4,0,.2,1),max-height .5s ease,margin .5s,padding .5s,border-width .5s;
+    opacity:0;transform:translateX(46px) scale(.96);max-height:0!important;padding-top:0;padding-bottom:0;margin-bottom:-10px;border-width:0}
+  @media (prefers-reduced-motion:reduce){.card.enter{animation:none}.card.leaving{transition:opacity .2s}}
+
+  .crow{display:flex;align-items:center;gap:9px;margin-bottom:7px;flex-wrap:wrap}
+  .stars{color:var(--star);font-size:12.5px;line-height:1;flex:0 0 auto;display:inline-flex;align-items:center;white-space:nowrap;align-self:center}
+  .stars i{font-style:normal;opacity:.22}
+  .tag{font-size:11.5px;padding:2.5px 8px;border-radius:6px;background:rgba(255,255,255,.06);color:var(--muted);white-space:nowrap}
+  .st{margin-left:auto;font-size:11.5px;padding:2.5px 9px;border-radius:20px;white-space:nowrap;border:1px solid transparent}
+  /* 状态标签：待回信紫 / 在途橙 / 已回信绿 / 沉寂灰 */
+  .st.pending{color:var(--brand-hi);background:rgba(123,122,232,.13);border-color:rgba(123,122,232,.24)}
+  .st.doing{color:var(--warn);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.22)}
+  .st.review{color:var(--ok);background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.22)}
+  .st.done{color:var(--ok);background:rgba(74,222,128,.1);border-color:rgba(74,222,128,.22)}
+  .st.failed{color:var(--bad);background:rgba(255,143,136,.1);border-color:rgba(255,143,136,.22)}
+  .st.staged{color:var(--stage);background:rgba(127,157,185,.12);border-color:rgba(127,157,185,.24)}
+  .st.dropped{color:var(--faint);background:rgba(255,255,255,.04);border-color:var(--line)}
+  .ctitle{font-size:15.5px;font-weight:580;letter-spacing:-.005em;line-height:1.45;word-break:break-word}
+  .cdetail{color:var(--muted);font-size:13px;margin-top:5px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;
+    overflow:hidden;white-space:pre-wrap;word-break:break-word}
+  .cmeta{display:flex;gap:14px;flex-wrap:wrap;color:var(--faint);font-size:11.5px;margin-top:9px}
+  .cmeta b{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+  .cmeta .over{color:var(--bad)}
+
+  /* 回复条目：交付蓝 / 回信绿 / 待定橙 / 沉寂灰。
+     不铺底色，只留左边那一条色 —— 一眼归类，又不把卡片刷成调色盘 */
+  .entries{margin-top:11px;display:flex;flex-direction:column;gap:7px}
+  .entry{border:1px solid var(--line-soft);border-left:2px solid var(--e-x,var(--line));
+    border-radius:9px;padding:9px 12px;font-size:13px;line-height:1.6;
+    color:#d3d6db;word-break:break-word;background:transparent}
+  /* 标签和时间同一行：交付 · 26-11-03 15:30 */
+  .entry .ehead{display:flex;align-items:baseline;gap:8px;margin-bottom:5px}
+  .entry .rl{font-size:10.5px;letter-spacing:.14em;color:var(--e-x,var(--faint));opacity:.95}
+  .entry .ets{font-size:10.5px;color:var(--faint);font-variant-numeric:tabular-nums;margin-left:auto}
+  .entry .etxt{display:block;white-space:pre-wrap}
+  .entry.deliver{--e-x:#6aa9ff}
+  .entry.reply{--e-x:#4ade80}
+  .entry.pending{--e-x:#fbbf24}
+  .entry.silent{--e-x:#8a8f98}
+  /* 沉淀：和回信/交付同级的一条，沉寂卡靠它看看到底沉没沉 */
+  .entry.sediment{--e-x:#8a8f98}
+  .entry.sediment .etxt{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
+  /* 交付按字段摆：数字一栏一格、文件一行一个，不从散文里捞 */
+  .rnums{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:6px;margin:2px 0 7px}
+  .rnum{padding:6px 9px;border:1px solid rgba(106,169,255,.2);border-radius:8px;background:rgba(106,169,255,.07)}
+  .rk{display:block;font-size:11px;color:var(--dim);margin-bottom:2px}
+  .rv{font-variant-numeric:tabular-nums;font-size:14px;font-weight:600;color:#dbe7ff}
+  .rfiles{margin:4px 0}
+  .rf{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:11.5px;color:#9fc0ff;word-break:break-all;padding:1px 0}
+  .rdet{font-size:12.5px;color:var(--dim);line-height:1.65;margin-top:5px;white-space:pre-wrap}
+  /* 待定拆成两点：问题一行、建议一行，各自带个小标签 */
+  .pblock{display:flex;flex-direction:column;gap:6px}
+  .prow{display:flex;gap:8px;align-items:flex-start}
+  .prow .ptag{margin-top:1px}
+  .ptag{flex:0 0 auto;font-size:10px;letter-spacing:.1em;padding:1px 6px;border-radius:5px;
+    color:#fbbf24;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.07);line-height:1.6}
+  /* 建议用行动蓝，不再跟「回信」的绿撞在一起 */
+  /* 类名不能再叫 adv —— 抽屉里 <details class="adv"> 那条规则带 border-top + padding-top:12px，
+     会把「建议」标签撑成 31px。同一个坑踩第二次了（上次是 .sf）。 */
+  .ptag.sug{color:#6aa9ff;border-color:rgba(106,169,255,.30);background:rgba(106,169,255,.07)}
+  .ptxt{white-space:pre-wrap;flex:1;min-width:0}
+  .ptxt.dim{color:var(--faint)}
+
+  /* 副标题行里的可点项：呼号、拆解 */
+  .cmeta .lk{color:var(--muted);cursor:pointer;background:none;border:0;font:inherit;
+    font-size:11.5px;padding:0;border-bottom:1px dashed rgba(255,255,255,.16);white-space:nowrap}
+  .cmeta .lk:hover{color:var(--ink);border-bottom-color:rgba(255,255,255,.4)}
+  .cmeta .lk b{font-weight:500;color:var(--muted);font-variant-numeric:tabular-nums}
+  .cmeta .lk:hover b{color:var(--ink)}
+  .cmeta .lk b.lag{color:var(--warn)}
+  .cmeta .lk.open{border-bottom-color:transparent;color:var(--brand-hi)}
+  .cmeta .lk.open b.lag{color:var(--warn)}
+
+  /* 卡片里就地展开的拆解清单 */
+  .todopop{margin-top:9px;border:1px solid var(--line-soft);border-radius:10px;padding:10px 12px;
+    display:flex;flex-direction:column;gap:6px;background:rgba(255,255,255,.014)}
+  .todopop .ti{font-size:12.5px;color:var(--faint);line-height:1.5;display:flex;gap:9px;
+    align-items:baseline;padding:3px 6px;margin:0 -6px;border-radius:6px;cursor:pointer}
+  .todopop .ti:hover{background:rgba(255,255,255,.045)}
+  .todopop .ti:active{background:rgba(255,255,255,.08)}
+  .todopop .ti i{flex:0 0 auto;width:5px;height:5px;border-radius:50%;background:currentColor;opacity:.55;
+    transform:translateY(-1.5px)}
+  .todopop .ti.done{color:rgba(74,222,128,.92)}
+  .todopop .ti.done i{background:rgba(74,222,128,.85);opacity:1}
+  .todopop .ti.copied{background:rgba(74,222,128,.12);color:#4ade80}
+  .todopop .ti.doing{color:var(--warn)}
+  .todopop .ti.doing i{color:rgba(251,191,36,.7)}
+  .cardact{display:flex;gap:8px;align-items:center;margin-top:10px}
+  /* 待定的「去处理」是橙的，和那条橙色待定条目对上 */
+  .btn.warn{color:#fbbf24;border-color:rgba(251,191,36,.34);background:rgba(251,191,36,.08)}
+  .btn.warn:hover{background:rgba(251,191,36,.15);border-color:rgba(251,191,36,.5)}
+  .forkmark{font-size:11.5px;color:var(--faint);margin-left:auto}
+  /* 成本：跟拆解同一行，读不出来就不出这个字 */
+  .cost{font-variant-numeric:tabular-nums;font-size:11px;color:#8a8f98;padding:1px 5px;border-radius:5px;background:rgba(138,143,152,.1)}
+  .ntodo{display:inline-block;padding:1px 7px;border:1px solid rgba(251,191,36,.45);border-radius:999px;
+    color:#fbbf24;font-size:11px;line-height:1.55;vertical-align:middle}
+  .sed{display:inline-block;padding:1px 7px;border:1px solid var(--line);border-radius:999px;
+    color:var(--faint);font-size:11px;line-height:1.55;vertical-align:middle}
+  .sed.ok{color:#4ade80;border-color:rgba(74,222,128,.35)}
+  /* 子任务那一组：挂在父卡「待定」下面，缩进 + 竖向虚线表示层级 */
+  .subgroup{margin:1px 0 3px 12px;padding-left:11px;border-left:1px dashed var(--line);
+    display:flex;flex-direction:column;gap:9px}
+  .sglabel{font-size:11px;color:var(--faint);letter-spacing:.02em}
+  .subcard{border:1px solid var(--line-soft);border-radius:10px;padding:9px 12px 10px;
+    background:rgba(255,255,255,.016)}
+  .subcard:hover{border-color:var(--line)}
+  .scrow{display:flex;justify-content:flex-end;margin-bottom:-2px}
+  .sctitle{font-size:13.5px;font-weight:600;line-height:1.45;margin:1px 0 4px}
+  .subcard .cmeta{margin-top:0;gap:9px}
+  .scid{color:var(--faint);font-variant-numeric:tabular-nums}
+  .tdgrp{font-size:11px;color:var(--faint);margin:9px 0 2px}
+  /* 沉寂时间贴在标题右边 */
+  .arcseen{font-size:11px;color:var(--faint);margin-left:9px;font-variant-numeric:tabular-nums;
+    font-weight:400;letter-spacing:.02em;white-space:nowrap}
+  /* 从往来索引跳回来时闪一下，别让人找不着卡 */
+  .card.hit{border-color:rgba(123,122,232,.55);box-shadow:0 0 0 4px rgba(123,122,232,.12)}
+
+  /* 往来记录：搜索框（#6 按呼号，其它按关键词）。
+     注意别给它 margin-bottom —— 它跟右边那组筛选同处一个 flex 行，多一个下边距就错位。 */
+  .logsearch{position:relative;display:flex;align-items:center;flex:1 1 260px;min-width:0}
+  .logsearch input{width:100%;padding:10px 34px 10px 13px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(255,255,255,.03);color:var(--ink);font:inherit;font-size:13.5px;outline:none;
+    -webkit-appearance:none;appearance:none}
+  .logsearch input::placeholder{color:var(--faint)}
+  .logsearch input:focus{border-color:rgba(123,122,232,.5);background:rgba(123,122,232,.05)}
+  .logsearch input::-webkit-search-cancel-button{display:none}
+  .lqclear{position:absolute;right:6px;width:24px;height:24px;border:0;border-radius:50%;cursor:pointer;
+    background:rgba(255,255,255,.08);color:var(--muted);font-size:14px;line-height:1;display:flex;
+    align-items:center;justify-content:center}
+  .lqclear:hover{background:rgba(255,255,255,.14);color:var(--ink)}
+
+  /* 往来记录筛选：按「发生了什么」切，跟下面每一条记录一一对应 ——
+     不再按任务状态筛（那样选「已回信」会连它的「发出」一起列出来，看着就不对）。
+     样式也不借顶部 .seg 的框，那框是给任务档位用的，套到流水上像另一块卡片。 */
+  .lfgrp{display:flex;gap:2px;min-width:0;overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .lfgrp::-webkit-scrollbar{display:none}
+  .lfgrp button{border:0;background:transparent;color:var(--faint);font:inherit;font-size:12.5px;
+    padding:7px 10px;border-radius:8px;cursor:pointer;white-space:nowrap;flex:0 0 auto;
+    transition:color .15s,background .15s}
+  .lfgrp button:hover{color:var(--ink);background:rgba(255,255,255,.04)}
+  .lfgrp button.on{color:var(--ink);background:rgba(255,255,255,.07)}
+  .lfgrp button .n{font-variant-numeric:tabular-nums;font-size:11px;color:var(--faint);margin-left:5px}
+  .lfgrp button.on .n{color:var(--muted)}
+
+  /* 沉寂任务在往来记录里压成的一条索引 */
+  .tl-idx{display:flex;align-items:center;gap:10px;padding:11px 14px;border-radius:10px;
+    border:1px dashed rgba(255,255,255,.12);cursor:pointer;color:var(--muted);font-size:13px;margin-bottom:8px}
+  .tl-idx:hover{border-color:rgba(255,255,255,.22);background:rgba(255,255,255,.02)}
+  .tl-idx .g{font-size:11.5px;color:var(--faint);margin-left:auto;white-space:nowrap}
+
+  /* 抽屉里的完整时间线（沉寂卡点开的就这个） */
+  .sbody.mode-timeline > *:not(#sline){display:none}
+  .fline{padding:2px 0}
+  .fl-h{display:flex;align-items:baseline;gap:10px;font-size:15px;color:var(--ink);margin-bottom:4px}
+  .fl-h b{font-weight:500}
+  .fl-st{font-size:11px;padding:2px 8px;border-radius:6px;color:var(--muted);border:1px solid var(--line);white-space:nowrap}
+  .fl-i{display:grid;grid-template-columns:74px 58px 1fr;gap:10px;padding:9px 0;border-top:1px solid var(--line-soft);font-size:12.5px}
+  .fl-t{color:var(--faint);font-variant-numeric:tabular-nums}
+  .fl-k{color:var(--muted)}
+  .fl-v{color:#d4d7dc;white-space:pre-wrap;word-break:break-word}
+  .fl-v.dim{color:var(--faint)}
+  .fl-sec{margin-top:16px;font-size:11px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase}
+  @media (max-width:640px){
+    .fl-i{grid-template-columns:62px 52px 1fr;gap:8px}
+  }
+
+  .empty{text-align:center;padding:64px 20px;color:var(--faint)}
+  .empty b{display:block;color:var(--muted);font-size:14.5px;font-weight:500;margin-bottom:6px}
+  .empty span{font-size:12.5px}
+
+  /* ── 收尾 ── */
+  .colo{text-align:center;margin:56px auto 0;max-width:420px;color:var(--faint);
+    font-size:13px;line-height:2.05;letter-spacing:.055em;text-indent:.055em}
+  .colo em{display:block;font-style:normal;font-size:12.5px;color:var(--muted)}
+  .colo .rule{display:block;width:26px;height:1px;background:rgba(255,255,255,.14);margin:0 auto 18px}
+  .colo .fin{margin-top:22px;font-size:12px;color:var(--muted);letter-spacing:.1em}
+
+  /* ── 弹窗 ── */
+  .mask{position:fixed;inset:0;z-index:80;background:rgba(4,5,7,.66);backdrop-filter:blur(3px);
+    opacity:0;pointer-events:none;transition:opacity .3s ease}
+  .mask.on{opacity:1;pointer-events:auto}
+  .sheet{position:fixed;z-index:81;left:50%;top:50%;transform:translate(-50%,-50%) scale(.965);
+    width:min(560px,calc(100vw - 32px));max-height:min(86vh,900px);
+    display:flex;flex-direction:column;overflow:hidden;
+    background:var(--panel);border:1px solid rgba(255,255,255,.11);border-radius:17px;
+    padding:0;opacity:0;pointer-events:none;
+    transition:opacity .3s cubic-bezier(.4,0,.2,1),transform .3s cubic-bezier(.4,0,.2,1);
+    box-shadow:0 30px 80px -30px rgba(0,0,0,.9)}
+  .sheet.on{opacity:1;pointer-events:auto;transform:translate(-50%,-50%) scale(1)}
+  .shead{padding:22px 24px 12px;flex:0 0 auto}
+  .sheet h3{font-size:17px;font-weight:620;margin-bottom:3px}
+  .sheet .hint{color:var(--faint);font-size:12px}
+  .sheet .hint b{color:var(--brand-hi);font-weight:600}
+  .sstat{font-size:11.5px;color:var(--faint);margin-top:8px;min-height:16px;transition:color .2s}
+  .sstat.ok{color:rgba(74,222,128,.75)} .sstat.err{color:var(--bad)} .sstat.saving{color:var(--brand-hi)}
+  .sbody{padding:4px 24px 8px;overflow-y:auto;overflow-x:hidden;-webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;touch-action:pan-y;flex:1 1 auto;min-height:0}
+  .fld{margin-bottom:17px}
+  .fld > label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:7px;letter-spacing:.02em}
+  .fld > label .req{color:var(--brand-hi);margin-left:3px}
+  .fld > label .opt{color:var(--faint);font-size:11.5px;margin-left:5px}
+  .inp{width:100%;padding:11px 13px;border-radius:10px;border:1px solid var(--line);
+    background:rgba(255,255,255,.04);color:var(--ink);
+    font-family:inherit;font-size:14px;line-height:1.6;outline:none;transition:border-color .16s,background .16s}
+  .inp::placeholder{color:var(--faint)}
+  .inp:focus{border-color:rgba(123,122,232,.55);background:rgba(255,255,255,.06)}
+  textarea.inp{resize:none;min-height:120px;max-height:42vh}
+  .tip{font-size:11.5px;color:var(--faint);margin-top:6px;line-height:1.5}
+  .tip b{color:var(--muted);font-weight:500}
+  .types{display:grid;grid-template-columns:repeat(auto-fit,minmax(76px,1fr));gap:7px}
+  .types button{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);
+    font:inherit;font-size:13px;padding:8px 6px;border-radius:9px;cursor:pointer;transition:all .16s;
+    text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .types button:hover{color:var(--ink)}
+  .types button.on{background:rgba(123,122,232,.18);border-color:rgba(123,122,232,.5);color:#cfceff}
+  .pick{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+  .pick button{border:0;background:transparent;padding:2px;cursor:pointer;font-size:26px;line-height:1;
+    color:rgba(255,255,255,.16);transition:color .16s,transform .16s}
+  .pick button.on{color:var(--star)}
+  .starpick{display:flex;flex-direction:column;gap:9px}
+  .starpick input[type=range]{-webkit-appearance:none;appearance:none;width:100%;height:22px;background:transparent;cursor:pointer}
+  .starpick input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;background:linear-gradient(90deg,rgba(255,202,107,.55),rgba(255,202,107,.16))}
+  .starpick input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;margin-top:-7px;border-radius:50%;background:var(--star);box-shadow:0 0 0 3px rgba(255,202,107,.16)}
+  .starpick input[type=range]::-moz-range-track{height:4px;border-radius:2px;background:rgba(255,202,107,.3)}
+  .starpick input[type=range]::-moz-range-thumb{width:18px;height:18px;border:0;border-radius:50%;background:var(--star)}
+  .starrow{display:flex;align-items:center;gap:10px}
+  .starrow .glyph{color:var(--star);font-size:15px;line-height:1;flex:0 0 auto;white-space:nowrap;align-self:center}
+  .starrow .lbl{font-size:12px;color:var(--muted)}
+  .starrow .lbl.staged{color:var(--warn)}
+  /* 半星用 CSS 切一半，不再写 ½ —— 那个字符在不同字体里长得像「1/2」 */
+  .sg{display:inline-block;margin-right:2px;color:var(--star);line-height:1}
+  .sg.off{color:#33383f}
+  .sg.hf{position:relative;color:#33383f}
+  .sg.hf::after{content:'★';position:absolute;left:0;top:0;width:50%;overflow:hidden;color:var(--star)}
+  .pick button:hover{transform:scale(1.12)}
+  .pick .lbl{margin-left:8px;font-size:12.5px;color:var(--faint)}
+  .daterow{display:flex;gap:8px;align-items:center}
+  .daterow .inp{flex:1 1 auto;min-width:0}
+  .switch{display:flex;align-items:center;gap:10px;padding:9px 0;cursor:pointer;user-select:none}
+  .switch input{appearance:none;-webkit-appearance:none;width:38px;height:22px;border-radius:20px;
+    background:rgba(255,255,255,.1);position:relative;cursor:pointer;transition:background .2s;flex:0 0 auto;margin:0}
+  .switch input::after{content:"";position:absolute;top:3px;left:3px;width:16px;height:16px;border-radius:50%;
+    background:#cfd1d6;transition:transform .2s}
+  .switch input:checked{background:rgba(123,122,232,.75)}
+  .switch input:checked::after{transform:translateX(16px);background:#fff}
+  .switch .sw-t{font-size:13px;color:var(--ink)}
+  .switch .sw-d{font-size:11.5px;color:var(--faint);margin-left:auto;text-align:right;max-width:52%}
+  .adv{border-top:1px solid var(--line-soft);margin-top:4px;padding-top:12px}
+  .adv summary{font-size:12.5px;color:var(--muted);cursor:pointer;list-style:none;padding:4px 0}
+  .adv summary::-webkit-details-marker{display:none}
+  .adv summary::before{content:"▸ ";color:var(--faint)}
+  .adv[open] summary::before{content:"▾ "}
+  .adv-in{padding-top:8px}
+  .srow{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+  .srow label{font-size:12.5px;color:var(--muted);flex:0 0 auto}
+  .sel{padding:8px 10px;border-radius:9px;border:1px solid var(--line);background:rgba(255,255,255,.04);
+    color:var(--ink);font:inherit;font-size:13px;outline:none;max-width:100%}
+  .sel option{background:#15161c;color:var(--ink)}
+  .sfoot{padding:12px 24px calc(16px + env(safe-area-inset-bottom));flex:0 0 auto;
+    display:flex;flex-wrap:wrap;gap:10px;justify-content:flex-end;border-top:1px solid var(--line-soft);background:var(--panel)}
+  .sfoot .left{margin-right:auto}
+  .err{color:var(--bad);font-size:12.5px;margin-bottom:10px;min-height:0}
+
+  .toast{position:fixed;left:50%;bottom:34px;transform:translate(-50%,14px);z-index:99;
+    background:rgba(28,30,36,.97);border:1px solid var(--line);color:var(--ink);
+    padding:10px 18px;border-radius:11px;font-size:13px;opacity:0;pointer-events:none;
+    transition:opacity .26s,transform .26s;box-shadow:0 16px 40px -20px #000}
+  .toast.on{opacity:1;transform:translate(-50%,0)}
+  .toast.bad{border-color:rgba(255,143,136,.35);color:#ffd7d3}
+
+  @media (max-width:640px){
+    .wrap{padding:18px 14px 48px}
+    .lead{margin:20px 0 16px}
+    .lead h2{font-size:21px}
+    .counts{gap:16px}
+    .cnt b{font-size:19px}
+    .bar{gap:8px;align-items:stretch}
+    .seg{flex:1 1 auto;gap:3px;padding:2px}
+    /* 5 颗筛选在 390px 下要挤进一行，收一档内边距与字距 */
+    .seg button{padding:7px 8px;font-size:12.5px}
+    .bar .btn{padding:9px 13px;font-size:13px}
+    .card{padding:14px 14px 13px}
+    .ctitle{font-size:15px}
+    .inp{font-size:16px}          /* iOS 聚焦不再放大 */
+    .sel{font-size:16px}
+    .types{grid-template-columns:repeat(3,1fr)}
+    .sheet{left:0;right:0;top:auto;bottom:0;transform:translateY(18px);width:100%;
+      max-height:92vh;border-radius:18px 18px 0 0}
+    .sheet.on{transform:translateY(0)}
+    .shead{padding:18px 18px 10px}
+    .sbody{padding:2px 18px 8px}
+    .sfoot{padding:12px 18px calc(14px + env(safe-area-inset-bottom))}
+    .sbody{overflow-y:auto}
+    .cola{font-size:12.5px}
+    .colo{font-size:12.5px;margin-top:44px}
+  }
+  /* ── 视图切换 ── */
+  .tabs{display:flex;border-bottom:1px solid var(--line);margin:22px 0 4px;overflow-x:auto;scrollbar-width:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tabs button{border:0;background:transparent;color:var(--muted);font:inherit;font-size:13.5px;
+    padding:10px 2px;margin-right:22px;border-bottom:2px solid transparent;cursor:pointer;
+    transition:color .16s,border-color .16s;white-space:nowrap;flex:0 0 auto}
+  .tabs button.on{color:var(--ink);border-bottom-color:var(--brand)}
+  .tabs button:hover:not(.on){color:var(--ink)}
+
+  /* ── 往来记录 ── */
+  .legend{font-size:11.5px;color:var(--faint);line-height:1.8;margin:10px 0 14px;
+    padding:10px 12px;border:1px solid var(--line-soft);border-radius:9px;background:rgba(255,255,255,.02)}
+  .legend b{color:var(--muted);font-weight:500}
+  /* 窄屏：搜索框吃满一行，筛选组换到下一行横滑 —— 不挤成一团也不溢出 */
+  @media (max-width:620px){
+    #view-log .bar{flex-wrap:wrap;gap:8px}
+    .logsearch{flex:1 1 100%}
+    .lfgrp{flex:1 1 100%}
+  }
+  .tl{position:relative;margin-top:6px}
+  .tl-row{position:relative;display:grid;grid-template-columns:86px 1fr;gap:14px;
+    padding:13px 0 13px 24px;border-bottom:1px solid var(--line-soft);cursor:pointer}
+  .tl-row:last-child{border-bottom:0}
+  .tl-row::before{content:"";position:absolute;left:5px;top:0;bottom:0;width:1px;background:var(--line)}
+  .tl-row:first-child::before{top:19px} .tl-row:last-child::before{bottom:calc(100% - 19px)}
+  .tl-dot{position:absolute;left:0;top:16px;width:11px;height:11px;border-radius:50%;
+    background:var(--faint);box-shadow:0 0 0 4px var(--bg);z-index:1}
+  .tl-row[data-k="done"] .tl-dot{background:var(--ok)}
+  .tl-row[data-k="review"] .tl-dot{background:var(--review)}
+  .tl-row[data-k="doing"] .tl-dot,.tl-row[data-k="claim"] .tl-dot,.tl-row[data-k="pick"] .tl-dot{background:var(--warn)}
+  .tl-row[data-k="claim"] .tl-dot{animation:pulse 1.8s ease-in-out infinite}
+  .tl-row[data-k="fail"] .tl-dot,.tl-row[data-k="drop"] .tl-dot{background:var(--bad)}
+  .tl-row[data-k="created"] .tl-dot{background:var(--brand-hi)}
+  .tl-row[data-k="stage"] .tl-dot,.tl-row[data-k="unstage"] .tl-dot{background:var(--stage)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.35}}
+  .tl-time{font-size:12px;color:var(--faint);font-variant-numeric:tabular-nums;padding-top:2px}
+  .tl-body{min-width:0}
+  .tl-head{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .tl-head b{font-size:13.5px;font-weight:600;letter-spacing:-.01em}
+  .tl-head .chev{color:var(--faint);font-size:11px;transition:transform .2s}
+  .tl-row.open .tl-head .chev{transform:rotate(90deg)}
+  .tl-tag{font-size:11px;padding:2px 7px;border-radius:5px;background:rgba(255,255,255,.06);color:var(--muted)}
+  .tl-row[data-k="done"] .tl-tag{background:rgba(74,222,128,.14);color:#8df0b0}
+  .tl-row[data-k="review"] .tl-tag{background:rgba(196,162,255,.16);color:#d5c2ff}
+  .tl-row[data-k="claim"] .tl-tag,.tl-row[data-k="doing"] .tl-tag,.tl-row[data-k="pick"] .tl-tag{background:rgba(251,191,36,.14);color:#f5cf6a}
+  .tl-row[data-k="drop"] .tl-tag{background:rgba(255,255,255,.05);color:#9aa0a8}
+  .tl-row[data-k="fail"] .tl-tag{background:rgba(255,143,136,.14);color:#ffaaa4}
+  .tl-note{font-size:12.5px;color:var(--txt);margin-top:5px;line-height:1.62;word-break:break-word;
+    white-space:pre-wrap;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+  .tl-row.open .tl-note{-webkit-line-clamp:unset;overflow:visible;display:block}
+  .tl-row.open{padding-bottom:15px}
+  .tl-more{font-size:11px;color:var(--faint);margin-top:4px}
+  .tl-row.open .tl-more{display:none}
+  .tl-detail{display:none;margin-top:10px;padding:11px 12px;border-radius:9px;
+    background:rgba(255,255,255,.025);border:1px solid var(--line-soft);font-size:12.5px;color:var(--muted)}
+  .tl-row.open .tl-detail{display:block}
+  .tl-detail h5{font-size:11px;letter-spacing:.12em;color:var(--faint);font-weight:500;margin:9px 0 5px}
+  .tl-detail h5:first-child{margin-top:0}
+  .tl-detail ol,.tl-detail ul{margin:0;padding-left:16px}
+  .tl-detail li{margin:3px 0;line-height:1.55;word-break:break-word}
+  .tl-detail li.done{color:var(--faint);text-decoration:line-through}
+  .tl-detail li.cur{color:var(--warn)}
+  @media(max-width:640px){
+    .tl-row{grid-template-columns:1fr;gap:3px;padding-left:22px}
+    .tl-time{order:-1;font-size:11.5px}
+  }
+
+  /* ── 燃料 ── */
+  .chips{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 12px}
+  .chips button{border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--muted);
+    font:inherit;font-size:12px;padding:5px 11px;border-radius:20px;cursor:pointer;transition:.16s;white-space:nowrap}
+  .chips button.on{background:rgba(123,122,232,.18);border-color:rgba(123,122,232,.5);color:#cfceff}
+  .chips button:hover{border-color:rgba(255,255,255,.2)}
+  .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin:4px 0 16px}
+  .kpi{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:14px 15px;min-width:0}
+  .kpi b{display:block;font-size:20px;font-weight:620;font-variant-numeric:tabular-nums;letter-spacing:-.02em;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .kpi span{font-size:11.5px;color:var(--muted);display:block;margin-top:2px}
+  .kpi.money b{color:#ffd08a} .kpi.hit b{color:#8df0b0}
+  .balbar{display:flex;align-items:baseline;flex-wrap:wrap;gap:8px;margin:-4px 0 14px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-radius:12px;font-size:12px;color:var(--muted)}
+  .balbar b{font-size:19px;font-weight:620;color:#ffd08a;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+  .balbar .bw{color:#fca5a5}
+  .balbar .bt{font-size:11.5px}
+  .ucard{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 16px 10px;margin-bottom:12px}
+  .ucard h4{font-size:13px;font-weight:600;color:var(--ink);margin-bottom:2px}
+  .ucard h4 i{font-style:normal;font-size:11.5px;color:var(--faint);font-weight:400;margin-left:6px}
+  .ucard h4 #ucrumb{font-weight:560}
+  .ucard h4 #ucrumb .ub{font-weight:400;color:var(--muted);cursor:pointer;padding:1px 2px;border-radius:4px}
+  .ucard h4 #ucrumb .ub:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+  .ucard h4 #ucrumb .ub.on{color:var(--ink);font-weight:600;cursor:default}
+  .ucard h4 #ucrumb .usl{color:var(--faint);margin:0 3px;font-weight:400}
+  .chips .chip{font-size:11.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 9px}
+  .ucard h4 .dback{float:right;border:0;background:transparent;color:var(--muted);font:inherit;font-size:11.5px;
+    cursor:pointer;padding:2px 8px;border-radius:6px;margin-top:-2px}
+  .ucard h4 .dback:hover{color:var(--ink);background:rgba(255,255,255,.06)}
+  .uchart{width:100%;height:300px}
+  .uchart.sm{height:220px}
+  .ugrid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .ugrid .ucard{margin-bottom:12px}
+  .unote{font-size:11.5px;color:var(--faint);line-height:1.7;margin-top:2px}
+  .unote .warn{color:#c8a24a}
+  @media(max-width:760px){
+    .kpis{grid-template-columns:repeat(2,1fr)}
+    .ugrid{grid-template-columns:1fr}
+    .uchart{height:250px} .uchart.sm{height:200px}
+    .tabs button{margin-right:16px;font-size:13px}
+  }
+
+</style>
+<link rel="stylesheet" href="/assets/shell.css?v=20261103c">
+</head>
+<body>
+<canvas id="starfield" aria-hidden="true"></canvas>
+<div class="wrap">
+  <header class="sh">
+    <a class="sh-brand" href="/">
+      <span class="sh-logo" aria-hidden="true"><svg viewBox="3.7 3.8 16 16" fill="none"><path d="M7.8 8.4 16.6 6.3M7.8 8.4 10.1 17.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".45"/><circle cx="7.8" cy="8.4" r="2.6" fill="currentColor"/><circle cx="16.6" cy="6.3" r="1.6" fill="currentColor" opacity=".78"/><circle cx="10.1" cy="17.5" r="1.45" fill="currentColor" opacity=".58"/></svg></span>
+      <span class="sh-name"><b>回声站</b><em>ECHO</em></span>
+    </a>
+    <div class="sh-right">
+      <a class="sh-back" href="/">← 回星图</a>
+    </div>
+  </header>
+
+  <section class="lead">
+    <h2>丢下来，等回声</h2>
+    <p>说给深空的话，会回来。高峰不碰，专挑 DeepSeek 半价那几段跑。</p>
+    <div class="counts" id="lead-counts">
+      <div class="cnt p"><b id="n-pend">–</b><span>待回信</span></div>
+      <div class="cnt d"><b id="n-doing">–</b><span>回声在途</span></div>
+      <div class="cnt f"><b id="n-done">–</b><span>已回信</span><em id="n-review"></em></div>
+      <div class="cnt r"><b id="n-drop">–</b><span>沉寂</span></div>
+    </div>
+  </section>
+
+  <nav class="tabs" id="tabs">
+    <button data-v="cards" class="on">任务卡</button>
+    <button data-v="log">往来记录</button>
+    <button data-v="usage">燃料</button>
+  </nav>
+
+  <div id="view-cards">
+  <div class="bar">
+    <div class="seg" id="seg">
+      <button data-f="pending" class="on">待回信</button>
+      <button data-f="doing">在途中</button>
+      <button data-f="done">已回信</button>
+      <button data-f="dropped">已沉寂</button>
+      <button data-f="all">全部</button>
+    </div>
+    <button class="btn pri" id="new">＋ 递一句话</button>
+  </div>
+
+  <div id="list"></div>
+  <div class="empty" id="empty" hidden>
+    <b>还没有话递出去，深空很安静。</b>
+    <span>想起来一句就写一句，剩下的等回声</span>
+  </div>
+  </div>
+
+  <div id="view-log" hidden>
+    <div class="bar">
+      <div class="logsearch">
+        <input id="lq" type="search" placeholder="搜呼号或关键词" autocomplete="off" spellcheck="false">
+        <button class="lqclear" id="lqclear" hidden aria-label="清空">×</button>
+      </div>
+      <div class="lfgrp" id="logseg">
+        <button data-k="all" class="on">全部</button>
+        <button data-k="made">发出</button>
+        <button data-k="took">接住</button>
+        <button data-k="back">回信</button>
+        <button data-k="hold">待定</button>
+        <button data-k="gone">沉寂</button>
+      </div>
+    </div>
+    <p class="legend">
+      这一页是流水，不是清单：一行＝那一刻真发生的一件事，筛的也是事件，不是任务档位。<br>
+      <b>发出</b>＝写进队列，等 cron 捡（改卡、追加、捞回都算） ·
+      <b>接住</b>＝cron 捡起来了，动手前拆了哪几条 ·
+      <b>回信</b>＝做完了，结果在卡上 ·
+      <b>待定</b>＝卡住了，要你拍板（问题 + 建议） ·
+      <b>沉寂</b>＝收工归档、沉淀、推送<br>
+      搜 <b>#9</b> 按呼号查（连着它 fork 出去的子卡一起），搜别的词就翻要求、结果、拆解、备注。
+      点任意一行，展开它那一刻的完整要求与拆解。
+    </p>
+    <div id="timeline"></div>
+    <div class="empty" id="logempty" hidden>
+      <b>还没有记录</b>
+      <span>话一动起来，这里就长出往来</span>
+    </div>
+  </div>
+
+  <div id="view-usage" hidden>
+    <div class="bar">
+      <div class="seg" id="useg">
+        <button data-d="7">近 7 天</button>
+        <button data-d="30">近 30 天</button>
+        <button data-d="90">近 90 天</button>
+        <button data-d="year" class="on">今年</button>
+      </div>
+    </div>
+    <div class="chips" id="uchips"></div>
+    <div class="kpis" id="ukpi"></div>
+    <div class="balbar" id="ubal"></div>
+    <div class="ucard"><h4><span id="ucrumb"></span> <i id="dsub">季度刻度</i><button class="dback" id="dback" hidden>← 退一层</button></h4><div class="uchart" id="c-daily"></div></div>
+    <div class="ugrid">
+      <div class="ucard"><h4>各引擎占比 <i>按 token</i></h4><div class="uchart sm" id="c-model"></div></div>
+      <div class="ucard"><h4>各入口燃料</h4><div class="uchart sm" id="c-src"></div></div>
+    </div>
+    <div class="ucard"><h4>滑行率 <i>缓存命中的比例，越低说明每轮都在重读上下文</i></h4><div class="uchart sm" id="c-hit"></div></div>
+    <p class="unote" id="unote"></p>
+  </div>
+
+  <div class="colo">
+    <span class="rule"></span>
+    <em>想法不用攒成一整块</em>
+    想起来一句就写一句<br>
+    剩下的，等回声
+    <span class="fin">回声会回来的。</span>
+  </div>
+</div>
+
+<div class="mask" id="mask"></div>
+<div class="sheet" id="sheet" role="dialog" aria-modal="true">
+  <div class="shead">
+    <h3 id="sheet-t">递一句话</h3>
+    <div class="hint">带 <b>✱</b> 的必填 · 别的想到再补，写完点保存</div>
+    <div class="sstat" id="sstat">还没写</div>
+  </div>
+
+  <div class="sbody" id="sbody">
+    <div id="sline" hidden></div>
+    <div class="fld">
+      <label>标题<span class="req">✱</span></label>
+      <input class="inp" id="f-title" maxlength="120" placeholder="一句话说清要做什么" autocomplete="off">
+    </div>
+
+    <div class="fld">
+      <label>类型<span class="req">✱</span></label>
+      <div class="types" id="f-type"></div>
+    </div>
+
+    <div class="fld">
+      <label>重要程度<span class="req">✱</span></label>
+      <div class="starpick" id="f-star">
+        <input type="range" id="f-star-r" min="0.5" max="5" step="0.5" value="3" aria-label="重要程度">
+        <div class="starrow"><span class="glyph" id="star-glyph">★★★</span><span class="lbl" id="star-lbl">3 星 · 一般</span></div>
+      </div>
+    </div>
+
+    <div class="fld">
+      <label>任务要求<span class="req">✱</span><span class="opt">越具体我做得越准</span></label>
+      <textarea class="inp" id="f-detail" maxlength="4000" placeholder="要什么结果、有什么限制、参考哪个文件或链接&#10;要拆成几件事，就在每件事前面加一个 @"></textarea>
+      <p class="tip"><b>@＝一件事</b>，一个 @ 拆一条，我接手后逐条办、逐条回报。回车只是换行，不拆分。</p>
+    </div>
+
+    <div class="fld">
+      <details class="adv" id="f-adv">
+        <summary>怎么执行（可选：深入模式 / 模型 / 跟踪）</summary>
+        <div class="adv-in">
+          <label class="switch">
+            <input type="checkbox" id="f-deep">
+            <span class="sw-t">深入执行</span>
+            <span class="sw-d">按你的描述自己优化提示词，多轮自检</span>
+          </label>
+          <div class="srow" id="deep-row" hidden>
+            <label>自检迭代</label>
+            <select class="sel" id="f-iters">
+              <option value="2">2 轮</option>
+              <option value="3" selected>3 轮</option>
+              <option value="5">5 轮</option>
+              <option value="8">8 轮</option>
+            </select>
+            <span class="tip" style="margin:0">每轮自己挑毛病再改一遍</span>
+          </div>
+          <div class="srow">
+            <label>指定模型</label>
+            <input class="inp" id="f-model" maxlength="120" placeholder="留空沿用定时任务模型">
+          </div>
+          <label class="switch">
+            <input type="checkbox" id="f-track">
+            <span class="sw-t">任务跟踪</span>
+            <span class="sw-d">被扫到 / 回信时推 Bark 到手机</span>
+          </label>
+        </div>
+      </details>
+    </div>
+
+    <div class="fld" id="decide-box" hidden>
+      <label>待定 · 问题与建议</label>
+      <div id="decide-txt"></div>
+      <label style="margin-top:16px">我的要求<span class="opt">留空就按上面的建议办</span></label>
+      <textarea class="inp" id="f-note" rows="3" placeholder="不写，我就照建议执行；写了，我就按你的要求重来"></textarea>
+    </div>
+
+    <div class="err" id="f-err"></div>
+  </div>
+
+  <div class="sfoot">
+    <button class="btn" id="run-refresh" hidden>刷新状态</button><button class="btn" id="run-cancel" hidden>取消执行</button><button class="btn" id="run-recover" hidden>核对中断状态</button><button class="btn" id="run-retry" hidden>重试</button>
+    <button class="btn" id="draft-merge" hidden>查看最新并合并</button><button class="btn" id="draft-discard" hidden>放弃草稿</button>
+    <button class="btn left" id="restore" hidden>恢复归档</button><button class="btn danger left" id="del" hidden>归档</button>
+    <button class="btn pri left" id="save" hidden>保存</button>
+    <button class="btn ghost" id="close">关闭</button>
+    <button class="btn" id="dismiss" hidden>取消</button>
+    <button class="btn pri" id="answer" hidden>处理</button>
+    <button class="btn pri" id="append-go" hidden>追加并回队</button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  'use strict';
+  var API = '/task/api.php';
+  var TYPES = ['开发', '研究', '运维', '内容', '生活', '其他'];
+  var STAR_TXT = {
+    0.5: '半星 · 先记着，不进队列', 1: '1 星 · 顺手', 1.5: '1.5 星 · 顺手往上', 2: '2 星 · 小事',
+    2.5: '2.5 星', 3: '3 星 · 一般', 3.5: '3.5 星 · 偏重要', 4: '4 星 · 重要',
+    4.5: '4.5 星 · 很要紧', 5: '5 星 · 最要紧'
+  };
+  var ST_TXT = {
+    staged: '暂存', pending: '待回信', doing: '在途中', review: '已回信',
+    done: '已回信', failed: '没收到', dropped: '已沉寂'
+  };
+
+  var $ = function (id) { return document.getElementById(id); };
+  var state = { tasks: [], filter: 'pending', editing: null, view: 'cards', todoOpen: {}, lq: '' };
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function toast(msg, bad) {
+    var t = $('toast');
+    t.textContent = msg;
+    t.className = 'toast on' + (bad ? ' bad' : '');
+    clearTimeout(toast._t);
+    toast._t = setTimeout(function () { t.className = 'toast' + (bad ? ' bad' : ''); }, 2400);
+  }
+  /** 复制一段文本：优先 clipboard API，不安全的上下文退回 textarea */
+  function copyText(txt, el) {
+    function ok() {
+      toast('已复制：' + (txt.length > 20 ? txt.slice(0, 20) + '…' : txt));
+      if (el) { el.classList.add('copied'); setTimeout(function () { el.classList.remove('copied'); }, 900); }
+    }
+    function fallback() {
+      var ta = document.createElement('textarea');
+      ta.value = txt;
+      ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none';
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand('copy'); ok(); } catch (err) { toast('浏览器不让复制', true); }
+      ta.remove();
+    }
+    if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(txt).then(ok, fallback);
+    else fallback();
+  }
+
+  function fmtTime(s) {
+    if (!s) return '';
+    /* 2026-11-03T15:48:12+08:00 → 26-11-03 15:48（到分钟，带年份） */
+    var v = String(s).replace('T', ' ').replace(/(?:[+-]\d{2}:?\d{2}|Z)$/, '').replace(/:\d{2}(\.\d+)?$/, '');
+    if (/^\d{4}-/.test(v)) v = v.slice(2);
+    return v.slice(0, 16);
+  }
+  /** 某类事件的最后一次时间，老数据没字段时从 events 里捞 */
+  function evTime(t, k) {
+    var e = (t.events || []).filter(function (x) { return x.k === k; }).pop();
+    return e ? (e.t || '') : '';
+  }
+  function today() {
+    var d = new Date(), p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  }
+  function hhmm() {
+    var d = new Date(), p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+  /** 要求文本 → 小点数组，卡片与展开都用它 */
+  function bullets(text) {
+    var out = [];
+    String(text || '').split('\n').forEach(function (raw) {
+      var s = raw.trim();
+      if (!s) return;
+      s = s.replace(/^[·•\-*]\s*/, '');
+      if (s) out.push(s);
+    });
+    return out;
+  }
+
+  /* ── 接口 ── */
+  var writeRequests = new Map();
+  try { writeRequests = new Map(JSON.parse(localStorage.getItem('echo:web-requests')||'[]')); } catch (_) {}
+  function api(action, body, id, qs) {
+    var url = API + '?a=' + action + (id ? '&id=' + id : '') + (qs ? '&' + qs : '');
+    var opt = { credentials: 'same-origin', headers: {} };
+    var write = ['create','update','answer','dismiss','spawn','archive','append','drop','restore','delete','cancel','recover','retry'].indexOf(action) >= 0;
+    var key;
+    if (write) {
+      body = Object.assign({}, body || {});
+      var current = id && (state.editing && state.editing.id === id ? state.editing : state.tasks.find(function(t){ return t.id === id; }));
+      if (current) body._revision = current.web_revision;
+      key = JSON.stringify([action,id,body]);
+      var saved = writeRequests.get(key);
+      if (!saved) { saved = crypto.randomUUID(); writeRequests.set(key,saved);try{localStorage.setItem('echo:web-requests',JSON.stringify(Array.from(writeRequests)));}catch(_){} }
+      body._request_id = saved;
+      opt.method = 'POST'; opt.headers['Content-Type'] = 'application/json'; opt.headers['X-Echo-Request'] = '1'; opt.body = JSON.stringify(body);
+    }
+    return fetch(url, opt).then(function (r) {
+      return r.json().catch(function () { return { ok: false, error: '服务器返回异常（HTTP ' + r.status + '）' }; });
+    }).then(function(r){ if(r.ok && key){writeRequests.delete(key);try{localStorage.setItem('echo:web-requests',JSON.stringify(Array.from(writeRequests)));}catch(_){}} return r; });
+  }
+
+  /* ── 视图 ── */
+  /* 状态：父卡把待定派成子任务之后，自己就回到「待回信」——
+     活在子任务那边跑，等它收工才真正回信。数据里的 status 一动不动，
+     这只是展示层的派生，免得 cron 又把父卡当成待办派出去一遍。 */
+  function statusOf(t) {
+    var s = t.status || 'pending';
+    var kids = state.tasks.filter(function (k) { return k.parent === t.id; });
+    if (!kids.length) return s;
+    /* 父卡归到哪个分类，看的是最新那条子卡 —— 子卡在途中跑着，
+       父卡却躺在待回信里，两边就对不上了。层层往下追到最深的那条。 */
+    var newest = kids[0];
+    for (var i = 1; i < kids.length; i++) {
+      if (+kids[i].id > +newest.id) newest = kids[i];
+    }
+    return statusOf(newest);
+  }
+
+  /* 子任务全都收工了没 —— 决定父卡能不能沉寂 */
+  function liveKids(id) {
+    return state.tasks.filter(function (k) { return k.parent === id; })
+      .filter(function (k) { var ks = statusOf(k); return ks !== 'done' && ks !== 'dropped'; });
+  }
+
+  function visible() {
+    var f = state.filter;
+    var rows = state.tasks.filter(function (t) {
+      /* 子任务不单独成卡：它嵌在父卡「待定」下面那一组里，跟着父卡走 */
+      if (t.parent) return false;
+      var s = statusOf(t);
+      if (f === 'all') return true;
+      /* 「已回信」这一档同时装 done 与 review：待拍板是回信的一种，不是独立分类 */
+      if (f === 'done') return s === 'done' || s === 'review';
+      return s === f;
+    });
+    rows.sort(function (a, b) {
+      var rank = function (t) {
+        var s = statusOf(t);
+        return s === 'review' ? 0 : s === 'doing' ? 1 : s === 'pending' ? 2 : s === 'staged' ? 3 : 4;
+      };
+      var d = rank(a) - rank(b);
+      if (d) return d;
+      if (b.star !== a.star) return b.star - a.star;
+      return a.id - b.id;
+    });
+    return rows;
+  }
+
+  /** 五颗星：满的实心、半颗左半金、「不到半颗」只剩灰底 */
+  function starHtml(n) {
+    var v = +n || 0, h = '';
+    for (var i = 1; i <= 5; i++) {
+      if (i <= v) h += '<span class="sg">★</span>';
+      else if (v >= i - 0.5) h += '<span class="sg hf">★</span>';
+      else h += '<span class="sg off">★</span>';
+    }
+    return h;
+  }
+
+  function sig(t) {
+    var s = [t.title, t.star, t.type, t.detail, t.result, t.error, t.drop_reason,
+      t.deliver, t.decide, t.status, t.attempts, t.created, t.track, t.replied_at, t.rounds,
+      t.claimed_at, t.delivered_at, t.archived_at, t.parent,
+      JSON.stringify(t.entries || []),
+      JSON.stringify(t.todos || []), JSON.stringify(t.exec || {})].join('\u0001');
+    /* 子任务变了，父卡也得重画（嵌套在它里面） */
+    var kids = state.tasks.filter(function (k) { return k.parent === t.id; });
+    if (kids.length) s += '\u0002' + kids.map(sig).join('\u0003');
+    return s;
+  }
+
+  /* ── 回复条目：交付蓝 / 回信绿 / 待定橙 / 沉寂灰 ──
+     规范字段是 t.entries[]（{kind,text,at}）；老数据回落 deliver/result/decide/error/drop_reason
+     时间口径：交付＝处理完的时刻，回信＝开始处理的时刻，沉寂＝点归档的时刻 */
+  var EKIND = { deliver: '交付', reply: '回信', pending: '待定', silent: '沉寂', sediment: '沉淀' };
+
+  function entriesOf(t) {
+    var out = [], seen = {}, has = {};
+    function add(k, s, v, at, q, adv) {
+      if (!v) return;
+      var key = k + '|' + v;
+      if (seen[key]) return;
+      seen[key] = 1;
+      has[k] = 1;
+      /* q/a 是待定的「问题」「建议」两个独立格子：后台填表填进来的，
+         有就直接用，没有才去拆 text（老数据） */
+      out.push({ k: k, s: s, v: v, at: at || '', q: q || '', a: adv || '' });
+    }
+    var tDeliver = t.delivered_at || t.replied_at || evTime(t, 'done') || '';
+    var tReply = t.claimed_at || evTime(t, 'claim') || '';
+    var tSilent = t.archived_at || evTime(t, 'archive') || evTime(t, 'drop') || '';
+    if (Array.isArray(t.entries)) {
+      t.entries.forEach(function (e) {
+        if (!e || !e.text) return;
+        var k = EKIND[e.kind] ? e.kind : 'reply';
+        /* 任务级时间戳优先：交付＝处理完，回信＝开始处理，沉寂＝点归档。
+           子任务回写的那条（带 from）用自己发生的时间，别套父卡的时间 */
+        var at = e.from ? e.at : (k === 'deliver' ? tDeliver : k === 'reply' ? tReply : k === 'silent' ? tSilent : tDeliver);
+        add(k, e.label || EKIND[k], e.text, at, e.q, e.a);
+      });
+    }
+    /* 老字段只补 entries 里没出现过的种类：两边都写着的同一件事不能显示两遍 */
+    if (t.deliver && !has.deliver) add('deliver', '交付', t.deliver, tDeliver);
+    if (t.result && !has.reply) add('reply', '回信', t.result, tReply);
+    if (t.decide && !has.pending) add('pending', '待定', t.decide, t.replied_at || tDeliver);
+    if (t.error && !has.pending) add('pending', '卡住', t.error, '');
+    if (t.drop_reason && !has.silent) add('silent', '沉寂', t.drop_reason, tSilent);
+    /* 沉寂的卡必须自己回答「到底沉没沉」：这条和回信/交付同级摆在一起，
+       不用点开抽屉、不用猜那个绿标签是不是老数据。 */
+    if (t.sediment || t.status === 'dropped') {
+      var sd = t.sediment || {};
+      var st = sd.status || '';
+      var f = String(sd.file || '').replace('/vol1/@apphome/hermes-agent/data/', '');
+      var txt = st === 'done'
+        ? ('已沉淀 → ' + (f || '（没记路径）'))
+        : st === 'pending'
+          ? '等沉淀：后台每 3 分钟扫一次，写完这条会变成笔记路径'
+          : st === 'failed'
+            ? ('沉淀没做成：' + (sd.error || '原因没记'))
+            : '没有沉淀记录 —— 这张是老卡，那会儿还没有沉淀这回事';
+      add('sediment', '沉淀', txt, sd.done_at || sd.at || t.archived_at || '');
+    }
+    return out;
+  }
+
+  /** 待定一定是「问题 + 建议」两点，不是一个长句。约定写法：
+      问题：……
+      建议：……
+      没写前缀就把整段当问题，不硬拆 */
+  function splitPending(v) {
+    var q = '', a = '';
+    /* 一行里用 | 或 ｜ 隔开的「建议：」也要断开 —— agent 常常把问题和建议
+       写在同一行，只按换行拆的话整段都会算成问题，建议那行就没了 */
+    var flat = String(v || '')
+      .replace(/\s*[|｜]\s*(?=(问题|建议|方案|对策)\s*[:：])/g, '\n')
+      /* agent 常把「还是先停？建议：先停…」写在同一行，问号/句号后面的「建议：」
+         也要断开 —— 只认 | 的话整段都会算成问题，建议那栏空着，看起来像没写建议 */
+      .replace(/([。；;！!？?])\s*(?=(建议|方案|对策)\s*[:：])/g, '$1\n')
+      .replace(/^\s*(?=(建议|方案|对策)\s*[:：])/gm, '\n');
+    flat.split('\n').forEach(function (raw) {
+      var s = raw.trim().replace(/^[·•\-\*]\s*/, '');
+      if (!s) return;
+      var m = s.match(/^(问题|建议|方案|对策)\s*[:：]\s*(.*)$/);
+      if (m) { if (m[1] === '问题') q += (q ? '\n' : '') + m[2]; else a += (a ? '\n' : '') + m[2]; }
+      else if (!q) q = s;
+      else a += (a ? '\n' : '') + s;
+    });
+    return { q: q, a: a };
+  }
+
+  /** 待定块：问题一行、建议一行 */
+  function pendingHtml(v, q, adv) {
+    /* 后台按字段填的优先：问题、建议各一格，不用再猜 */
+    var pa = (q || adv) ? { q: q || '', a: adv || '' } : splitPending(v);
+    return '<div class="pblock">'
+      + (pa.q ? '<div class="prow"><span class="ptag">问题</span><span class="ptxt">' + esc(pa.q) + '</span></div>' : '')
+      + (pa.a ? '<div class="prow"><span class="ptag sug">建议</span><span class="ptxt">' + esc(pa.a) + '</span></div>' : '')
+      + '</div>';
+  }
+
+  /* ── 子任务：挂在父卡的「待定」下面，不单独成卡 ──
+     fork 是从待定长出来的，不是从呼号长出来的：父卡自己只有一条回信，
+     子任务那一组有自己的回信/交付/待定，拆出来的小点全部计入父卡拆解数 */
+  function kidsOf(id) {
+    return state.tasks.filter(function (t) { return t.parent === id; });
+  }
+
+  /* 处理轮：一条任务真正跑了几轮模型调用。父卡算的是所有子孙的总和，
+     一开始发起的那张自己也算在内 —— 不然父卡只显示自己那几轮，看不出来活有多重 */
+  function roundsAgg(t) {
+    var n = t.rounds || 0;
+    kidsOf(t.id).forEach(function (k) { n += roundsAgg(k); });
+    return n;
+  }
+
+  function todoAgg(t) {
+    var d = 0, n = 0;
+    (t.todos || []).forEach(function (x) { n++; if (x.s === 'done') d++; });
+    kidsOf(t.id).forEach(function (k) {
+      var r = todoAgg(k);
+      d += r.d; n += r.n;
+    });
+    return { d: d, n: n };
+  }
+
+  function todoDeepHtml(t) {
+    var h = (t.todos || []).length ? todoHtml(t.todos) : '';
+    kidsOf(t.id).forEach(function (k) {
+      var sub = todoDeepHtml(k);
+      /* 子任务继承呼号，页面上不再出现它自己的编号，分组只标「子任务」 */
+      if (sub) h += '<div class="tdgrp">↳ 子任务拆出的</div>' + sub;
+    });
+    return h;
+  }
+
+  /* 子任务那一组卡片：自带状态胶囊、发出时间、处理轮、拆解和自己的回复条目 */
+  function subCardHtml(k) {
+    var s = statusOf(k);
+    var agg = todoAgg(k);
+    /* 子卡不标呼号：它跟父卡是同一个呼号，标出来只是重复一遍 */
+    var meta = [];
+    if (k.created) meta.push('<span>发出 <b>' + esc(fmtTime(k.created)) + '</b></span>');
+    if (roundsAgg(k)) meta.push('<span>处理轮 <b>' + roundsAgg(k) + '</b></span>');
+    if (agg.n) {
+      meta.push('<button class="lk' + (state.todoOpen[k.id] ? ' open' : '') + '" data-act="todos">拆解 <b>'
+        + agg.d + '/' + agg.n + '</b></button>');
+    }
+    var kus = k.usage || {};
+    if (kus.cny != null) {
+      meta.push('<span class="cost" title="缓存命中 ' + (kus.hit || 0).toLocaleString()
+        + ' · 新输入 ' + (kus.miss || 0).toLocaleString()
+        + ' · 输出 ' + (kus.out || 0).toLocaleString()
+        + ' · ' + (kus.calls || 0) + ' 次调用 · ' + (kus.peak ? '高峰时段' : '空闲时段') + '">¥'
+        + (kus.cny < 0.01 ? kus.cny.toFixed(4) : kus.cny.toFixed(3)) + '</span>');
+    }
+    var h = '<div class="subcard" data-id="' + k.id + '" data-st="' + s + '">'
+      + '<div class="scrow"><span class="st ' + s + '">' + (ST_TXT[s] || s) + '</span></div>'
+      + '<div class="sctitle">' + esc(k.title) + '</div>'
+      + '<div class="cmeta">' + meta.join('') + '</div>';
+    if (agg.n && state.todoOpen[k.id]) h += '<div class="todopop">' + todoDeepHtml(k) + '</div>';
+    h += entriesHtml(k);
+    /* 子卡跟父卡一个规矩：没拆完去处理，拆完了追加，右边归档 */
+    var acts = '', rawk = k.status || 'pending';
+    var undone = (agg.n === 0) || (agg.d < agg.n);
+    acts += undone
+      ? '<button class="btn tiny warn" data-act="handle">处理</button>'
+      : '<button class="btn tiny" data-act="spawn">追加</button>';
+    acts += '<button class="btn tiny ghost" data-act="archive">沉寂</button>';
+    if (acts) h += '<div class="cardact">' + acts + '</div>';
+    return h + '</div>';
+  }
+
+  function subGroupHtml(t) {
+    var kids = kidsOf(t.id);
+    if (!kids.length) return '';
+    /* 待定已经拍板走掉了的话，这组就是「追加」长出来的，别再写着「待定的下一步」 */
+    var label = t.decide ? '待定的下一步 · 子任务' : '子任务';
+    return '<div class="subgroup"><div class="sglabel">' + label + '</div>'
+      + kids.map(subCardHtml).join('') + '</div>';
+  }
+
+  /** 交付的结构化版面：数字/文件/说明各摆各的。老卡没有 report 就走纯文本。 */
+  function reportHtml(rep) {
+    if (!rep) return '';
+    var h = '';
+    if (rep.numbers && rep.numbers.length) {
+      h += '<div class="rnums">' + rep.numbers.map(function (x) {
+        return '<div class="rnum"><span class="rk">' + esc(x.k || '·') + '</span>'
+          + '<span class="rv">' + esc(x.v || '') + '</span></div>';
+      }).join('') + '</div>';
+    }
+    if (rep.files && rep.files.length) {
+      h += '<div class="rfiles">' + rep.files.map(function (f) {
+        return '<div class="rf">' + esc(f) + '</div>';
+      }).join('') + '</div>';
+    }
+    if (rep.detail) h += '<div class="rdet">' + esc(rep.detail) + '</div>';
+    return h;
+  }
+
+  function entriesHtml(t) {
+    var E = entriesOf(t);
+    var subs = subGroupHtml(t);
+    if (!E.length && !subs) return '';
+    var parts = [], placed = false;
+    E.forEach(function (e) {
+      var ts = e.at ? fmtTime(e.at) : '';
+      var body;
+      if (e.k === 'pending') {
+        body = pendingHtml(e.v, e.q, e.a);
+      } else if (e.k === 'deliver' && t.report) {
+        /* 有字段就用字段，别再拿那一整段拼接文本凑版面 */
+        body = reportHtml(t.report);
+      } else {
+        body = '<span class="etxt">' + esc(e.v) + '</span>';
+      }
+      parts.push('<div class="entry ' + e.k + '">'
+        + '<div class="ehead"><span class="rl">' + esc(e.s) + '</span>'
+        + (ts ? '<span class="ets">' + esc(ts) + '</span>' : '') + '</div>'
+        + body + '</div>');
+      /* 待定下面紧接着就是那一组子任务卡片 */
+      if (e.k === 'pending' && subs) { parts.push(subs); placed = true; }
+    });
+    if (subs && !placed) parts.push(subs);
+    return '<div class="entries">' + parts.join('') + '</div>';
+  }
+
+  /* 拆解清单：前面一颗点，不标序号；点一下复制这句 */
+  function todoHtml(td) {
+    return (td || []).map(function (x) {
+      var c = x.s === 'done' ? ' done' : (x.s === 'doing' ? ' doing' : '');
+      return '<div class="ti' + c + '" title="点一下复制这句"><i></i><span>' + esc(x.c) + '</span></div>';
+    }).join('');
+  }
+
+  /* 一条任务的完整时间线：往来事件 + 回复条目，按时间排 */
+  function timelineHtml(t) {
+    if (!t) return '';
+    var items = [];
+    (t.events || []).forEach(function (e) {
+      items.push({ at: e.t || '', s: KIND[e.k] || e.k, v: e.text || e.note || '' });
+    });
+    entriesOf(t).forEach(function (e) {
+      items.push({ at: e.at || t.replied_at || t.created || '', s: e.s, v: e.v });
+    });
+    items.sort(function (a, b) { return String(a.at).localeCompare(String(b.at)); });
+    var h = '<div class="fline">'
+      + '<div class="fl-h"><b>#' + t.id + ' ' + esc(t.title) + '</b>'
+      + '<span class="fl-st">' + esc(ST_TXT[statusOf(t)] || statusOf(t)) + '</span></div>';
+    if (items.length) {
+      h += items.map(function (x) {
+        return '<div class="fl-i"><span class="fl-t">' + esc(fmtTime(x.at).slice(5) || '—') + '</span>'
+          + '<span class="fl-k">' + esc(x.s) + '</span>'
+          + (x.v ? '<span class="fl-v">' + esc(x.v) + '</span>' : '<span class="fl-v dim">—</span>')
+          + '</div>';
+      }).join('');
+    } else {
+      h += '<div class="fl-i"><span class="fl-v dim">这条还没有往来</span></div>';
+    }
+    var td = t.todos || [];
+    if (td.length) {
+      h += '<div class="fl-sec">拆解 ' + td.filter(function (x) { return x.s === 'done'; }).length + '/' + td.length + '</div>'
+        + '<div class="todopop" style="margin-top:6px">' + todoHtml(td) + '</div>';
+    }
+    return h + '</div>';
+  }
+
+  function cardOf(t) {
+    var s = statusOf(t);
+    var el = document.createElement('article');
+    el.className = 'card';
+    el.dataset.id = t.id;
+    el.dataset.st = s;
+    el.dataset.sig = sig(t);
+    el.tabIndex = 0;
+
+    var h = '<div class="crow"><span class="stars">' + starHtml(t.star) + '</span>'
+      + '<span class="tag">' + esc(t.type) + '</span>'
+      + '<span class="st ' + s + '">' + (ST_TXT[s] || s) + '</span></div>'
+      + '<div class="ctitle">' + esc(t.title)
+      + (s === 'dropped' && (t.archived_at || evTime(t, 'archive')) ? '<span class="arcseen">沉寂 '
+        + esc(fmtTime(t.archived_at || evTime(t, 'archive'))) + '</span>' : '')
+      + '</div>';
+    if (t.detail) h += '<div class="cdetail">' + esc(bullets(t.detail).map(function (b) { return '· ' + b; }).join('\n')) + '</div>';
+
+    var agg = todoAgg(t);
+    var kids = kidsOf(t.id);
+    var meta = [];
+    /* 副标题：呼号（点→往来记录按 #N 检索）、发出、处理轮、拆解（连子任务一起算，点→展开清单）。
+       回信/交付两个时间不放这里 —— 它们在回复条目上各带各的 */
+    meta.push('<button class="lk" data-act="log" title="看这条的全部往来">呼号 #' + (t.call || t.id) + '</button>');
+    if (t.created) meta.push('<span>发出 <b>' + esc(fmtTime(t.created)) + '</b></span>');
+    if (roundsAgg(t)) meta.push('<span>处理轮 <b>' + roundsAgg(t) + '</b></span>');
+    if (agg.n) {
+      /* 有没勾的就染橙、并说明还差几条 —— 数字必须照实，不能替它勾平 */
+      var lag = agg.n - agg.d;
+      meta.push('<button class="lk' + (state.todoOpen[t.id] ? ' open' : '') + '" data-act="todos"'
+        + (lag ? ' title="还有 ' + lag + ' 条没勾"' : '') + '>拆解 <b' + (lag ? ' class="lag"' : '') + '>'
+        + agg.d + '/' + agg.n + '</b></button>');
+    }
+    /* 后台这轮没调 todo 工具就直接交付了：收下，但把这件事标出来 */
+    if (t.no_todo) meta.push('<span class="ntodo">未拆解</span>');
+    /* 归档之后那张卡会被沉淀 worker 捡走：pending 挂着、写完变绿 */
+    var sd = t.sediment || {};
+    if (sd.status === 'pending') meta.push('<span class="sed">待沉淀</span>');
+    /* 拆解右边挂这趟花的钱：后台会话的真实 token × DeepSeek 官方价。
+       读不到会话就不显示 —— 宁可空着，也不拿估算数糊上去。 */
+    var us = t.usage || {};
+    if (us.cny != null) {
+      var cents = us.cny < 0.01 ? us.cny.toFixed(4) : us.cny.toFixed(3);
+      meta.push('<span class="cost" title="缓存命中 ' + (us.hit || 0).toLocaleString()
+        + ' · 新输入 ' + (us.miss || 0).toLocaleString()
+        + ' · 输出 ' + (us.out || 0).toLocaleString()
+        + ' · ' + (us.calls || 0) + ' 次调用 · ' + (us.peak ? '高峰时段' : '空闲时段') + '">¥' + cents + '</span>');
+    }
+    if (t.track) meta.push('<span>跟踪中</span>');
+    h += '<div class="cmeta">' + meta.join('') + '</div>';
+
+    if (agg.n && state.todoOpen[t.id]) h += '<div class="todopop">' + todoDeepHtml(t) + '</div>';
+
+    h += entriesHtml(t);
+
+    /* 按钮就三档：没拆完（或压根没拆）→ 去处理；拆完了 → 追加；右边恒有一个归档。
+       归档就是「这一条到此为止」，同时把后台那次对话排进沉淀队列 */
+    var acts = '', raw = t.status || 'pending';
+    if (s === 'staged') {
+      acts += '<button class="btn tiny" data-act="unstage">放回队列</button>';
+    } else if (s !== 'dropped') {
+      var undone = (agg.n === 0) || (agg.d < agg.n);
+      acts += undone
+        ? '<button class="btn tiny warn" data-act="handle">处理</button>'
+        : '<button class="btn tiny" data-act="spawn">追加</button>';
+      acts += '<button class="btn tiny ghost" data-act="archive">沉寂</button>';
+    }
+    if (kids.length) {
+      var live = liveKids(t.id);
+      acts += '<span class="forkmark">' + (live.length
+        ? '已开子任务 #' + live.map(function (k) { return k.id; }).join(' / #')
+        : '子任务已收工') + '</span>';
+    }
+    if (s === 'dropped') {
+      /* 沉寂是终态：后台已经把它沉淀成笔记了，不往回拿 —— 所以连「追加」都不给 */
+      acts += '<button class="btn tiny" data-act="timeline">时间线</button>';
+    }
+    if (s === 'staged') acts += '<button class="btn tiny" data-act="unstage">放回队列</button>';
+    if (acts) h += '<div class="cardact">' + acts + '</div>';
+
+    el.innerHTML = h;
+    return el;
+  }
+
+  function render(animateId) {
+    var list = $('list');
+    var rows = visible();
+    var prev = {};
+    Array.prototype.forEach.call(list.children, function (el) {
+      prev[el.dataset.id] = el;
+    });
+
+    var keep = {};
+    rows.forEach(function (t, i) {
+      var el = prev[t.id];
+      if (!el || el.classList.contains('leaving')) {
+        el = cardOf(t);
+        el.classList.add('enter');
+        if (animateId === t.id) el.style.animationDelay = '0s';
+      } else if (el.dataset.sig !== sig(t)) {
+        var fresh = cardOf(t);
+        el.replaceWith(fresh);
+        el = fresh;
+      }
+      keep[t.id] = el;
+      if (list.children[i] !== el) list.insertBefore(el, list.children[i] || null);
+    });
+
+    Array.prototype.slice.call(list.children).forEach(function (el) {
+      if (!keep[el.dataset.id] && !el.classList.contains('leaving')) el.remove();
+    });
+
+    var em = $('empty');
+    em.hidden = rows.length > 0;
+    if (!em.hidden) {
+      var EM = {
+        pending: ['没有等着回信的了', '想加就再递一句，我下个空闲时段接'],
+        doing: ['眼下没有在途的', 'cron 每 30 分钟扫一次，空闲时段才动手'],
+        review: ['没有等你拍板的', '有的话会在这里亮起来'],
+        done: ['还没有回信', '第一条回信会落在这里'],
+        dropped: ['没有沉寂的', '这倒是好事'],
+        all: ['还没有话递出去，深空很安静。', '想起来一句就写一句']
+      }[state.filter] || ['空', ''];
+      em.querySelector('b').textContent = EM[0];
+      em.querySelector('span').textContent = EM[1];
+    }
+
+    var c = { pending: 0, doing: 0, review: 0, done: 0, dropped: 0 };
+    state.tasks.forEach(function (t) {
+      /* 子卡嵌在父卡里，父卡已经替它计过一次了，别再算一遍 */
+      if (t.parent) return;
+      var s = statusOf(t);
+      if (s in c) c[s]++;
+    });
+    $('n-pend').textContent = c.pending;
+    $('n-doing').textContent = c.doing;
+    /* 口径跟筛选对齐：已回信这一档 = done + review，待定只是其中挂着的一条 */
+    $('n-done').textContent = c.done + c.review;
+    $('n-review').textContent = c.review ? '含待定 ' + c.review : '';
+    $('n-drop').textContent = c.dropped;
+    if (state.view === 'log') renderLog();
+  }
+
+  function load() {
+    return api('list').then(function (r) {
+      if (!r.ok) { toast(r.error || '读取失败', true); return; }
+      state.tasks = r.tasks || [];
+      render();
+      if (state.editing && !dirty && !saving) syncSheetFromTask();
+    });
+  }
+
+  /* ── 弹窗：实时保存 ── */
+  var form = { type: '开发', star: 3, track: false, deep: false, iters: 3, model: '' };
+  var saveTimer = null, dirty = false, saving = false;
+
+  function paintStars() {
+    var v = +form.star || 3;
+    var r = $('f-star-r');
+    if (r) r.value = v;
+    var g = $('star-glyph');
+    if (g) g.innerHTML = starHtml(v);
+    var lbl = $('star-lbl');
+    if (lbl) {
+      lbl.textContent = STAR_TXT[v] || '';
+      lbl.classList.toggle('staged', v < 1);
+    }
+  }
+  function paintTypes() {
+    Array.prototype.forEach.call($('f-type').querySelectorAll('button'), function (b) {
+      b.classList.toggle('on', b.dataset.t === form.type);
+    });
+  }
+  function setStat(txt, cls) {
+    var el = $('sstat');
+    el.textContent = txt;
+    el.className = 'sstat' + (cls ? ' ' + cls : '');
+  }
+
+  function collect() {
+    return {
+      title: $('f-title').value.trim(),
+      type: form.type,
+      star: form.star,
+      detail: $('f-detail').value.trim(),
+      track: form.track,
+      /* 星级就是门禁：半星一律暂存，后台扫不到 */
+      status: state.editing && ['pending','staged'].indexOf(state.editing.status)<0 ? undefined : form.star < 1 ? 'staged' : 'pending',
+      exec: { mode: form.deep ? 'deep' : 'normal', iters: form.iters, model: form.model }
+    };
+  }
+
+  function echoDraftKey(){return 'echo:web-draft:'+state.sheetMode+':'+(state.editing?state.editing.id:'new');}
+  function saveEchoDraft(){
+    try{localStorage.setItem(echoDraftKey(),JSON.stringify({task:state.editing,mode:state.sheetMode,form:form,title:$('f-title').value,detail:$('f-detail').value,note:$('f-note').value}));localStorage.setItem('echo:last-draft',echoDraftKey());}
+    catch(_){setStat('本机草稿保存失败，请保持页面打开','err');}
+  }
+  function restoreEchoDraft(){
+    var d;try{d=JSON.parse(localStorage.getItem(echoDraftKey())||'null');}catch(_){}
+    if(!d)return;
+    if(d.task)state.editing=d.task;
+    form=d.form;$('f-title').value=d.title;$('f-detail').value=d.detail;$('f-note').value=d.note||'';
+    $('f-track').checked=!!form.track;$('f-deep').checked=!!form.deep;$('f-iters').value=String(form.iters);$('f-model').value=form.model||'';$('deep-row').hidden=!form.deep;
+    paintTypes();paintStars();dirty=true;
+  }
+  function markDirty() {
+    if (state.sheetMode === 'append' || state.sheetMode === 'spawn' || state.sheetMode === 'handle') { dirty=true;saveEchoDraft();setStat('写新要求，点下面「追加并回队」', ''); return; }
+    if (state.sheetMode === 'timeline') return;
+    dirty = true; saveEchoDraft();
+    /* 2026-11-03 用户点名：别自动存。写到一半就往库里塞，改错一个字也存进去了 */
+    setStat(state.editing ? '改动没存，关掉就丢' : '写完了点左边「保存」', 'err');
+  }
+
+  function flush() {
+    clearTimeout(saveTimer);
+    if (state.sheetMode === 'append' || state.sheetMode === 'timeline') { dirty = false; return Promise.resolve(true); }
+    if (!dirty) return Promise.resolve(true);
+    var b = collect();
+    if (!b.title) { setStat('标题还没写，先不存', 'err'); return Promise.resolve(false); }
+    if (!(b.detail || '').trim()) { setStat('要求得写一句，光有标题我只能猜', 'err'); return Promise.resolve(false); }
+    if (saving) return Promise.resolve(false);
+    dirty = false; saving = true;
+    setStat('保存中…', 'saving');
+    var req = state.editing ? api('update', b, state.editing.id) : api('create', b);
+    return req.then(function (r) {
+      saving = false;
+      if (!r || !r.ok) {
+        setStat((r && r.error) || '保存失败', 'err');
+        $('draft-merge').hidden = !state.editing;
+        $('draft-discard').hidden = false;
+        dirty = true;
+        return false;
+      }
+      var t = r.task;
+      try { localStorage.removeItem(echoDraftKey()); localStorage.removeItem('echo:last-draft'); } catch (_) {}
+      if (state.editing) {
+        state.tasks = state.tasks.map(function (x) { return x.id === t.id ? t : x; });
+        state.editing = t;
+      } else {
+        state.tasks.push(t);
+        state.editing = t;
+        $('del').hidden = false;
+        $('save').hidden = false;
+        $('sheet-t').textContent = '呼号 #' + t.id;
+      }
+      setStat('已保存 ' + hhmm(), 'ok');
+      $('f-err').textContent = '';
+      render();
+      return true;
+    }).catch(function (e) {
+      saving = false; dirty = true;
+      setStat('保存失败：' + (e && e.message ? e.message : e), 'err');
+      return false;
+    });
+  }
+
+  function syncSheetFromTask() {
+    var t = state.editing;
+    if (!t) { $('append-go').hidden = true; return; }
+    var cur = state.tasks.filter(function (x) { return x.id === t.id; })[0];
+    if (cur) { state.editing = cur; t = cur; }
+    var running=t.status==='doing'||(t.panel_run||{}).state==='running';
+    $('run-refresh').hidden=false;$('run-cancel').hidden=!running||!t.panel_run||!!t.panel_cancel_requested;
+    $('run-recover').hidden=!running||!t.panel_run;$('run-retry').hidden=t.status!=='failed'||running;
+    if(t.panel_cancel_requested)setStat('已请求取消，等待执行器停止；已有工具操作不会自动撤销','');
+    var pend = (t.status==='review'?entriesOf(t):[]).filter(function (e) { return e.k === 'pending'; });
+    /* 「去处理」点进来就一定有这块：它没留问题/建议，这里就空着，人直接在下面那格写 */
+    var go = state.sheetMode === 'handle'
+      || (pend.length > 0 && state.sheetMode !== 'timeline' && state.sheetMode !== 'append' && state.sheetMode !== 'spawn');
+    $('decide-box').hidden = !go;
+    $('answer').hidden = !go;
+    /* 没有待定就没有「取消」可言 —— 那个按钮是关掉一条待定，不是关抽屉 */
+    $('dismiss').hidden = !go || pend.length === 0;
+    if (go) {
+      $('decide-txt').innerHTML = pend.length
+        ? pendingHtml(pend[0].v, pend[0].q, pend[0].a)
+        : '<div class="pblock"><div class="prow"><span class="ptag">问题</span><span class="ptxt dim">这条没留问题</span></div>'
+          + '<div class="prow"><span class="ptag sug">建议</span><span class="ptxt dim">也没给建议 —— 要它怎么改，写下面那格</span></div></div>';
+      $('f-note').placeholder = pend.length
+        ? '留空就按上面的建议办；写了就按你写的来'
+        : '写清要它做什么，比如「只列 5 条，按时间倒序」';
+    }
+    /* 追加和「挂一条子任务」共用这个输入框和按钮，只是提交的动作不同 */
+    $('append-go').hidden = state.sheetMode !== 'append' && state.sheetMode !== 'spawn';
+    $('append-go').textContent = state.sheetMode === 'spawn' ? '挂上去' : '追加并回队';
+  }
+
+  function openSheet(task, mode) {
+    mode = mode || 'edit';
+    state.editing = task || null;
+    state.sheetMode = mode;
+    dirty = false; saving = false;
+    ['run-refresh','run-cancel','run-recover','run-retry'].forEach(function(id){$(id).hidden=true;});
+    clearTimeout(saveTimer);
+    $('sheet-t').textContent = task ? '呼号 #' + task.id : '递一句话';
+    $('f-title').value = task ? task.title : '';
+    $('f-detail').value = (task && mode !== 'append') ? (task.detail || '') : '';
+
+    $('f-note').value = '';
+    $('f-err').textContent = '';
+    var ex = (task && task.exec) || {};
+    form.type = task ? task.type : '开发';
+    form.star = task ? (task.star || 3) : 3;
+    form.track = !!(task && task.track);
+    form.deep = ex.mode === 'deep';
+    form.iters = ex.iters || 3;
+    form.model = ex.model || '';
+    form.star = Number(task && task.star) || 3;
+    $('f-track').checked = form.track;
+    $('f-deep').checked = form.deep;
+    $('f-iters').value = String(form.iters);
+    $('f-model').value = form.model;
+    $('deep-row').hidden = !form.deep;
+    paintTypes(); paintStars();
+    $('restore').hidden = !task || task.status!=='dropped';
+    $('del').hidden = !task || task.status==='dropped' || task.status==='doing' || (task.panel_run||{}).state==='running';
+    $('save').hidden = mode !== 'edit' || !!(task && (task.status==='doing'||(task.panel_run||{}).state==='running'));
+    $('f-title').readOnly = mode === 'append' || mode === 'spawn';
+    $('sbody').classList.toggle('mode-timeline', mode === 'timeline');
+    $('sline').hidden = mode !== 'timeline';
+    if (mode === 'timeline') $('sline').innerHTML = timelineHtml(task);
+    syncSheetFromTask();
+    restoreEchoDraft();
+    $('draft-discard').hidden = !dirty;
+    $('draft-merge').hidden = !dirty || !task;
+    setStat(mode === 'timeline' ? '这一条的全部往来' :
+      (mode === 'spawn' ? '哪件事你认为没完成？说清楚，我照着再做一遍' :
+      mode === 'append' ? '只写新要求，标题和呼号不动' :
+        (task ? '改完记得点保存，不点不存' : '写完点「保存」就入队')), '');
+    if(task&&task.panel_cancel_requested)setStat('已请求取消，等待执行器停止；已有工具操作不会自动撤销','');
+    $('mask').classList.add('on');
+    $('sheet').classList.add('on');
+    document.body.classList.add('lock');
+    $('sbody').scrollTop = 0;
+    if (mode === 'handle') {
+      setTimeout(function () {
+        var b = $('decide-box');
+        if (b && !b.hidden) b.scrollIntoView({ block: 'center' });
+        $('f-note').focus();
+      }, 200);
+    } else if (mode === 'append' || mode === 'spawn') {
+      setTimeout(function () { $('f-detail').focus(); }, 200);
+    } else if (!task) {
+      setTimeout(function () { $('f-title').focus(); }, 140);
+    }
+  }
+
+  function closeSheet(force) {
+    if(force){try{localStorage.removeItem(echoDraftKey());localStorage.removeItem('echo:last-draft');}catch(_){}}
+    if (!force && dirty && state.sheetMode !== 'append' && state.sheetMode !== 'timeline') {
+      if (!confirm(state.editing ? '改动已保存在本机草稿，关闭编辑？' : '内容已保存在本机草稿，关闭编辑？')) return;
+    }
+    $('mask').classList.remove('on');
+    $('sheet').classList.remove('on');
+    document.body.classList.remove('lock');
+    state.editing = null;
+    dirty = false;
+  }
+
+  /* ── 事件 ── */
+  $('f-note').addEventListener('input',function(){dirty=true;saveEchoDraft();});
+  function refreshRun(){var id=state.editing&&state.editing.id;if(!id)return;api('list').then(function(r){if(!r.ok){setStat(r.error,'err');return;}state.tasks=r.tasks;render();openSheet(state.tasks.find(function(t){return t.id===id;}));});}
+  $('run-refresh').onclick=refreshRun;
+  ['cancel','recover','retry'].forEach(function(action){$('run-'+action).onclick=function(){
+    if(!state.editing)return;if(action==='cancel'&&!confirm('取消执行？已有工具操作不会自动撤销。'))return;
+    var target=this;target.disabled=true;api(action,{},state.editing.id).then(function(r){target.disabled=false;if(!r.ok){setStat(r.error,'err');return;}refreshRun();}).catch(function(e){target.disabled=false;setStat(e.message,'err');});
+  };});
+  $('draft-discard').addEventListener('click',function(){
+    if(saving||!confirm('放弃这份本机草稿，重新读取已保存内容？'))return;
+    var id=state.editing&&state.editing.id,mode=state.sheetMode;
+    try{localStorage.removeItem(echoDraftKey());localStorage.removeItem('echo:last-draft');}catch(_){}
+    dirty=false;api('list').then(function(r){if(!r.ok){setStat(r.error,'err');return;}state.tasks=r.tasks;render();openSheet(id?state.tasks.find(function(t){return t.id===id;}):null,mode);});
+  });
+  $('draft-merge').addEventListener('click',function(){
+    if(saving||!state.editing)return;
+    var id=state.editing.id;
+    api('list').then(function(r){
+      if(!r.ok){setStat(r.error,'err');return;}
+      var latest=r.tasks.find(function(t){return t.id===id;});
+      if(!latest){setStat('任务已不存在，草稿保留','err');return;}
+      if(latest.status==='doing'||(latest.panel_run||{}).state==='running'){setStat('任务正在执行；草稿保留，等待本次结束后再合并','err');return;}
+      var box=document.createElement('dialog');box.style.cssText='background:var(--panel);color:var(--ink);border:1px solid var(--line);border-radius:14px;padding:20px;width:min(600px,95vw);max-height:90dvh;overflow:auto;margin:auto';
+      var title=document.createElement('h3');title.textContent='合并任务要求';box.append(title);
+      var original=document.createElement('pre');original.textContent='最新名称：'+latest.title+'\n最新要求：\n'+latest.detail;original.style.cssText='white-space:pre-wrap;overflow-wrap:anywhere;margin:16px 0';box.append(original);
+      var label=document.createElement('label');label.textContent='合并后的要求';var input=document.createElement('textarea');input.className='inp';input.value=$('f-detail').value;input.rows=8;label.append(input);box.append(label);
+      var note=document.createElement('p');note.textContent='名称、星级、执行选项沿用当前草稿；保存前仍可修改。';box.append(note);
+      var accept=document.createElement('button');accept.className='btn pri';accept.textContent='采用合并稿';accept.onclick=function(){state.editing=latest;$('f-detail').value=input.value;dirty=true;saveEchoDraft();setStat('已采用最新版本，请检查后保存','');box.close();box.remove();};
+      var cancel=document.createElement('button');cancel.className='btn';cancel.textContent='返回';cancel.onclick=function(){box.close();box.remove();};box.append(accept,cancel);document.body.append(box);box.showModal();
+    });
+  });
+  $('new').addEventListener('click', function () { openSheet(null); });
+  $('close').addEventListener('click', function () { closeSheet(false); });
+  $('save').addEventListener('click', function () {
+    var b = $('save');
+    dirty = true;                 /* 就算没碰过输入框，点保存也是「就按现在填的建」 */
+    b.disabled = true;
+    flush().then(function (ok) {
+      b.disabled = false;
+      if (ok) { toast('已存下'); render(); }
+    });
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && $('sheet').classList.contains('on')) closeSheet(false);
+  });
+  /* 点卡片外面不再关掉 —— 只能按「关闭」，防止手滑丢内容 */
+
+  ['f-title'].forEach(function (id) {
+    $(id).addEventListener('input', markDirty);
+    $(id).addEventListener('change', markDirty);
+  });
+  $('f-star-r').addEventListener('input', function (e) {
+    form.star = +e.target.value; paintStars(); markDirty();
+  });
+
+  /* 回车 → 小点 */
+  $('f-detail').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' || e.isComposing || e.shiftKey) return;
+    e.preventDefault();
+    var el = this, s = el.selectionStart, en = el.selectionEnd;
+    var before = el.value.slice(0, s);
+    var lineStart = before.lastIndexOf('\n') + 1;
+    var line = before.slice(lineStart).trim();
+    var ins = line === '' ? '' : '\n· ';
+    if (line === '') {
+      // 空行再回车：收起列表，保留一个换行
+      ins = '\n';
+    }
+    if (document.execCommand) {
+      el.focus();
+      el.setSelectionRange(s, en);
+      document.execCommand('insertText', false, ins);
+    } else {
+      el.value = el.value.slice(0, s) + ins + el.value.slice(en);
+    }
+    markDirty();
+  });
+  $('f-detail').addEventListener('input', markDirty);
+
+  $('f-type').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    form.type = b.dataset.t; paintTypes(); markDirty();
+  });
+  $('f-track').addEventListener('change', function () { form.track = this.checked; markDirty(); });
+  $('f-deep').addEventListener('change', function () {
+    form.deep = this.checked;
+    $('deep-row').hidden = !form.deep;
+    markDirty();
+  });
+  $('f-iters').addEventListener('change', function () { form.iters = +this.value; markDirty(); });
+  $('f-model').addEventListener('change', function () { form.model = this.value; markDirty(); });
+
+  $('seg').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b) return;
+    state.filter = b.dataset.f;
+    Array.prototype.forEach.call($('seg').children, function (x) { x.classList.toggle('on', x === b); });
+    render();
+  });
+
+  /* ── 卡片上的小动作 ── */
+  function toggleTodos(c, t, btn) {
+    var on = !state.todoOpen[t.id];
+    state.todoOpen[t.id] = on;
+    btn.classList.toggle('open', on);
+    /* 子卡就长在这个容器里，选择器必须限定直属子元素，否则点父卡会摸到子卡的弹层 */
+    var pop = c.querySelector(':scope > .todopop');
+    if (on && !pop) {
+      pop = document.createElement('div');
+      pop.className = 'todopop';
+      /* 拆解要连子任务一起展开 —— 卡片上写的 2/2 必须真能数出 2 条 */
+      pop.innerHTML = todoDeepHtml(t);
+      var en = c.querySelector(':scope > .entries'), ca = c.querySelector(':scope > .cardact');
+      if (en) c.insertBefore(pop, en);
+      else if (ca) c.insertBefore(pop, ca);
+      else c.appendChild(pop);
+    } else if (!on && pop) {
+      pop.remove();
+    }
+  }
+
+  /* 呼号 → 往来记录，把 #N 填进搜索框 —— 就是个搜索，不做第二种过滤 */
+  function gotoLog(id) {
+    setView('log');
+    var q = $('lq');
+    q.value = '#' + id;
+    state.lq = q.value;
+    syncLqClear();
+    renderLog();
+    q.focus();
+    q.setSelectionRange(q.value.length, q.value.length);
+  }
+  function syncLqClear() {
+    var b = $('lqclear');
+    if (b) b.hidden = !(state.lq || '').trim();
+  }
+
+  function doArchive(t, btn) {
+    btn.disabled = true;
+    api('archive', {}, t.id).then(function (r) {
+      btn.disabled = false;
+      if (!r.ok) { toast(r.error || '没沉下去', true); return; }
+      state.tasks = state.tasks.map(function (x) { return x.id === t.id ? r.task : x; });
+      toast('已沉寂 #' + t.id);
+      render();
+    });
+  }
+
+  $('list').addEventListener('click', function (e) {
+    /* 子卡就在父卡里面，必须取最近的那个壳，否则按钮会打到父卡 id 上 */
+    var c = e.target.closest('.card, .subcard');
+    if (!c || c.classList.contains('leaving')) return;
+    /* 拆解那一行：点一下把这句复制走，方便贴给别人或贴回来 */
+    var ti = e.target.closest('.todopop .ti');
+    if (ti) {
+      var txt = (ti.querySelector('span') || {}).textContent || '';
+      if (txt) copyText(txt, ti);
+      return;
+    }
+    var act = e.target.closest('[data-act]');
+    var id = +c.dataset.id;
+    var t = state.tasks.filter(function (x) { return x.id === id; })[0];
+    if (!t) return;
+
+    if (act) {
+      var a = act.dataset.act;
+      if (a === 'todos') { e.stopPropagation(); toggleTodos(c, t, act); return; }
+      if (a === 'log') { e.stopPropagation(); gotoLog(id); return; }
+      if (a === 'handle') { e.stopPropagation(); openSheet(t, 'handle'); return; }
+      if (a === 'timeline') { e.stopPropagation(); openSheet(t, 'timeline'); return; }
+      if (a === 'append') { e.stopPropagation(); openSheet(t, 'append'); return; }
+      if (a === 'spawn') { e.stopPropagation(); openSheet(t, 'spawn'); return; }
+      /* 子任务的收尾就一个「已完成」，不给它沉寂 —— 归档是根卡的事 */
+      if (a === 'archive') {
+        e.stopPropagation();
+        /* 不可逆：沉下去就再不往回拿，先问一句 */
+        if (!confirm('归档 #' + t.id + ' 并保留全部往来记录？')) return;
+        doArchive(t, act);
+        return;
+      }
+      if (a === 'unstage') {
+        e.stopPropagation();
+        act.disabled = true;
+        api('update', { status: 'pending' }, id).then(function (r) {
+          act.disabled = false;
+          if (!r.ok) { toast(r.error || '没放回', true); return; }
+          state.tasks = state.tasks.map(function (x) { return x.id === id ? r.task : x; });
+          toast('已放回队列');
+          render();
+        });
+        return;
+      }
+    }
+    /* 沉寂的卡点开就是完整时间线，不给编辑表单 */
+    if (statusOf(t) === 'dropped') { openSheet(t, 'timeline'); return; }
+    openSheet(t);
+  });
+  $('list').addEventListener('keydown', function (e) {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    var c = e.target.closest('.card, .subcard');
+    if (!c) return;
+    e.preventDefault();
+    c.click();
+  });
+
+  function doAnswer(note) {
+    var t = state.editing;
+    if (!t) return;
+    $('answer').disabled = true;
+    /* 按建议执行 = fork 出一条新任务：呼号和标题跟着走，要求换成建议（或你填的那句） */
+    api(t.status==='review'?'answer':'spawn', t.status==='review'?{note:note||''}:{want:note||''}, t.id).then(function (r) {
+      $('answer').disabled = false;
+      if (!r || !r.ok) { $('f-err').textContent = (r && r.error) || '没入队'; return; }
+      state.tasks = state.tasks.map(function (x) { return x.id === t.id ? r.task : x; });
+      if (r.child) state.tasks = state.tasks.concat([r.child]);
+      toast(r.child ? '已开新任务 #' + r.child.id + '，回待回信' : '已回待回信');
+      closeSheet(true);
+      render();
+    });
+  }
+  /* 处理：留空按建议办，填了按你写的办（会开一条子任务接着干） */
+  $('answer').addEventListener('click', function () { doAnswer($('f-note').value.trim()); });
+  /* 取消：这条待定不办了，直接关掉 —— 不派生任务、不占「待定」那一格 */
+  $('dismiss').addEventListener('click', function () {
+    var t = state.editing;
+    if (!t) return;
+    $('dismiss').disabled = true;
+    api('dismiss', { note: $('f-note').value.trim() }, t.id).then(function (r) {
+      $('dismiss').disabled = false;
+      if (!r || !r.ok) { $('f-err').textContent = (r && r.error) || '没关掉'; return; }
+      state.tasks = state.tasks.map(function (x) { return x.id === t.id ? r.task : x; });
+      toast('这条待定关了');
+      closeSheet(true);
+      render();
+    });
+  });
+  $('append-go').addEventListener('click', function () {
+    var t = state.editing;
+    if (!t) return;
+    var d = $('f-detail').value.trim();
+    if (!d) { $('f-err').textContent = '追加得写点新要求'; $('f-detail').focus(); return; }
+    var isSpawn = state.sheetMode === 'spawn';
+    $('append-go').disabled = true;
+    api(isSpawn ? 'spawn' : 'append', isSpawn ? { want: d } : { detail: d }, t.id).then(function (r) {
+      $('append-go').disabled = false;
+      if (!r || !r.ok) { $('f-err').textContent = (r && r.error) || (isSpawn ? '没挂上' : '追加失败'); return; }
+      state.tasks = state.tasks.map(function (x) { return x.id === t.id ? r.task : x; });
+      if (r.child) state.tasks = state.tasks.concat([r.child]);
+      toast(isSpawn ? '已挂一条子任务' + (r.child ? ' #' + r.child.id : '') : '追加了，已回到待回信');
+      closeSheet(true);
+      render();
+    });
+  });
+
+  $('restore').addEventListener('click',function(){var t=state.editing;if(!t||!confirm('恢复归档前状态？待回信任务可能被接手。'))return;this.disabled=true;api('restore',{},t.id).then(function(r){$('restore').disabled=false;if(!r.ok){toast(r.error,true);return;}closeSheet(true);load();});});
+
+  $('del').addEventListener('click', function () {
+    var t = state.editing;
+    if (!t || !confirm('归档并保留这条任务与全部往来记录？')) return;
+    doArchive(t, $('del'));
+  });
+
+  /* ── 初始化类型 ── */
+  var tbox = $('f-type');
+  TYPES.forEach(function (ty) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.t = ty;
+    b.textContent = ty;
+    tbox.appendChild(b);
+  });
+  paintTypes(); paintStars();
+
+  /* ══ 往来记录 ══ */
+  var KIND = {
+    created: '发出', pick: '被扫到', claim: '接住', todo: '拆解', done: '回信',
+    review: '待定', answer: '照办', fail: '没收到', drop: '沉寂',
+    archive: '已沉寂', append: '追加', silent: '已沉寂',
+    restore: '捞回', edit: '改过', stage: '暂存', unstage: '放回', recover: '回收',
+    untodo: '未拆解', sediment: '沉淀', bark: '推送'
+  };
+  var LOGF = 'all', LOGCNT = {};
+  /* 筛选按「事件」切，不按任务状态 —— 一行的 k 就决定它归哪一格。
+     以前按 statusOf(task) 筛，选「已回信」会把那张卡的「发出」「接住」也一起列出来，
+     按钮和内容对不上，就是这么来的。 */
+  var LOGK = {
+    made: ['created', 'append', 'edit', 'restore', 'stage', 'unstage', 'recover'],
+    took: ['pick', 'claim', 'todo', 'untodo'],
+    back: ['done', 'answer', 'fail'],
+    hold: ['review'],
+    gone: ['drop', 'archive', 'silent', 'sediment', 'bark']
+  };
+
+  /** 搜索口径：#6 按呼号（含 fork 出去的子任务），其它按关键词 */
+  function logMatch(t, q) {
+    var m = q.match(/^#\s*(\d+)$/);
+    if (m) {
+      var id = +m[1];
+      return t.id === id || t.parent === id;
+    }
+    var hay = [t.title, t.detail, t.deliver, t.result, t.decide, t.error, t.drop_reason,
+      (t.todos || []).map(function (x) { return x.c; }).join(' '),
+      (t.events || []).map(function (x) { return x.note || ''; }).join(' ')].join(' ').toLowerCase();
+    return hay.indexOf(q.toLowerCase()) >= 0;
+  }
+
+  /* 一条往来到底该显示什么：不是标题，是那一刻发生了什么、写了什么。
+     新事件直接带 text（全文）；老数据没有，就按节点类型从卡片上取回来。 */
+  function logText(r) {
+    var e = r.e || {}, t = r.task || {};
+    if (e.text) return String(e.text);
+    switch (r.k) {
+      case 'created': return t.detail || '';
+      case 'claim': return '接住，开始处理';
+      case 'pick': return r.note || 'cron 扫到';
+      case 'done': return t.result || t.deliver || t.decide || r.note || '';
+      case 'review': return t.decide || t.result || r.note || '';
+      case 'fail': return t.error || r.note || '';
+      case 'drop': case 'archive': return t.drop_reason || '收工归档';
+      case 'edit': return '改了卡片上的内容';
+      default: return r.note || '';
+    }
+  }
+
+  function logRows() {
+    var rows = [];
+    (state.tasks || []).forEach(function (t) {
+      (t.events || []).forEach(function (e) {
+        rows.push({ t: e.t || t.updated || t.created || '', k: e.k || 'edit', note: e.note || '', e: e, task: t });
+      });
+    });
+    rows.sort(function (a, b) { return String(b.t).localeCompare(String(a.t)); });
+    var q = (state.lq || '').trim();
+    if (q) rows = rows.filter(function (r) { return logMatch(r.task, q); });
+    /* 先记下各格有多少条（跟着搜索词走，不跟当前筛选走），按钮上直接显示 ——
+       按钮和列表一眼就能对上，不用点进去才发现是空的 */
+    LOGCNT = { all: rows.length };
+    Object.keys(LOGK).forEach(function (g) {
+      LOGCNT[g] = rows.filter(function (r) { return LOGK[g].indexOf(r.k) >= 0; }).length;
+    });
+    if (LOGF !== 'all') {
+      var ks = LOGK[LOGF] || [];
+      rows = rows.filter(function (r) { return ks.indexOf(r.k) >= 0; });
+    }
+    return rows;
+  }
+
+  function taskDetailHtml(t) {
+    var h = '';
+    var bl = bullets(t.detail);
+    if (bl.length) {
+      h += '<h5>要求</h5><ol>' + bl.map(function (b) { return '<li>' + esc(b) + '</li>'; }).join('') + '</ol>';
+    }
+    var td = t.todos || [];
+    if (td.length) {
+      h += '<h5>拆解 ' + td.filter(function (x) { return x.s === 'done'; }).length + '/' + td.length + '</h5><ul>';
+      h += td.map(function (x) {
+        var cls = x.s === 'done' ? ' class="done"' : (x.s === 'doing' ? ' class="cur"' : '');
+        return '<li' + cls + '>' + esc(x.c) + '</li>';
+      }).join('');
+      h += '</ul>';
+    }
+    if (t.deliver) h += '<h5>交付</h5><div>' + esc(t.deliver) + '</div>';
+    if (t.result) h += '<h5>回信</h5><div>' + esc(t.result) + '</div>';
+    if (t.decide) h += '<h5>待定 · 问题与建议</h5><div>' + esc(t.decide) + '</div>';
+    if (t.error) h += '<h5>卡在哪</h5><div>' + esc(t.error) + '</div>';
+    if (!h) h = '<div>这条还没留下细节。</div>';
+    return h;
+  }
+
+  var LEMPTY = {
+    all: ['还没有记录', '话一动起来，这里就长出往来'],
+    made: ['还没有发出去的', '写一句递进队列，这里就多一行'],
+    took: ['还没有被接住的', 'cron 捡起来那一刻会记在这里'],
+    back: ['还没有回信', '第一条回信会落在这一页'],
+    hold: ['没有等你拍板的', '有的话会在这里亮起来'],
+    gone: ['没有沉寂的', '这倒是好事']
+  };
+
+  function setFilter(f) {
+    state.filter = f;
+    Array.prototype.forEach.call($('seg').children, function (x) { x.classList.toggle('on', x.dataset.f === f); });
+  }
+
+  function renderLog() {
+    var rows = logRows();
+    /* 每格挂条数：0 就灰着，不用点进去才知道是空的 */
+    Array.prototype.forEach.call($('logseg').children, function (b) {
+      var n = LOGCNT[b.dataset.k] || 0, s = b.querySelector('.n');
+      if (!n) { if (s) s.remove(); return; }
+      if (!s) { s = document.createElement('span'); s.className = 'n'; b.appendChild(s); }
+      s.textContent = n;
+    });
+    var em = $('logempty');
+    em.hidden = rows.length > 0;
+    if (!em.hidden) {
+      var w = LEMPTY[LOGF] || LEMPTY.all;
+      em.querySelector('b').textContent = w[0];
+      em.querySelector('span').textContent = w[1];
+    }
+    var seen = {}, html = [];
+    rows.forEach(function (r) {
+      /* 沉寂的任务在流水里压成一行索引，点它跳到沉寂档把那张卡亮出来 */
+      if (LOGF === 'all' && statusOf(r.task) === 'dropped') {
+        if (seen[r.task.id]) return;
+        seen[r.task.id] = 1;
+        var n = (r.task.events || []).length;
+        html.push('<div class="tl-idx" data-id="' + r.task.id + '">'
+          + '<span><b>#' + r.task.id + '</b> ' + esc(r.task.title) + '</span>'
+          + '<span class="g">已沉寂 · 收着 ' + n + ' 条往来 ▸</span></div>');
+        return;
+      }
+      html.push('<div class="tl-row" data-k="' + esc(r.k) + '" data-id="' + r.task.id + '">'
+        + '<span class="tl-dot"></span>'
+        + '<div class="tl-time">' + esc(fmtTime(r.t)) + '</div>'
+        + '<div class="tl-body">'
+        + '<div class="tl-head"><b>' + (r.task.parent ? '↳ ' : '') + '#' + r.task.id + ' '
+        + esc(r.task.title) + '</b>'
+        + '<span class="tl-tag">' + esc(KIND[r.k] || r.k) + '</span></div>'
+        + (function (tx) {
+            return tx ? '<div class="tl-note">' + esc(tx) + '</div>' : '';
+          })(logText(r))
+        + '</div></div>');
+    });
+    $('timeline').innerHTML = html.join('');
+  }
+
+  $('timeline').addEventListener('click', function (e) {
+    var idx = e.target.closest('.tl-idx');
+    if (idx) {
+      var id = +idx.dataset.id;
+      setFilter('dropped');
+      setView('cards');
+      render();
+      var card = $('list').querySelector('.card[data-id="' + id + '"]');
+      if (card) {
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        card.classList.add('hit');
+        setTimeout(function () { card.classList.remove('hit'); }, 1600);
+      }
+      return;
+    }
+    var row = e.target.closest('.tl-row');
+    if (!row) return;
+    row.classList.toggle('open');
+  });
+
+  /* ══ 燃料 ══ */
+  var U = { range: 'year', off: {}, rows: [], charts: {}, meta: null, busy: false };
+
+
+  function kf(n) {
+    if (n >= 1e8) return (n / 1e8).toFixed(2) + ' 亿';
+    if (n >= 1e4) return (n / 1e4).toFixed(1) + ' 万';
+    return String(Math.round(n));
+  }
+  function money(n) { return '¥' + (n >= 1000 ? Math.round(n) : n.toFixed(2)); }
+
+  function uRows() {
+    return U.rows.filter(function (r) { return !U.off[r.model]; });
+  }
+
+  function ec(id) {
+    if (!U.charts[id]) U.charts[id] = echarts.init($(id));
+    return U.charts[id];
+  }
+
+  var AXIS = {
+    axisLine: { lineStyle: { color: 'rgba(255,255,255,.12)' } },
+    axisLabel: { color: '#62666d', fontSize: 11 },
+    axisTick: { show: false },
+    splitLine: { lineStyle: { color: 'rgba(255,255,255,.05)' } }
+  };
+  var TIP = {
+    backgroundColor: 'rgba(16,17,22,.97)', borderColor: 'rgba(255,255,255,.12)', borderWidth: 1,
+    textStyle: { color: '#e8e9ec', fontSize: 12 }, padding: [8, 11], confine: true
+  };
+  var LEG = { top: 0, right: 0, itemWidth: 9, itemHeight: 9, textStyle: { color: '#8a8f98', fontSize: 11 } };
+
+  /* ===== 燃料页：一套数，五个刻度 =====
+     季度 → 月 → 周 → 天 → 小时，本来就是同一批 sessions 换个窗口看。
+     左键双击柱子往下钻，右键双击退回上一层；面包屑可点，给移动端留一条明路。
+     小时是最细 —— 再往下单次 API 调用没有时间戳，编不出来。 */
+
+  var UHIST = [];        // 走过的层，最后一个是当前；根由 setRange 种下
+  var UDATA = null;      // 最近一次 usage_range 结果，四张图共用
+  var UBAL = null;       // 账户余额，由 tick 刷进 balance.json，后端只读缓存
+  var UV = 0;            // 请求序号，慢的旧响应回来了就丢
+
+  var UB_NAME = { quarter: '季度', month: '月', week: '周', day: '天', hour: '小时' };
+  var UB_NEXT = { quarter: 'month', month: 'week', week: 'day', day: 'hour', hour: null };
+
+  function ucur() {
+    return UHIST[UHIST.length - 1] || { b: 'quarter', from: '', to: '', label: '今年' };
+  }
+  function ymd(d) {
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+      + '-' + String(d.getDate()).padStart(2, '0');
+  }
+  function parseYmd(s) {
+    var p = String(s).split('-');
+    return new Date(+p[0], +p[1] - 1, +p[2]);
+  }
+  function addDays(s, n) {
+    var d = parseYmd(s); d.setDate(d.getDate() + n); return ymd(d);
+  }
+
+  /* 一根柱子对应的真实时间范围 —— 钻进去就是要这个窗口 */
+  function spanOf(bucket, key) {
+    if (bucket === 'quarter') {
+      var y = +key.slice(0, 4), q = +key.slice(6), m0 = (q - 1) * 3;
+      return [y + '-' + String(m0 + 1).padStart(2, '0') + '-01', ymd(new Date(y, m0 + 3, 0))];
+    }
+    if (bucket === 'month') {
+      var yy = +key.slice(0, 4), mm = +key.slice(5, 7);
+      return [key + '-01', ymd(new Date(yy, mm, 0))];
+    }
+    if (bucket === 'week') return [key, addDays(key, 6)];
+    return [key, key];
+  }
+
+  function setRange(kind) {
+    var t = ymd(new Date());
+    U.range = kind;
+    var root;
+    if (kind === 'year') {
+      root = { b: 'quarter', from: new Date().getFullYear() + '-01-01', to: t, label: '今年' };
+    } else if (kind === '90') {
+      root = { b: 'week', from: addDays(t, -89), to: t, label: '近 90 天' };
+    } else if (kind === '30') {
+      root = { b: 'day', from: addDays(t, -29), to: t, label: '近 30 天' };
+    } else {
+      root = { b: 'day', from: addDays(t, -6), to: t, label: '近 7 天' };
+    }
+    UHIST = [root];
+  }
+
+  function drill(i) {
+    if (!UDATA || !UDATA.series[i]) return;
+    var next = UB_NEXT[ucur().b];
+    if (!next) return;                       // 小时已是最细
+    var sp = spanOf(ucur().b, UDATA.series[i].key);
+    UHIST.push({ b: next, from: sp[0], to: sp[1], label: UDATA.series[i].label });
+    fetchUsage();
+  }
+
+  function goUp() {
+    if (UHIST.length <= 1) return;
+    UHIST.pop();
+    fetchUsage();
+  }
+
+  function jumpTo(i) {
+    if (i < 0) { setRange(U.range); fetchUsage(); return; }
+    UHIST = UHIST.slice(0, i + 1);
+    fetchUsage();
+  }
+
+  function crumbHtml() {
+    return UHIST.map(function (h, i) {
+      var on = i === UHIST.length - 1;
+      return '<b class="ub' + (on ? ' on' : '') + '" data-i="' + i + '">' + esc(h.label) + '</b>';
+    }).join('<span class="usl">›</span>');
+  }
+
+  function fetchUsage() {
+    var my = ++UV;
+    var c = ucur();
+    $('unote').textContent = '读用量…';
+    /* 余额单独取：拿不到也不能拖累图表 */
+    api('balance').then(function (rb) {
+      if (rb && rb.ok && rb.balance) { UBAL = rb.balance; paintBal(); }
+    }).catch(function () {});
+    loadEcharts().then(function () {
+      return api('usage_range', null, 0,
+        'from=' + c.from + '&to=' + c.to + '&bucket=' + c.b);
+    }).then(function (r) {
+      if (my !== UV) return;                 // 用户已经换层了，这份不要
+      if (!r || !r.ok) { $('unote').textContent = '读不到用量：' + ((r && r.error) || '未知错误'); return; }
+      UDATA = r;
+      drawUsage();
+    }).catch(function (e) {
+      if (my !== UV) return;
+      $('unote').textContent = '图表库没加载起来：' + (e && e.message ? e.message : e);
+    });
+  }
+
+  function paintBal() {
+    var el = $('ubal');
+    if (!el) return;
+    if (!UBAL) { el.innerHTML = '<span class="bt">账户余额读不到（缓存还没生成，等下一次 tick）</span>'; return; }
+    var t = UBAL.at ? UBAL.at.replace('T', ' ').slice(5, 16) : '';
+    var stale = (UBAL.age || 0) > 900;
+    el.innerHTML = '<span class="bt">DeepSeek 账户余额</span>'
+      + '<b>¥' + Number(UBAL.total || 0).toFixed(2) + '</b>'
+      + (UBAL.granted > 0 ? '<span class="bt">含赠送 ¥' + Number(UBAL.granted).toFixed(2) + '</span>' : '')
+      + '<span class="bt' + (stale ? ' bw' : '') + '">' + (stale ? '数据可能过期 · ' : '更新于 ') + esc(t) + '</span>';
+  }
+
+  function drawUsage() {
+    if (!UDATA) return;
+    paintBal();
+    var d = UDATA, tot = d.totals || {}, c = ucur();
+    var denom = (tot.hit || 0) + (tot.miss || 0);
+    var rate = denom > 0 ? (tot.hit / denom * 100) : 0;
+
+    $('ucrumb').innerHTML = crumbHtml();
+    $('dback').hidden = UHIST.length <= 1;
+    $('dsub').textContent = UB_NAME[c.b] + '刻度 · 双击柱子往里钻'
+      + (UB_NEXT[c.b] ? '，右键双击退一层' : '（已是最细）');
+
+    $('ukpi').innerHTML =
+      '<div class="kpi money"><b>' + money(tot.cost) + '</b><span>' + esc(c.label) + ' 燃料 · 估算</span></div>' +
+      '<div class="kpi"><b>' + kf(tot.miss) + '</b><span>点火里程（未命中）</span></div>' +
+      '<div class="kpi"><b>' + kf(tot.hit) + '</b><span>滑行里程（命中缓存）</span></div>' +
+      '<div class="kpi hit"><b>' + rate.toFixed(1) + '%</b><span>滑行率</span></div>';
+
+    var note = (d.unit ? d.unit + '。' : '') + '窗口 ' + d.from + ' ~ ' + d.to
+      + '，按' + UB_NAME[c.b] + '聚合，生成于 ' + (d.generated_at || '—') + '。';
+    var ups = d.unpriced || [];
+    if (ups.length) {
+      note += ' 另有 <span class="warn">' + ups.map(esc).join('、') + '</span> 不在 DeepSeek 计价内，'
+        + '金额与占比未计入 —— 这些是外部模型，钱不在 DeepSeek 账上。';
+    }
+    $('unote').innerHTML = note;
+
+    if (!window.echarts) return;
+
+    var s = d.series || [];
+    var labels = s.map(function (x) { return x.label; });
+    var nextName = UB_NEXT[c.b] ? UB_NAME[UB_NEXT[c.b]] : null;
+
+    /* ① 主图：柱是 token，线是钱 */
+    var c1 = ec('c-daily');
+    c1.setOption({
+      grid: { left: 6, right: 6, top: 34, bottom: 2, containLabel: true },
+      tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: function (ps) {
+          var it = s[ps[0].dataIndex] || {};
+          var out = '<b>' + it.label + '</b><br>' + (it.n || 0) + ' 个会话 · ' + (it.calls || 0) + ' 次调用<br>';
+          ['未命中输入', '缓存命中', '输出', '花费'].forEach(function (nm, k) {
+            var p = ps[k]; if (!p) return;
+            out += p.marker + nm + '：' + (nm === '花费' ? '¥' + (+p.value).toFixed(4) : kf(+p.value)) + '<br>';
+          });
+          if (nextName) out += '<span style="color:#8a8f98">双击钻进' + nextName + '</span>';
+          return out;
+        } }, TIP),
+      legend: LEG,
+      xAxis: Object.assign({ type: 'category', data: labels,
+        axisLabel: { color: '#62666d', fontSize: 10, interval: labels.length > 14 ? 1 : 0 } },
+        AXIS, { splitLine: { show: false } }),
+      yAxis: [
+        Object.assign({ type: 'value', name: 'token', nameTextStyle: { color: '#62666d', fontSize: 10 },
+          axisLabel: { color: '#62666d', fontSize: 10, formatter: function (v) { return kf(v); } } }, AXIS),
+        Object.assign({ type: 'value', name: '元', nameTextStyle: { color: '#62666d', fontSize: 10 },
+          axisLabel: { color: '#62666d', fontSize: 10 }, splitLine: { show: false } }, AXIS)
+      ],
+      series: [
+        { name: '未命中输入', type: 'bar', stack: 't', barMaxWidth: 22, itemStyle: { color: '#7b7ae8' },
+          data: s.map(function (x) { return x.miss; }) },
+        { name: '缓存命中', type: 'bar', stack: 't', itemStyle: { color: '#3c3d78' },
+          data: s.map(function (x) { return x.hit; }) },
+        { name: '输出', type: 'bar', stack: 't', itemStyle: { color: '#4ade80' },
+          data: s.map(function (x) { return x.out; }) },
+        { name: '花费', type: 'line', yAxisIndex: 1, smooth: true, symbolSize: 5,
+          lineStyle: { color: '#ffca6b', width: 2 }, itemStyle: { color: '#ffca6b' },
+          data: s.map(function (x) { return +(x.cost || 0).toFixed(4); }) }
+      ]
+    }, true);
+
+    /* 桌面双击钻取；触屏（没有 hover 的设备）单击就钻 —— 移动端双击不可靠，
+       返回统一走面包屑和「退一层」。手势等你定，这条路先能走。 */
+    var touchOnly = window.matchMedia('(hover: none)').matches;
+    c1.off('dblclick'); c1.off('click');
+    if (touchOnly) {
+      c1.on('click', function (p) { drill(p.dataIndex); });
+    } else {
+      c1.on('dblclick', function (p) { drill(p.dataIndex); });
+    }
+
+    /* 右键双击退一层。原生监听更稳：echarts 的 contextmenu 在空白处不触发 */
+    var host = document.getElementById('c-daily');
+    var lastR = 0;
+    host.oncontextmenu = function (e) {
+      e.preventDefault();
+      var now = Date.now();
+      if (now - lastR < 460) { lastR = 0; goUp(); } else { lastR = now; }
+    };
+
+    /* ② 各引擎占比 */
+    var c2 = ec('c-model');
+    var mArr = (d.by_model || []).map(function (x) {
+      return { name: x.name, value: x.tok, cost: x.cost, n: x.n };
+    });
+    c2.setOption({
+      tooltip: Object.assign({ trigger: 'item', formatter: function (p) {
+        var it = mArr[p.dataIndex] || {};
+        return p.name + '<br>' + kf(p.value) + ' token · ' + p.percent + '%<br>约 ¥'
+          + (+(it.cost || 0)).toFixed(2) + ' · ' + (it.n || 0) + ' 个会话';
+      } }, TIP),
+      color: ['#7b7ae8', '#4ade80', '#ffca6b', '#60a5fa', '#ff8f88', '#a78bfa', '#34d399'],
+      series: [{
+        type: 'pie', radius: ['52%', '76%'], center: ['50%', '52%'], avoidLabelOverlap: true,
+        itemStyle: { borderColor: 'rgba(8,9,10,.9)', borderWidth: 2 },
+        label: { color: '#8a8f98', fontSize: 11, formatter: '{b}\n{d}%' },
+        labelLine: { lineStyle: { color: 'rgba(255,255,255,.15)' }, length: 6, length2: 8 },
+        data: mArr
+      }]
+    }, true);
+
+    /* ③ 各入口燃料 */
+    var c3 = ec('c-src');
+    var sArr = (d.by_src || []).map(function (x) { return { name: x.name, v: +(x.cost || 0).toFixed(4), t: x.tok }; })
+      .sort(function (a, b) { return a.v - b.v; });
+    c3.setOption({
+      grid: { left: 6, right: 18, top: 10, bottom: 2, containLabel: true },
+      tooltip: Object.assign({ trigger: 'axis', axisPointer: { type: 'shadow' },
+        formatter: function (ps) { var it = sArr[ps[0].dataIndex] || { v: 0, t: 0 };
+          return ps[0].name + '<br>¥' + it.v.toFixed(3) + '<br>' + kf(it.t) + ' token'; } }, TIP),
+      xAxis: Object.assign({ type: 'value', axisLabel: { color: '#62666d', fontSize: 10 } }, AXIS),
+      yAxis: Object.assign({ type: 'category', data: sArr.map(function (x) { return x.name; }) },
+        AXIS, { splitLine: { show: false } }),
+      series: [{
+        type: 'bar', barMaxWidth: 16,
+        itemStyle: { color: '#7b7ae8', borderRadius: [0, 6, 6, 0] },
+        label: { show: true, position: 'right', color: '#8a8f98', fontSize: 10,
+          formatter: function (p) { return '¥' + (+p.value).toFixed(2); } },
+        data: sArr.map(function (x) { return x.v; })
+      }]
+    }, true);
+
+    /* ④ 滑行率：每个桶的命中占比 */
+    var c4 = ec('c-hit');
+    var rates = s.map(function (x) {
+      var t = x.hit + x.miss;
+      return t > 0 ? +(x.hit / t * 100).toFixed(1) : null;
+    });
+    c4.setOption({
+      grid: { left: 6, right: 10, top: 16, bottom: 2, containLabel: true },
+      tooltip: Object.assign({ trigger: 'axis', formatter: function (ps) {
+        var p = ps[0];
+        return p.axisValue + '<br>滑行率 ' + (p.value == null ? '—' : p.value + '%'); } }, TIP),
+      xAxis: Object.assign({ type: 'category', boundaryGap: false, data: labels,
+        axisLabel: { color: '#62666d', fontSize: 10, interval: labels.length > 14 ? 1 : 0 } },
+        AXIS, { splitLine: { show: false } }),
+      yAxis: Object.assign({ type: 'value', min: 0, max: 100,
+        axisLabel: { color: '#62666d', fontSize: 10, formatter: '{value}%' } }, AXIS),
+      series: [{
+        type: 'line', data: rates, smooth: true, connectNulls: true, symbolSize: 4,
+        lineStyle: { color: '#4ade80', width: 2 },
+        itemStyle: { color: '#4ade80' },
+        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1,
+          colorStops: [{ offset: 0, color: 'rgba(74,222,128,.28)' }, { offset: 1, color: 'rgba(74,222,128,0)' }] } }
+      }]
+    }, true);
+
+    Object.keys(U.charts).forEach(function (k) { U.charts[k].resize(); });
+  }
+
+  /* 模型标签：只读，不做过滤（过滤会让四张图口径分裂） */
+  function paintChips() {
+    var ms = (UDATA && UDATA.by_model) || [];
+    var ups = (UDATA && UDATA.unpriced) || [];
+    $('uchips').innerHTML = ms.map(function (x) {
+      var free = ups.indexOf(x.name) >= 0;
+      return '<span class="chip">' + esc(x.name) + (free ? ' · 未计价' : '') + '</span>';
+    }).join('');
+  }
+  var _ecScript = null;
+  function loadEcharts() {
+    return new Promise(function (res, rej) {
+      if (window.echarts) return res();
+      if (_ecScript) { _ecScript.addEventListener('load', function () { res(); }); return; }
+      var s = document.createElement('script');
+      s.src = '/assets/vendor/echarts.min.js';
+      s.onload = function () { res(); };
+      s.onerror = function () { rej(new Error('echarts.min.js 取不到')); };
+      _ecScript = s;
+      document.head.appendChild(s);
+    });
+  }
+
+  /* ══ 视图切换 ══ */
+  function setView(v) {
+    state.view = v;
+    Array.prototype.forEach.call($('tabs').children, function (b) {
+      b.classList.toggle('on', b.dataset.v === v);
+    });
+    $('view-cards').hidden = v !== 'cards';
+    $('view-log').hidden = v !== 'log';
+    $('view-usage').hidden = v !== 'usage';
+    $('lead-counts').hidden = v !== 'cards';
+    if (v === 'log') renderLog();
+    if (v === 'usage') {
+      if (!UHIST.length) setRange(U.range || 'year');
+      fetchUsage();
+    }
+  }
+
+  $('tabs').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (b && b.dataset.v) setView(b.dataset.v);
+  });
+
+  $('logseg').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || !b.dataset.k) return;
+    LOGF = b.dataset.k;
+    Array.prototype.forEach.call($('logseg').children, function (x) { x.classList.toggle('on', x === b); });
+    renderLog();
+  });
+
+  /* 往来记录搜索：#6 按呼号，其它按关键词 */
+  var lqT = null;
+  $('lq').addEventListener('input', function () {
+    state.lq = this.value;
+    syncLqClear();
+    clearTimeout(lqT);
+    lqT = setTimeout(renderLog, 140);
+  });
+  $('lqclear').addEventListener('click', function () {
+    var q = $('lq');
+    q.value = '';
+    state.lq = '';
+    syncLqClear();
+    renderLog();
+    q.focus();
+  });
+
+  /* 跨度按钮 = 换个起点重新种根，钻取历史清空 */
+  $('useg').addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (!b || !b.dataset.d) return;
+    setRange(b.dataset.d);
+    Array.prototype.forEach.call($('useg').children, function (x) { x.classList.toggle('on', x === b); });
+    fetchUsage();
+  });
+
+  /* 面包屑：点哪一层跳回哪一层（右键双击不好使的地方就点这里） */
+  $('ucrumb').addEventListener('click', function (e) {
+    var b = e.target.closest('.ub');
+    if (!b || b.classList.contains('on')) return;
+    jumpTo(+b.dataset.i);
+  });
+
+  $('dback').addEventListener('click', goUp);
+
+  var _rt;
+  window.addEventListener('resize', function () {
+    clearTimeout(_rt);
+    _rt = setTimeout(function () {
+      Object.keys(U.charts).forEach(function (k) { U.charts[k].resize(); });
+    }, 140);
+  });
+
+  load();
+  setInterval(function(){if(!document.hidden&&!state.editing)load();},15000);
+})();
+</script>
+<script src="/assets/starfield.js?v=20261103r" defer></script>
+<script src="/assets/shell-header.js" defer></script>
+</body>
+</html>
