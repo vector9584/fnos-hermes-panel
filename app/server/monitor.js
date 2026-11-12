@@ -252,7 +252,7 @@ function _simpleMergeExternalDirs(content, dirs){
       dirs.forEach(d => out.push("    - " + scalarSafe(d)));
       replaced = true;
       i++;
-      while (i < lines.length && (lines[i].startsWith("    ") || /^-\s/.test(lines[i]))) i++;
+      while (i < lines.length && (lines[i].startsWith("    ") || /^\s+-\s/.test(lines[i]))) i++;
       continue;
     }
     out.push(line); i++;
@@ -1299,7 +1299,7 @@ function sessionSig(id) {
   return sig;
 }
 
-function createSSEParser(onDelta, onDone, onError, onToolEvent, onUsage, onReasoning) {
+function createSSEParser(onDelta, onDone, onError, onToolEvent, onUsage, onReasoning, onClarify) {
   let buffer = "";
   let currentEvent = "";
   let toolData = {};
@@ -1373,6 +1373,17 @@ function createSSEParser(onDelta, onDone, onError, onToolEvent, onUsage, onReaso
           }
         }
         tryToolEvent();
+
+        // 交互式确认卡片（clarify）：网关在 SSE 里发 `event: clarify.request`，
+        // data 为 {clarify_id, question, choices, multi_select}。原样转给上层，
+        // 不走 delta 通道，否则 JSON 会被当成正文拼进回复。
+        if (currentEvent === "clarify.request" && eventData) {
+          try {
+            const clarifyJson = JSON.parse(eventData);
+            if (onClarify) onClarify(clarifyJson);
+          } catch {}
+          continue;
+        }
 
         if (!eventData) continue;
         if (eventData === "[DONE]") { onDone(); return; }
@@ -1680,6 +1691,17 @@ async function* streamDeltas(upstream, decoder, reqSignal) {
 
 
 const PROVIDER_TIMEOUT_MS = 300000; // 长任务/多工具链需要更长时间，5 分钟
+/* clarify（等人点按钮）的等待窗口：取 config.yaml 的 agent.clarify_timeout，
+ * 再留 2 分钟缓冲。读文件失败就退回 12 分钟。别把它并进 PROVIDER_TIMEOUT_MS——
+ * 那是「模型不出数据」的判据，等人不算模型卡住。 */
+function clarifyWaitMs() {
+  try {
+    const txt = readFileSync(HERMES_CONFIG, "utf8");
+    const m = txt.match(/^\s*clarify_timeout:\s*(\d+)/m);
+    const sec = m ? parseInt(m[1], 10) : 600;
+    return Math.min(Math.max(sec, 60), 3600) * 1000 + 120000;
+  } catch { return 12 * 60 * 1000; }
+}
 const activeChatStreams = new Map();
 const wsMessageQueue = new Map(); // session_id → message，WS 连接前暂存
 // 流结果缓存：WS 断开后 SSE fallback 可复用已完成的流结果，避免重新请求 LLM
@@ -2038,6 +2060,7 @@ function createChatStream(sessionId, message, reqSignal, systemOverride, modelOv
                 sendJSON({ usage });
               },
               (r) => { sendJSON({ reasoning: r }); },
+              (clarifyEvent) => { sendJSON({ clarify: clarifyEvent }); },
             );
 
             const reader = upstream.body.getReader();
@@ -2405,22 +2428,31 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
       if (isFallback) sendJSON({ info: `主模型超时，切换备选: ${provider.name}...` });
 
       let timeoutTimer;
+      let timedOutByTimer = false;
       try {
         requestError = null;
         hadToolCalls = false;
         let usageReported = false;
         const timeoutController = new AbortController();
-        timeoutTimer = setTimeout(() => timeoutController.abort(), PROVIDER_TIMEOUT_MS);
+        // 空闲计时：只要上游还在吐数据（文本/思考/工具进度）就重置，
+        // 只有连续 PROVIDER_TIMEOUT_MS 没有任何事件才判定超时中断。
+        // 旧写法在请求开始时定一个绝对 5 分钟上限，长工具链会被无差别砍断。
+        const armTimeout = (ms) => {
+          if (timeoutTimer) clearTimeout(timeoutTimer);
+          timeoutTimer = setTimeout(() => { timedOutByTimer = true; timeoutController.abort(); }, ms || PROVIDER_TIMEOUT_MS);
+        };
+        armTimeout();
         const signal = combineSignals([timeoutController.signal, stopCtrl.signal]);
 
         const upstream = await chatRequest(provider, normalizedMessage, history, signal);
             {const linked=getSession(sessionId);if(linked&&recordGatewaySession(linked,upstream,{streamId}))saveSession(linked);}
 
         const localParser = createSSEParser(
-          (delta) => { fullReply += delta; sendJSON({ delta }); cacheEntry.reply = fullReply; },
+          (delta) => { armTimeout(); fullReply += delta; sendJSON({ delta }); cacheEntry.reply = fullReply; },
           () => {},
           (err) => { requestError = err; sendJSON({ error: err }); cacheEntry.error = err; },
           (toolEvent) => {
+            armTimeout();
             hadToolCalls = true;
             sendJSON({ tool_progress: toolEvent });
             const _tid = toolEvent.toolCallId || toolEvent.tool || "tool";
@@ -2457,7 +2489,17 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
             } catch {}
             sendJSON({ usage });
           },
-          (r) => { sendJSON({ reasoning: r }); },
+          (r) => { armTimeout(); sendJSON({ reasoning: r }); },
+          (clarifyEvent) => {
+            /* 2026-11-12：clarify 是「等人点按钮」，不是「模型卡住」。
+             * 以前这里沿用 300s 空闲超时，用户没在 5 分钟内点选，整轮直接被判
+             * 「模型 5 分钟没有返回任何数据」中断（14:22 那次就是这么死的，
+             * clarify 自己配的是 600s，压根等不到）。等待窗口按 clarify_timeout
+             * 放宽，回答后正常的工具事件会把计时器重新收紧回 300s。 */
+            armTimeout(clarifyWaitMs());
+            sendJSON({ clarify: clarifyEvent });
+            log(`[Clarify] request pushed session=${sessionId} id=${clarifyEvent && clarifyEvent.clarify_id} wait=${Math.round(clarifyWaitMs() / 1000)}s`);
+          },
         );
 
         const reader = upstream.body.getReader();
@@ -2478,7 +2520,9 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
         if (!requestError) requestError = null;
         break;
       } catch (e) {
-        const errMsg = e.message || String(e);
+        const errMsg = timedOutByTimer
+          ? `模型 ${Math.round(PROVIDER_TIMEOUT_MS / 60000)} 分钟没有返回任何数据（超时中断）`
+          : (e.message || String(e));
         log(`Chat provider "${provider.name}" failed: ${errMsg}`);
         requestError = errMsg;
         if (isFallback) sendJSON({ info: `备选 "${provider.name}" 失败: ${errMsg}` });
@@ -2501,7 +2545,9 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
       finalizeAssistantMessage(sessionId, (fullReply || '（执行已中断）') + (fullReply ? '\n\n（执行已中断）' : ''), {tools:interruptPendingTools(responseTools),identity:replyIdentity,systemOverride,queueStatus:'interrupted'},streamId);
       cacheEntry.status='error';cacheEntry.error='执行已中断';cacheEntry.reply=fullReply;
     } else if (requestError !== null) {
-      const partialContent = fullReply || `(请求失败: ${requestError})`;
+      const partialContent = fullReply || (hadToolCalls
+        ? `（本轮中断：${requestError}；已执行 ${responseTools.length} 个工具调用，发「继续」接着跑）`
+        : `(请求失败: ${requestError})`);
       finalizeAssistantMessage(sessionId, partialContent, { tools: interruptPendingTools(responseTools), systemOverride, identity: replyIdentity, queueStatus:'failed' }, streamId);
       sendJSON({ error: `所有模型均失败: ${requestError}` });
       cacheEntry.status = 'error'; cacheEntry.error = requestError; cacheEntry.reply = fullReply;
@@ -5772,7 +5818,7 @@ async function handleFetch(req) {
         dirs.forEach(d => out.push("    - " + _yamlScalarSafe(d)));
         replaced = true;
         i++;
-        while (i < lines.length && (lines[i].startsWith("    ") || /^-\s/.test(lines[i]))) i++;
+        while (i < lines.length && (lines[i].startsWith("    ") || /^\s+-\s/.test(lines[i]))) i++;
         continue;
       }
       out.push(line); i++;
@@ -7384,9 +7430,49 @@ function _saveChannelChanges(id, body){
           }
         }
       });
-      return new Response(JSON.stringify({ ok: true, skills, relations }), { headers: jsonHeaders() });
+      // 4. 笔记边（2026-11-11 第 10 项）：技能名出现在知识库笔记正文里 → 图上连一条虚线。
+      //    只回传真正被引用到的笔记，最多 120 篇 / 400 条边——960 个节点会把 SVG 拖死。
+      let notes = [];
+      let noteEdges = [];
+      try {
+        const corpus = _scanKnowledgeNotes();
+        if (corpus.length && skills.length) {
+          const nameToSkills = new Map();
+          skills.forEach(s => {
+            const key = String(s.name || s.id || "").replace(/^@[^/]+\//, "").replace(/\.md$/i, "").trim();
+            if (key.length < 3) return;
+            if (!nameToSkills.has(key)) nameToSkills.set(key, []);
+            nameToSkills.get(key).push(s.id);
+          });
+          if (nameToSkills.size) {
+            const keys = [...nameToSkills.keys()].sort((a, b) => b.length - a.length);
+            const re = new RegExp(keys.map(k => k.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|"), "g");
+            const hits = new Map();
+            for (const note of corpus) {
+              const seen = new Set();
+              for (const m of note.text.matchAll(re)) seen.add(m[0]);
+              if (!seen.size) continue;
+              for (const k of seen) {
+                for (const sid of (nameToSkills.get(k) || [])) {
+                  if (noteEdges.length >= 400) break;
+                  noteEdges.push({ from: sid, to: note.path, via: "mention" });
+                  hits.set(note.path, (hits.get(note.path) || 0) + 1);
+                }
+              }
+            }
+            notes = corpus
+              .filter(n => hits.has(n.path))
+              .map(n => ({ path: n.path, title: n.title, links: hits.get(n.path) }))
+              .sort((a, b) => b.links - a.links)
+              .slice(0, 120);
+            const keep = new Set(notes.map(n => n.path));
+            noteEdges = noteEdges.filter(e => keep.has(e.to));
+          }
+        }
+      } catch (e) { log(`[learning-trajectory] 笔记边计算失败: ${e?.message || e}`); }
+      return new Response(JSON.stringify({ ok: true, skills, relations, notes, note_edges: noteEdges }), { headers: jsonHeaders() });
     } catch (e) {
-      return new Response(JSON.stringify({ ok: false, error: e.message, skills: [], relations: [] }), { status: 500, headers: jsonHeaders() });
+      return new Response(JSON.stringify({ ok: false, error: e.message, skills: [], relations: [], notes: [], note_edges: [] }), { status: 500, headers: jsonHeaders() });
     }
   }
 
@@ -8485,6 +8571,28 @@ function _saveChannelChanges(id, body){
     }
   }
 
+  // ─── Clarify：面板选择卡片回传 ────────────────────────────────────────────
+  // 浏览器点选后 POST {clarify_id, response}，这里带 token 转给 gateway 的
+  // /api/clarify/respond，由 clarify_gateway 唤醒被阻塞的 agent 线程。
+  if (path === "/api/clarify/respond" && req.method === "POST") {
+    try {
+      const body = await req.json().catch(() => ({}));
+      const upstream = await fetch(`${GATEWAY_API.replace(/\/v1\/?$/, "").replace(/\/$/, "")}/api/clarify/respond`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${MONITOR_TOKEN}` },
+        body: JSON.stringify(body),
+      });
+      const text = await upstream.text();
+      // 答完之后把落盘的挂起卡片清掉：否则刷新页面还会弹一张已经作废的卡。
+      if (upstream.ok && body && body.clarify_id) {
+        try { panelChatQueue.answered(body.clarify_id); } catch (e) { log(`[Clarify] 清理挂起卡片失败 id=${body.clarify_id}: ${e.message}`); }
+      }
+      return new Response(text || "{}", { status: upstream.status, headers: jsonHeaders() });
+    } catch (e) {
+      return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 502, headers: jsonHeaders() });
+    }
+  }
+
   // ─── Chat: WebSocket 消息队列（前端先 POST 消息入队，再建 WS 连接取流）──────
   if (path === "/api/chat/ws-send" && req.method === "POST") {
     const body = await req.json();
@@ -8769,7 +8877,11 @@ function _saveChannelChanges(id, body){
               : ext === "png" ? "image/png"
               : ext === "svg" ? "image/svg+xml"
               : "text/plain";
-    return serveFile(fp, ct, { req, cacheable: true });
+    // 2026-11-11：静态资源曾经是 public, max-age=3600。配上 index.html 里手写的固定 ?v=，
+    // 就是「改了文件、URL 没变、浏览器一小时不回头」，用户看到的是几小时前的样式。
+    // 现在 ?v= 由 deploy ui 按内容 md5 自动生成，且这里改成 no-cache（走 ETag 304）：
+    // 内容没变只有一次 304，内容变了立刻生效。不要再改回 max-age。
+    return serveFile(fp, ct, { req, cacheable: false });
   }
 
   // SPA 直达：未知路径的浏览器导航请求 302 到「根路径 + hash」（如 /sessions → /#/sessions）。
@@ -9207,3 +9319,30 @@ async function _cronWebhookTick() {
 }
 // 轮询周期 20s：仅在存在 webhook 配置时才真正读 jobs.json，开销可忽略
 setInterval(() => { _cronWebhookTick().catch(e => log(`[cron-webhook] tick 异常: ${e?.message || e}`)); }, 20000);
+
+// ─── 知识库笔记扫描（2026-11-11 新增：学习轨迹图的「笔记边」数据源）───
+// 缓存挂在函数属性上，避开顶层 const 的 TDZ：本函数在路由里被调用，而路由代码
+// 位置在文件中部，顶层 const 声明在末尾会处于暂时性死区。
+function _scanKnowledgeNotes() {
+  const now = Date.now();
+  const cache = _scanKnowledgeNotes._cache;
+  if (cache && now - cache.at < 300000) return cache.notes;
+  const root = `${DATA_DIR}/knowledge`;
+  const out = [];
+  const walk = (dir, depth) => {
+    if (depth > 6 || out.length >= 1200) return;
+    let entries = [];
+    try { entries = readdirSync(dir, { withFileTypes: true }); } catch { return; }
+    for (const ent of entries) {
+      const full = `${dir}/${ent.name}`;
+      if (ent.isDirectory()) { if (!ent.name.startsWith(".")) walk(full, depth + 1); continue; }
+      if (!/\.md$/i.test(ent.name)) continue;
+      let text = "";
+      try { text = readFileSync(full, "utf8").slice(0, 8000); } catch { continue; }
+      out.push({ path: full.slice(root.length + 1), title: ent.name.replace(/\.md$/i, ""), text });
+    }
+  };
+  walk(root, 0);
+  _scanKnowledgeNotes._cache = { at: now, notes: out };
+  return out;
+}

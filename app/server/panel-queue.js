@@ -167,8 +167,11 @@ export class ChatQueue {
         const index = r.tools.findIndex(x => (x.toolCallId || x.tool) === key);
         if (index < 0) r.tools.push({...t}); else r.tools[index] = {...r.tools[index], ...t};
       }
+      // 2026-11-12：clarify 卡片的请求原本只在事件流里，刷新页面就丢了（agent 还在服务端干等）。
+      // 存到 job 上一起落盘，重连时的 snapshot 就能把卡片重新渲染出来。
+      if (packet.clarify) job.pending_clarify = clone(packet.clarify);
       packets.push(clone(packet));
-      if (packet.tool_progress || packet.error) flush();
+      if (packet.tool_progress || packet.error || packet.clarify) flush();
       else if (!timer) timer = setTimeout(() => { try { flush(); } catch {} }, this.flushMs);
     };
     try {
@@ -180,14 +183,14 @@ export class ChatQueue {
       if (result?.result) Object.assign(job.result, result.result);
       job.status = worker.stopping ? 'interrupted' : worker.cancelled ? 'cancelled' : (result?.status || (job.result.error ? 'failed' : 'done'));
       if (job.status === 'interrupted') job.result.error = '服务重启中断了这一轮。已保留回复和工具记录，请查看现场后继续。';
-      job.finished_at = Date.now();
+      job.pending_clarify = null; job.finished_at = Date.now();
       this.commit(job, {done: true, error: job.result.error || undefined});
     } catch (e) {
       clearTimeout(timer);
       if (this.fault) return;
       job.status = worker.stopping ? 'interrupted' : worker.cancelled ? 'cancelled' : 'failed';
       job.result.error = worker.stopping ? '服务关闭时中断了这一轮，请查看现场后继续。' : worker.cancelled ? '' : String(e.message || e);
-      job.finished_at = Date.now();
+      job.pending_clarify = null; job.finished_at = Date.now();
       try { this.commit(job, {done: true, error: job.result.error || undefined}); }
       catch (writeError) { this.recordFault(writeError); }
     } finally { clearTimeout(timer); }
@@ -205,6 +208,18 @@ export class ChatQueue {
       if (worker) { worker.cancelled = true; worker.controller.abort(); }
     }
     this.wake(); return this.get(id, true);
+  }
+  // 用户答完（或点了跳过）→ 清掉落盘的挂起卡片，避免重连时再弹一张已经作废的。
+  answered(clarifyId) {
+    if (!clarifyId) return 0;
+    let n = 0;
+    for (const job of this.jobs.values()) {
+      const c = job.pending_clarify;
+      if (c && typeof c === 'object' && c.clarify_id === clarifyId) {
+        job.pending_clarify = null; this.commit(job); n++;
+      }
+    }
+    return n;
   }
   resolve(id) {
     const job = clone(this.jobs.get(safeId(id)) || null);

@@ -15,7 +15,7 @@ function modelEndpoint(base){
  const literal=url.hostname.replace(/^\[|\]$/g,'');
  const localHttp=url.protocol==='http:'&&privateIPv4(literal);
  if((url.protocol!=='https:'&&!localHttp)||url.username||url.password||url.hash)throw Error('模型发现只允许 HTTPS 公网服务，或明确填写 IP 的 HTTP 内网服务');
- url.pathname=url.pathname.replace(/\/+$/,'');if(!url.pathname.endsWith('/models'))url.pathname+='/models';url.search='';return url.href;
+ let pth=url.pathname.replace(/\/+$/,'');if(!pth.endsWith('/models'))pth+='/models';url.pathname=pth;url.search='';return url.href;
 }
 function publicIPv4(address){
  if(isIP(address)!==4)return false;
@@ -23,13 +23,30 @@ function publicIPv4(address){
  const c=Number(address.split('.')[2]);
  return !(a===0||a===10||a===127||a>=224||a===169&&b===254||a===172&&b>=16&&b<=31||a===192&&(b===0||b===2||b===88&&c===99||b===168)||a===100&&b>=64&&b<=127||a===198&&(b===18||b===19||b===51&&c===100)||a===203&&b===0&&c===113);
 }
+/* 本机全部流量走 Clash TUN，域名会被解析成 198.18.x.x 的 fake-ip 占位地址。
+   这类地址不是内网目标：连接仍然按域名进 TUN，由代理决定去哪。
+   以前一刀切按「公网 IPv4」过滤，导致「获取模型」在这台机器上必然失败
+   （2026-11-12 实测 direct.provider.example → 203.0.113.7 → 被拒）。
+   只对「用户填的是域名、且解析结果全落在 198.18.0.0/15」的情况放行，
+   字面 IP 依旧走原有公网/内网判定。 */
+function fakeIPv4(address){
+ if(isIP(address)!==4)return false;
+ const [a,b]=address.split('.').map(Number);
+ return a===198&&(b===18||b===19);
+}
 async function pinnedHttpsFetch(url,options){
  const target=new URL(url),literal=target.hostname.replace(/^\[|\]$/g,''),localHttp=target.protocol==='http:'&&privateIPv4(literal);
  const records=localHttp?[{address:literal}]:await lookup(target.hostname,{all:true,verbatim:true}),addresses=records.filter(record=>publicIPv4(record.address));
- if(!localHttp&&!addresses.length)throw Error('模型服务地址没有可用的公网 IPv4 地址，已拒绝连接');
- const selected=localHttp?records[0]:addresses[0],request=target.protocol==='http:'?httpRequest:httpsRequest;
+ const fake=isIP(literal)?[]:records.filter(record=>fakeIPv4(record.address));
+ if(!localHttp&&!addresses.length&&!fake.length)throw Error('模型服务地址没有可用的公网 IPv4 地址，已拒绝连接');
+ const selected=localHttp?records[0]:(addresses[0]||fake[0]),request=target.protocol==='http:'?httpRequest:httpsRequest;
+  /* 只有拿到合法 IP 才钉住解析结果；拿不到就交回系统解析，绝不把 undefined 甩给 net
+     （2026-11-12 实测：钉住值可能为空，net 会直接抛 Invalid IP address: undefined）。 */
+  const pin=selected&&isIP(String(selected.address))?String(selected.address):null;
+  const reqOptions={method:'GET',headers:options.headers,...(target.protocol==='https:'?{servername:target.hostname}:{})};
+  if(pin)reqOptions.lookup=(_host,lookupOptions,callback)=>lookupOptions&&lookupOptions.all?callback(null,[{address:pin,family:4}]):callback(null,pin,4);
  return new Promise((resolve,reject)=>{
-  const req=request(target,{method:'GET',headers:options.headers,...(target.protocol==='https:'?{servername:target.hostname}:{}),lookup:(_host,_options,callback)=>callback(null,selected.address,4)},res=>{
+  const req=request(target,reqOptions,res=>{
    const chunks=[];let size=0;res.on('data',chunk=>{size+=chunk.length;if(size>1024*1024){req.destroy(Error('模型列表超过大小限制'));return;}chunks.push(chunk);});
    res.on('end',()=>resolve(new Response(Buffer.concat(chunks),{status:res.statusCode||502,headers:res.headers})));res.on('error',reject);
   });

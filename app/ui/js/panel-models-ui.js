@@ -4,7 +4,7 @@
  var data=null,last=null;try{last=JSON.parse(localStorage.getItem('panel-model-change')||'null');}catch(_){}
  function n(tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
  function button(text,run,cls){var e=n('button',text,cls||'action');e.type='button';e.onclick=run;return e;}
- var feedback=n('p','','maintenance-feedback'),routes=n('section',null,'panel-model-routes');feedback.setAttribute('role','status');grid.before(feedback,routes);
+ var feedback=n('p','','maintenance-feedback'),routes=n('section',null,'panel-model-routes'),moaState=null,moaRead=null;feedback.setAttribute('role','status');var fbSlot=document.getElementById('providerFeedbackSlot'),rtSlot=document.getElementById('modelRoutesSlot');(fbSlot||grid).append(feedback);(rtSlot||grid).append(routes);
  async function api(body){var r=await fetch(apiUrl('/api/panel-models'),{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:body?JSON.stringify(body):undefined,cache:'no-store'}),out=await r.json();if(!r.ok||!out.ok){var error=Error(out.error||'模型配置操作失败');error.status=r.status;throw error;}return out;}
  function accept(out){data=out;_cfg.providers=out.providers.filter(p=>p.enabled);_cfg.primary=out.primary;_cfg.active_provider=out.active_provider;_cfg.fallback_providers=out.fallback_providers;window.__hermesConfigured=out.hermes_configured;renderConfigBanner();_syncModelBtn();}
  function remember(out){if(out.change_id){last={id:out.change_id,revision:out.revision};try{localStorage.setItem('panel-model-change',JSON.stringify(last));}catch(_){}}window.panelRuntimeRefresh?.();}
@@ -17,11 +17,77 @@
   var index=(data.fallbacks||[]).findIndex(item=>String(item.provider||'').replace(/^custom:/,'')===id&&item.model===model);
   return index<0?'':('失败回退第 '+(index+1)+' 项');
  }
+ async function loadMoa(){
+  if(!moaState)return;
+  try{moaRead=await api({action:'moa_read'});}catch(e){moaState.textContent='MOA 状态读取失败：'+e.message;return;}
+  var presets=moaRead.presets||[],preset=presets.find(p=>p.name===(moaRead.enabled?moaRead.active_preset:moaRead.default_preset))||presets[0]||null;
+  moaState.replaceChildren();
+  if(moaRead.enabled)moaState.append(n('p','已开启 · 预设 '+(moaRead.active_preset||'?')+' · 参考 '+(preset?preset.reference_models.length:0)+' 个模型 · 聚合 '+(preset?label(preset.aggregator.provider)+' / '+preset.aggregator.model:'未设置'),'model-primary'));
+  else moaState.append(n('p',presets.length?'未开启（已存 '+presets.length+' 个预设，随时能开）':'未开启，也还没有预设 —— 现在只走①里的单个主模型','model-primary'));
+  if(preset&&preset.reference_models.length)moaState.append(n('p','参考模型：'+preset.reference_models.map(r=>label(r.provider)+' / '+r.model).join('；'),'pw-hint'));
+  if(preset&&preset.aggregator.provider)moaState.append(n('p','聚合模型：'+label(preset.aggregator.provider)+' / '+preset.aggregator.model,'pw-hint'));
+  if(moaRead.previous_primary&&moaRead.previous_primary.provider)moaState.append(n('p','关掉后回到：'+label(moaRead.previous_primary.provider)+' / '+moaRead.previous_primary.model,'pw-hint'));
+  if(preset)moaState.append(button(moaRead.enabled?'关闭 MOA':'开启这个预设',async function(){this.disabled=true;try{await api({action:'moa_save',revision:moaRead.moa_revision,enabled:!moaRead.enabled,preset:preset.name,reference_models:preset.reference_models.map(r=>({provider:r.provider,model:r.model})),aggregator:{provider:preset.aggregator.provider,model:preset.aggregator.model}});await load();}catch(e){feedback.textContent=e.message;this.disabled=false;}}));
+  else moaState.append(button('配置 MOA',()=>moaDialog()));
+ }
+ function moaDialog(){
+  if(!moaRead||!moaRead.candidates){feedback.textContent='MOA 数据还没读回来，稍等一下再点';return;}
+  var d=dialog('配置 MOA 混合'),presets=moaRead.presets||[],target=presets.find(p=>p.name===(moaRead.enabled?moaRead.active_preset:moaRead.default_preset))||presets[0]||null;
+  var nameField=n('label',null,'field'),nameInput=n('input');nameInput.type='text';nameInput.maxLength=40;nameInput.value=target?target.name:(moaRead.default_preset||'default');nameField.append(n('span','预设名称（字母、数字、下划线）'),nameInput);
+  var picked={};if(target)(target.reference_models||[]).forEach(r=>{picked[r.provider+'|'+r.model]=true;});
+  var refBox=n('div',null,'moa-refs');
+  moaRead.candidates.forEach(function(provider){
+   var group=n('div',null,'moa-ref-group');group.append(n('strong',provider.name));
+   provider.models.forEach(function(model){
+    var row=n('label',null,'moa-ref-row'),box=n('input');box.type='checkbox';box.value=JSON.stringify([provider.id,model.id]);box.checked=!!picked[provider.id+'|'+model.id];
+    box.onchange=function(){var total=refBox.querySelectorAll('input:checked').length;if(box.checked&&total>8){box.checked=false;d.status.textContent='参考模型最多 8 个';}else d.status.textContent='';};
+    row.append(box,n('span',model.name));group.append(row);
+   });
+   refBox.append(group);
+  });
+  var aggOptions=[];moaRead.candidates.forEach(p=>p.models.forEach(m=>aggOptions.push([JSON.stringify([p.id,m.id]),p.name+' / '+m.name])));
+  var aggValue=target&&target.aggregator.provider?JSON.stringify([target.aggregator.provider,target.aggregator.model]):'';
+  d.body.append(nameField,n('p','参考模型：1 到 8 个，每个都会独立答一遍，会多花几倍 token。','pw-hint'),refBox);
+  var agg=select(d.body,'聚合模型（最后把这些答案合成一个）',aggOptions,aggValue);
+  var onRow=n('label',null,'moa-ref-row'),onBox=n('input');onBox.type='checkbox';onBox.checked=!!moaRead.enabled;onRow.append(onBox,n('span','保存后立即启用（主模型切成 moa / 这个预设名）'));d.body.append(onRow);
+  var save=button('保存 MOA 设置',async function(){
+   save.disabled=true;d.status.textContent='';
+   try{
+    var refs=[...refBox.querySelectorAll('input:checked')].map(b=>{var q=JSON.parse(b.value);return {provider:q[0],model:q[1]};});
+    if(!refs.length)throw Error('至少选一个参考模型');
+    if(!agg.value)throw Error('请选择聚合模型');
+    var chosen=JSON.parse(agg.value);
+    var out=await api({action:'moa_save',revision:moaRead.moa_revision,enabled:onBox.checked,preset:nameInput.value.trim(),reference_models:refs,aggregator:{provider:chosen[0],model:chosen[1]}});
+    d.status.textContent=out.changed?'已保存，重启应用后新配置才生效':'没有变化';await load();if(out.changed)setTimeout(()=>d.close(),700);
+   }catch(e){d.status.textContent=e.message;}finally{save.disabled=false;}
+  });
+  d.actions.append(save);
+ }
  function render(){
-  routes.replaceChildren();var top=n('div',null,'section-head');top.append(n('h3','默认与回退路线'),button('调整路线',()=>routeDialog()),button('刷新',load));if(last)top.append(button('撤销上次修改',async function(){this.disabled=true;try{await mutate({action:'restore',change_id:last.id});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));routes.append(top);
-  routes.append(n('p',data.primary.provider?label(data.primary.provider)+' / '+data.primary.model:'尚未设置默认模型','model-primary'));
-  var chain=n('ol',null,'model-fallback-list');data.fallbacks.forEach(item=>chain.append(n('li',label(item.provider)+' / '+item.model+(item.has_overrides?' · 保留独立参数':''))));routes.append(chain);if(!data.fallbacks.length)routes.append(n('p','尚未配置失败回退路线','pw-hint'));
-  grid.replaceChildren();data.providers.forEach(p=>{var card=n('section',null,'provider-card'+(!p.enabled?' model-disabled':'')),head=n('div',null,'provider-card-head');head.append(n('h3',p.name),n('span',p.enabled?'配置启用':'配置停用','provider-merchant'));card.append(head,n('p',p.base_url,'mcp-detail'),n('p','服务默认模型：'+(p.model||'未设置')+'（仅供该服务未指定模型时使用）','provider-model'));var routeModels=p.models.map(m=>({model:m.id,route:routeFor(p.id,m.id)})).filter(x=>x.route);if(routeModels.length){var routeLine=n('p',null,'provider-route-status');routeLine.append(n('span','当前全局路线：'));routeModels.forEach((x,i)=>{if(i)routeLine.append(n('span',' · '));routeLine.append(n('strong',x.model+' · '+x.route));});card.append(routeLine);}card.append(n('p',({'chat_completions':'Chat Completions','codex_responses':'Responses','anthropic_messages':'Anthropic Messages','bedrock_converse':'Bedrock Converse','codex_app_server':'Codex App Server'}[p.api_mode]||p.api_mode||'协议自动识别')+' · '+p.models.filter(m=>m.enabled).length+' 个可选模型','pw-hint'),n('p',p.api_key_configured?'配置密钥 · '+p.credential_source:'未设置配置密钥','pw-hint'));if(p.credential_pool?.independent_count)card.append(n('p','另有 '+p.credential_pool.independent_count+' 个独立池凭证可参与选择','pw-hint'));if(p.credential_pool?.excluded_count)card.append(n('p',p.credential_pool.excluded_count+' 个池条目因地址不符或归属不明确未参与选择','pw-hint'));if(p.note)card.append(n('p',p.note,'pw-hint'));var actions=n('div',null,'mcp-actions');actions.append(button('编辑服务',()=>edit(p)),button(p.enabled?'停用服务':'启用服务',async function(){this.disabled=true;try{await mutate({action:'toggle',id:p.id,enabled:!p.enabled});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));if(p.credential_pool&&(p.credential_pool.independent_count||p.credential_pool.excluded_count))actions.append(button('查看凭证来源',()=>credentialDialog(p)));card.append(actions);grid.append(card);});if(!data.providers.length)grid.append(n('p','添加模型服务后，设置默认模型即可开始对话。','empty-state'));
+  routes.replaceChildren();
+  var head=n('div',null,'section-head');
+  head.append(n('h3','主模型'),button('更换主模型',()=>routeDialog()),button('刷新',load));
+  if(last)head.append(button('撤销上次修改',async function(){this.disabled=true;try{await mutate({action:'restore',change_id:last.id});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));
+  var primaryBlock=n('section',null,'model-block'),line=n('p',null,'model-primary');
+  if(data.primary.provider){line.append(n('span',label(data.primary.provider),'model-svc'),n('span',' · ','model-sep'),n('code',data.primary.model));}
+  else line.textContent='尚未设置主模型 —— 现在没有默认对话模型';
+  primaryBlock.append(head,line,n('p','换了只对新开的会话生效；已经在聊的窗口还是启动时那个模型。','pw-hint'));
+  var fbHead=n('div',null,'model-block-sub');
+  fbHead.append(n('h4','失败回退（从上往下顶上）'),button('调整顺序',()=>routeDialog()));
+  primaryBlock.append(fbHead);
+  var chain=n('ol',null,'model-fallback-list');
+  data.fallbacks.forEach(item=>{var li=n('li');li.append(n('span',label(item.provider),'model-svc'),n('span',' · ','model-sep'),n('code',item.model));if(item.has_overrides)li.append(n('span',' · 保留独立参数','pw-hint'));chain.append(li);});
+  primaryBlock.append(chain);
+  if(!data.fallbacks.length)primaryBlock.append(n('p','还没配回退 —— 主模型一挂这一轮就直接失败。点「调整顺序」加一个。','pw-hint'));
+  var moaBlock=n('details',null,'model-block model-advanced'),moaSum=n('summary');
+  moaSum.append(n('span','高级：MOA 混合','model-fold-title'),n('span','几个模型各答一遍再合成，比回退贵得多，默认不开','model-fold-hint'));
+  var moaBody=n('div',null,'model-fold-body'),moaFoot=n('div',null,'mcp-actions');
+  moaState=n('div','正在读取 MOA 状态…','moa-state');
+  moaFoot.append(button('配置 MOA',()=>moaDialog()));
+  moaBody.append(n('p','和回退不是一回事：回退是一个模型挂了换下一个；MOA 是几个模型各答一遍，再让聚合模型挑或合成。开着时主模型显示成 moa / 预设名，属于正常现象。','pw-hint'),moaState,moaFoot);
+  moaBlock.append(moaSum,moaBody);
+  routes.append(primaryBlock,moaBlock);loadMoa();
+  grid.replaceChildren();data.providers.forEach(p=>{var card=n('section',null,'provider-card'+(!p.enabled?' model-disabled':'')),head=n('div',null,'provider-card-head');head.append(n('h3',p.name),n('span',p.enabled?'配置启用':'配置停用','provider-merchant'));card.append(head,n('p',p.base_url,'mcp-detail'),n('p',p.model?'默认模型 '+p.model:'该服务还没设置默认模型','provider-model'));var routeModels=p.models.map(m=>({model:m.id,route:routeFor(p.id,m.id)})).filter(x=>x.route);if(routeModels.length){var routeLine=n('p',null,'provider-route-status');routeLine.append(n('span','当前全局路线：'));routeModels.forEach((x,i)=>{if(i)routeLine.append(n('span',' · '));routeLine.append(n('strong',x.model+' · '+x.route));});card.append(routeLine);}card.append(n('p',({'chat_completions':'Chat Completions','codex_responses':'Responses','anthropic_messages':'Anthropic Messages','bedrock_converse':'Bedrock Converse','codex_app_server':'Codex App Server'}[p.api_mode]||p.api_mode||'协议自动识别')+' · '+p.models.filter(m=>m.enabled).length+' 个可选模型','pw-hint'),n('p',p.api_key_configured?'配置密钥 · '+p.credential_source:'未设置配置密钥','pw-hint'));if(p.credential_pool?.independent_count)card.append(n('p','另有 '+p.credential_pool.independent_count+' 个独立池凭证可参与选择','pw-hint'));if(p.credential_pool?.excluded_count)card.append(n('p',p.credential_pool.excluded_count+' 个池条目因地址不符或归属不明确未参与选择','pw-hint'));if(p.note)card.append(n('p',p.note,'pw-hint'));var actions=n('div',null,'mcp-actions');actions.append(button('编辑服务',()=>edit(p)),button(p.enabled?'停用服务':'启用服务',async function(){this.disabled=true;try{await mutate({action:'toggle',id:p.id,enabled:!p.enabled});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));if(p.credential_pool&&(p.credential_pool.independent_count||p.credential_pool.excluded_count))actions.append(button('查看凭证来源',()=>credentialDialog(p)));card.append(actions);grid.append(card);});if(!data.providers.length)grid.append(n('p','添加模型服务后，设置默认模型即可开始对话。','empty-state'));
  }
  function dialog(title){var previous=document.activeElement,overlay=n('div',null,'modal-overlay'),box=n('section',null,'modal panel-model-modal'),body=n('div'),status=n('p','','maintenance-feedback'),actions=n('div',null,'mcp-actions');box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label',title);status.setAttribute('role','status');box.append(n('h2',title),body,status,actions);overlay.append(box);document.body.append(overlay);function close(){overlay.remove();previous?.focus();}function requestClose(){if(box.beforeClose&&!box.beforeClose())return;close();}box.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();requestClose();}if(e.key==='Tab'){var items=[...box.querySelectorAll('button,input,select,textarea')].filter(e=>!e.disabled&&!e.hidden&&e.getClientRects().length);if(e.shiftKey&&document.activeElement===items[0]){e.preventDefault();items.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===items.at(-1)){e.preventDefault();items[0]?.focus();}}});return {box,body,status,actions,close,requestClose};}
  function credentialDialog(provider){var d=dialog('凭证来源 · '+provider.name),pool=provider.credential_pool;d.body.append(n('p',provider.api_key_configured?'配置密钥已设置，来源：'+provider.credential_source:'配置密钥未设置。','pw-hint'),n('p','以下为当前应用环境保存的独立凭证记录。它们可能优先于配置密钥；清除配置密钥不会删除这些记录。','pw-hint'));var list=n('ul');pool.entries.forEach((entry,i)=>list.append(n('li',(i+1)+' · '+entry.kind+' · 记录状态：'+entry.status+' · '+(entry.endpoint_bound?'绑定当前服务地址':'唯一名称匹配'))));d.body.append(list);if(pool.excluded_count)d.body.append(n('p',pool.excluded_count+' 个条目因地址不符或归属不明确未参与当前服务选择；原记录保留。','pw-hint'));d.body.append(n('p','这里展示保存记录，未进行联网验证。实际调用还受额度、冷却及原生凭证选择策略影响。','pw-hint'));var close=button('关闭',d.close);d.actions.append(close);close.focus();}

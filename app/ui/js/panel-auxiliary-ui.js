@@ -11,15 +11,33 @@
   }
   function accept(data){tasks=data.tasks;services=data.services||[];}
   function providerName(value){var p=services.find(function(p){return p.id===value||p.id==='custom:'+value;});return p?p.name:value||'自动选择';}
+  function card(task){
+    var node=element('article',undefined,'provider-card auxiliary-card');node.dataset.task=task.key;node.append(element('h3',task.label));
+    node.append(element('p',providerName(task.provider)+' / '+(task.model||'服务默认模型')));
+    if(task.key==='vision')node.append(element('p',task.fallback_chain.length?'回退顺序：'+task.fallback_chain.map(function(item){return providerName(item.provider)+' / '+(item.model||'服务默认模型');}).join(' → '):'未指定额外回退模型'));
+    var more=element('button','编辑配置','action');more.onclick=function(){open(task);};node.append(more);
+    return node;
+  }
+  /* 2026-11-12 重组：原来 11 个任务各占一张卡，10 张写「自动选择」，
+     翻半天找不到真正改过的那个。现在把「单独指定过模型的」放卡片，
+     其余折叠成一行 chip，点名字才进编辑器。 */
   function draw(){
     var list=document.getElementById('auxTaskList');list.replaceChildren();
-    tasks.forEach(function(task){
-      var card=element('article',undefined,'provider-card auxiliary-card');card.dataset.task=task.key;card.append(element('h3',task.label));
-      var main=!task.provider||task.provider==='auto'?'自动选择 · 按内核任务规则选择可用模型':providerName(task.provider)+' / '+(task.model||'服务默认模型');
-      card.append(element('p',main));
-      if(task.key==='vision')card.append(element('p',task.fallback_chain.length?'回退顺序：'+task.fallback_chain.map(function(item){return providerName(item.provider)+' / '+(item.model||'服务默认模型');}).join(' → '):'未指定额外回退模型'));
-      var button=element('button','编辑配置','action');button.onclick=function(){open(task);};card.append(button);list.append(card);
-    });
+    var own=tasks.filter(function(t){return t.provider&&t.provider!=='auto';});
+    var auto=tasks.filter(function(t){return !t.provider||t.provider==='auto';});
+    if(own.length){var grid=element('div',undefined,'provider-grid');own.forEach(function(t){grid.append(card(t));});list.append(grid);}
+    else list.append(element('p','目前没有单独指定的辅助模型。','page-subtitle'));
+    if(auto.length){
+      var box=element('section',undefined,'aux-auto');
+      box.append(element('h3','其余 '+auto.length+' 项跟随主模型'));
+      box.append(element('p','这些活直接交给主模型跑；哪一个想换成别的模型，点它的名字。','pw-hint'));
+      var row=element('div',undefined,'aux-chip-row');
+      auto.forEach(function(task){
+        var chip=element('button',task.label,'aux-chip');chip.type='button';
+        chip.onclick=function(){open(task);};row.append(chip);
+      });
+      box.append(row);list.append(box);
+    }
   }
   window.loadAuxTasks=async function(){
     if(loading)return;loading=true;var status=document.getElementById('auxiliaryStatus');status.textContent='正在读取辅助模型…';
