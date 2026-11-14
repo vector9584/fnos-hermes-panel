@@ -1,0 +1,454 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>这台 NAS 上的 Hermes，被我改成了什么</title>
+<meta name="description" content="这台 NAS 上的 Hermes 改了什么、突破了什么、跟上游是什么关系。">
+<style>
+@font-face{font-family:Oswald;src:url(promo/fonts/oswald.woff2) format("woff2");font-display:swap;font-weight:400 700}
+@font-face{font-family:InterVar;src:url(promo/fonts/inter.woff2) format("woff2");font-display:swap;font-weight:100 900}
+@font-face{font-family:JBMono;src:url(promo/fonts/jetbrains.woff2) format("woff2");font-display:swap;font-weight:400 700}
+
+:root{
+  --bg:#0b0e14; --card:#141a26; --line:#1f2836; --line-soft:#182030;
+  --fg:#e6edf7; --fg-dim:#8b9bb4; --fg-faint:#7a8ba5;
+  --accent:#c4813f; --accent-dim:#7d4f22; --accent-lit:#e8ab6a;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  margin:0;background:var(--bg);color:var(--fg);
+  font-family:InterVar,-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+  font-size:17px;line-height:1.82;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:788px;margin:0 auto;padding:0 26px}
+
+.topbar{
+  position:sticky;top:0;z-index:50;
+  background:rgba(11,14,20,.86);backdrop-filter:blur(14px);
+  border-bottom:1px solid var(--line-soft);
+}
+.topbar-in{
+  max-width:788px;margin:0 auto;padding:0 26px;height:54px;
+  display:flex;align-items:center;justify-content:space-between;
+}
+.brand{font-family:Oswald,sans-serif;font-weight:600;letter-spacing:.14em;font-size:15px}
+.brand span{color:var(--accent)}
+.topbar a.tb{
+  font-family:JBMono,monospace;font-size:11px;letter-spacing:.16em;
+  color:var(--fg-dim);text-decoration:none;text-transform:uppercase;
+  transition:color .14s linear;
+}
+.topbar a.tb:hover{color:var(--accent)}
+
+header.head{padding:88px 0 46px;border-bottom:1px solid var(--line-soft)}
+.eyebrow{
+  font-family:JBMono,monospace;font-size:11px;letter-spacing:.22em;
+  color:var(--accent);text-transform:uppercase;margin-bottom:22px;
+}
+h1{
+  font-family:Oswald,sans-serif;font-weight:600;font-size:clamp(32px,5.4vw,52px);
+  line-height:1.16;letter-spacing:.01em;margin:0 0 20px;
+}
+.lede{color:var(--fg-dim);font-size:17px;margin:0}
+
+main{padding:54px 0 40px}
+
+h2{
+  font-family:Oswald,sans-serif;font-weight:600;font-size:clamp(23px,3.2vw,31px);
+  line-height:1.28;margin:66px 0 20px;padding-top:26px;
+  border-top:1px solid var(--line);
+}
+h2:first-child{margin-top:0;border-top:none;padding-top:0}
+h3{
+  font-family:Oswald,sans-serif;font-weight:500;font-size:20px;
+  margin:38px 0 12px;color:var(--accent-lit);
+}
+p{margin:0 0 18px}
+strong{color:#fff;font-weight:600}
+a{color:var(--accent-lit);text-decoration:none;border-bottom:1px solid var(--accent-dim)}
+a:hover{color:var(--accent);border-bottom-color:var(--accent)}
+ul,ol{margin:0 0 20px;padding-left:22px}
+li{margin:7px 0}
+li::marker{color:var(--accent)}
+
+blockquote{
+  margin:26px 0;padding:18px 22px;
+  border-left:2px solid var(--accent);background:#101724;
+  color:var(--fg);font-size:17px;
+}
+blockquote p:last-child{margin-bottom:0}
+blockquote strong{color:var(--accent-lit)}
+
+pre{
+  background:#0f1420;border:1px solid var(--line);border-radius:2px;
+  padding:18px 20px;overflow-x:auto;margin:0 0 22px;
+}
+code{
+  font-family:JBMono,monospace;font-size:13.5px;line-height:1.72;
+  color:#cfd9e8;
+}
+p code,li code{
+  background:#151c2a;padding:2px 6px;border-radius:2px;
+  color:var(--accent-lit);font-size:13.5px;
+}
+
+.tbl{overflow-x:auto;margin:0 0 26px}
+table{border-collapse:collapse;width:100%;font-size:14.5px;table-layout:auto}
+th{
+  font-family:JBMono,monospace;font-size:11px;letter-spacing:.14em;
+  text-transform:uppercase;color:var(--fg-faint);text-align:left;
+  padding:0 14px 11px 0;border-bottom:1px solid var(--line);font-weight:400;
+}
+td{padding:12px 14px 12px 0;border-bottom:1px solid var(--line-soft);vertical-align:top}
+/* 首列多是标识符，别让它被劈成三行；描述列给个下限，否则中文会被拦腰截断 */
+td:first-child,th:first-child{white-space:nowrap;padding-right:20px}
+td:nth-child(2){min-width:200px}
+tr:last-child td{border-bottom:none}
+
+hr{border:none;border-top:1px solid var(--line-soft);margin:58px 0}
+
+footer{
+  padding:34px 0 70px;border-top:1px solid var(--line-soft);
+  color:var(--fg-faint);font-size:13px;
+}
+footer sub{font-size:13px;line-height:1.8}
+
+@media(max-width:760px){
+  body{font-size:16px}
+  header.head{padding:56px 0 34px}
+  h2{margin-top:48px}
+  table{font-size:13.5px}
+}
+</style>
+</head>
+<body>
+<nav class="topbar">
+  <div class="topbar-in">
+    <span class="brand">CHATES<span>.</span></span>
+    <a class="tb" href="./">← 回到介绍页</a>
+  </div>
+</nav>
+
+<div class="wrap">
+  <header class="head">
+    <div class="eyebrow">Field Notes · 2026-11-15</div>
+    <h1>这台 NAS 上的 Hermes，被我改成了什么</h1>
+    <p class="lede">1424 次提交、658 KB 单文件拆到 71 KB、面板能在 macOS 上跑起来。改了什么、突破了什么、跟上游是什么关系。</p>
+  </header>
+
+  <main>
+<blockquote>
+<p>1424 次提交、658 KB 单文件拆到 71 KB、面板能在 macOS 上跑起来。
+一篇讲清楚「改了什么、突破了什么、跟上游是什么关系」的总结。</p>
+</blockquote>
+<hr />
+<h2 id="_1">先分清三个名字，不然后面全是糊涂账</h2>
+<p>「Hermes」这个词在这套系统里指三样不同的东西，混着说就会得出「你重写了 Hermes」这种荒谬结论。</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>是什么</th>
+<th>谁做的</th>
+<th>我动了吗</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Hermes 模型</strong></td>
+<td>一组开源大模型权重（Hermes 3 / Hermes 4 系列）</td>
+<td>Nous Research</td>
+<td><strong>没动。</strong> 它只是可选的模型后端之一，本机现在跑的是 DeepSeek，也能切到别的</td>
+</tr>
+<tr>
+<td><strong>Hermes Agent</strong></td>
+<td>Agent 运行时本体，<code>hermes-agent 0.20.0</code>，pip 包</td>
+<td>Nous Research</td>
+<td><strong>基本没动内核。</strong> 这是地基，我的活不在这一层</td>
+</tr>
+<tr>
+<td><strong>fnos-hermes-panel</strong></td>
+<td>运行在本机上的<strong>网页控制面板</strong> + 打包 + 跨平台启动器</td>
+<td><strong>我做的</strong></td>
+<td><strong>改动全在这一层</strong></td>
+</tr>
+</tbody>
+</table></div>
+<p>一句话：<strong>Nous 给了引擎，我把车改装成了一台能开出门的车。</strong></p>
+<p>下面说的所有事，都发生在第三层。</p>
+<hr />
+<h2 id="658-kb-html">起点：一个 658 KB 的 HTML</h2>
+<p>Hermes Agent 装到 fnOS 上之后，自带一个网页控制面板，用来管对话、会话树、模型切换、技能、MCP、定时任务、记忆、用量、终端、通讯渠道、隧道。</p>
+<p>它的初始形态是<strong>一个 658 KB 的 <code>index.html</code></strong>：</p>
+<pre><code>134 KB  内联 &lt;style&gt;
+470 KB  内联 &lt;script&gt;
+557 个函数，全挤在同一个作用域里
+</code></pre>
+<p>不是因为代码写得丑，而是因为它每天咬人三下：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>问题</th>
+<th>实际表现</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>单文件即单点</strong></td>
+<td>任何一个字符打错，整个面板白屏。没有「局部失败」这回事</td>
+</tr>
+<tr>
+<td><strong>谁后加载谁赢</strong></td>
+<td>同名函数在 3 个地方定义，改对 2 处，第 3 处静默覆盖，改了等于没改</td>
+</tr>
+<tr>
+<td><strong>部署是 <code>cp</code></strong></td>
+<td>拷过去就算发布。拷一半、拷错目录、源和目标不同步，全靠人眼发现</td>
+</tr>
+</tbody>
+</table></div>
+<p>第二条最贵。真实例子：提示函数 <code>toast</code> 有新旧两版，新版在 <code>ui-kit.js</code>，老版在 <code>utils.js</code>。老版在文件里位置更靠后，<strong>所以老版一直赢</strong>——组件层建好了但没生效，视觉退回硬编码样式，而且没有任何一处报错。</p>
+<p>这类问题的共同点是：<strong>代码能跑、现象正确、改动静默失效。</strong> 靠 review 和测试都抓不住，因为不报错。</p>
+<p>所以拆的目标从一开始就不是「让文件变短」，是<strong>让「改哪一处会生效」变成可以查的</strong>。</p>
+<hr />
+<h2 id="_2">改了什么：把结构手术搬到正在使用的生产系统上</h2>
+<h3 id="_3">一个不允许妥协的约束</h3>
+<p>面板跑在用户（也就是我）的 NAS 上，天天在用。所以整个重构的验收标准不是「看起来差不多」，而是<strong>不允许有行为变化</strong>：</p>
+<ul>
+<li>全局函数 <strong>638 个</strong>、全局对象 <strong>314 个</strong>，拆前拆后集合<strong>零差异</strong></li>
+<li>1440×1000 与 390×844 两种视口截图，禁动画后<strong>逐像素 0 差异</strong></li>
+<li>生产目录与源码目录 <strong>SHA-256 逐文件对账</strong></li>
+</ul>
+<p>这个约束逼出了全部验证工具。没有它，这个项目会在第二次提交时失控。</p>
+<h3 id="_4">结果</h3>
+<pre><code>index.html   658 KB → 71 KB   (-89%)
+剩下的 71 KB  没有一行业务逻辑，只有静态骨架 + 资源清单 + 76 个 &lt;script&gt; 标签
+app/ui        8.2 MB         40 个 JS 模块
+app/server    7.6 MB         前后端体量对等 —— 不是只改了皮肤
+</code></pre>
+<p>分层是四层，加载顺序即依赖顺序：</p>
+<pre><code>js/core/     12 个   地基：utils / ui-kit / api / state / router / theme / markdown
+js/chat/      6 个   对话：会话树 / 气泡 / 流式 / 输入 / 斜杠命令 / 语音 / 圆桌
+js/panels/   12 个   面板：概览 / 模型 / 定时 / 扩展 / 记忆 / 用量 / 渠道 / 隧道 / 终端
+js/panel-*.js 36 个  历史遗留：功能都在用，职责与 panels/ 重叠
+</code></pre>
+<p>那 36 个遗留文件<strong>如实写在文档里，不假装不存在</strong>。它们要真正归入三层，得动 36 个正在使用的文件，收益低于风险——这条债我认。</p>
+<h3 id="1424">1424 次提交的分布</h3>
+<pre><code>app/ui          1358     前端，主战场
+dev/tests        874     测试，几乎等于前端
+app/server       538     后端
+config/prompts   155     提示词
+</code></pre>
+<p><strong>测试量和前端改动量几乎相等</strong>，这个数字比任何形容词都能说明这套东西是怎么长出来的。</p>
+<hr />
+<h2 id="_5">突破性进展：四件以前做不到的事</h2>
+<h3 id="_6">一、从「改完不知道生不生效」到三层等价验证</h3>
+<p>这是整件事的核心。三层验收，一层比一层狠：</p>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>层面</th>
+<th>做法</th>
+<th>拦得住什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>符号级</strong></td>
+<td>全局函数/对象集合逐个比对，638 / 314 零差异</td>
+<td>漏搬、重复定义、静默覆盖</td>
+</tr>
+<tr>
+<td><strong>样式级</strong></td>
+<td>计算样式逐项对比</td>
+<td>类名对但规则没生效、优先级被压</td>
+</tr>
+<tr>
+<td><strong>像素级</strong></td>
+<td>两种视口截图，禁动画后逐像素 diff</td>
+<td>上面两层都对但看着不一样</td>
+</tr>
+</tbody>
+</table></div>
+<p>第二层曾经抓到过「假绿」：截图 diff 是 0，但顺手打开 Network 一看，<strong>两个页面都是坏的</strong>——错误页长得一样，所以 diff 也一致。</p>
+<p>从此这条写进了流程：<strong>diff 为 0 不等于对，得先确认两边都在正常工作。</strong></p>
+<h3 id="_7">二、从「靠人记」到机器门禁</h3>
+<p>规矩写进文档没人看。所以做成了 <code>arch_lint</code>：分层违规、循环依赖、未归类文件，一律报出来拦下去。</p>
+<p>有意思的是它的第一步：<strong>先允许 103 条违规通过</strong>，然后一条条消。如果一上来就全拦截，第一天就干不下去。</p>
+<h3 id="_8">三、从「只能跑在飞牛上」到跨平台</h3>
+<p>面板原来紧绑 fnOS 的 Unix socket。改了三处 <code>monitor.js</code> 加一个 113 行的启动器 <code>bin/hermes-panel.mjs</code>，让它能退化到纯 TCP。</p>
+<p>macOS arm64 实测（macOS 27.2.1 / node v18.20.8，不设 <code>MONITOR_SOCKET_PATH</code>）：</p>
+<pre><code>UI_PORT=8650     → HTTP 200 / 72,962 B
+28 秒内自愈 0 次、端口冲突 0 次
+--port 8660      → 同样跑通
+</code></pre>
+<p>这意味着一台 Mac、一台 Windows、一台 NAS 上跑的是同一套面板代码。</p>
+<h3 id="_9">四、从「拷文件发布」到账本 + 对账</h3>
+<p>部署不再是 <code>cp</code>：走账本、可回滚、发布后拿源码目录和生产目录逐文件比 SHA-256。改了什么、上没上、上得对不对，三个问题都有答案。</p>
+<hr />
+<h2 id="_10">与上游的差异</h2>
+<p>「上游」在这里有两层，分开说。</p>
+<h3 id="hermes">相对 Hermes 模型：没有关系</h3>
+<p>模型只负责推理。换模型不涉及本项目任何一行代码——本机现在跑 DeepSeek，昨天可能跑别的，面板不用改。</p>
+<h3 id="hermes-agent">相对 Hermes Agent：同一台引擎，不同的车</h3>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th></th>
+<th>Hermes Agent 原版</th>
+<th>这套改造</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>面板形态</strong></td>
+<td>自带一份 Web UI</td>
+<td>同一份 UI，拆除 4 层 40 模块，658 KB → 71 KB</td>
+</tr>
+<tr>
+<td><strong>运行平台</strong></td>
+<td>主要跑在 Linux / fnOS</td>
+<td>加启动器与降级路径，<strong>macOS 实测通过</strong></td>
+</tr>
+<tr>
+<td><strong>发布方式</strong></td>
+<td>从包里取</td>
+<td>打包成 <code>.fpk</code>，应用中心一键装，两套 CLI 双活，OAuth 自动续期</td>
+</tr>
+<tr>
+<td><strong>验证手段</strong></td>
+<td>靠人看一眼</td>
+<td>符号 / 样式 / 像素三层等价 + 架构门禁 + 生产 SHA-256 对账</td>
+</tr>
+<tr>
+<td><strong>架构约束</strong></td>
+<td>无强制</td>
+<td><code>arch_lint</code> 机器拦截，文档说了不算，脚本说了算</td>
+</tr>
+<tr>
+<td><strong>知识沉淀</strong></td>
+<td>无</td>
+<td>三百多条技能 + 三层知识库，全在本机，不进任何云</td>
+</tr>
+<tr>
+<td><strong>数据位置</strong></td>
+<td>依部署方式</td>
+<td><strong>全部落本机</strong>：会话、记忆、技能、凭据都在自己盘上</td>
+</tr>
+</tbody>
+</table></div>
+<p><strong>没有做的事也要说清楚</strong>：Agent 内核的推理循环、工具调度、模型接入层，我基本没碰。这套改造补的是<strong>产品化、可运行性、验证纪律、本地数据层</strong>，不是「让 Agent 更聪明」。</p>
+<hr />
+<h2 id="_11">新功能：面板上多出来的那些东西</h2>
+<p>不是造了新模型，是把 Agent 的能力变成了<strong>能点、能看、能管</strong>的东西。</p>
+<h3 id="_12">对话与协作</h3>
+<ul>
+<li><strong>会话树</strong>：按项目分组的会话列表、分支 Fork、引用、语音条</li>
+<li><strong>多 Agent 圆桌</strong>：一个人不够就叫专家开会，多个角色并行讨论后汇总</li>
+<li><strong>专家库 315 位</strong>（面板口径；人格库源文件 268 条）：不同专业角色卡片，可单独启停</li>
+<li><strong>中途插话</strong>：Agent 正在跑的时候能打断、补充、改方向</li>
+<li><strong>审批闸门</strong>：危险操作先问再做，不是事后告诉你做完了</li>
+</ul>
+<h3 id="_13">能力管理</h3>
+<ul>
+<li><strong>技能库 361 个</strong>：随手装、随手关，一个不开也不挡路</li>
+<li><strong>MCP 接入</strong>：外部工具服务器配置、启停、健康检查</li>
+<li><strong>能力开关</strong>：Task Planning 这类模块单独关，不用整包卸载</li>
+<li><strong>模型管理</strong>：多家供应商、限流自动切下一家、凭据隔离、本地端点</li>
+</ul>
+<h3 id="_14">运维</h3>
+<ul>
+<li><strong>定时任务</strong>：可视化编辑器、执行历史、钩子</li>
+<li><strong>用量与成本</strong>：按会话归因，看清钱花在哪</li>
+<li><strong>终端 / 工作区 / 文件</strong></li>
+<li><strong>通讯渠道</strong>：QQ、微信、飞书、Discord、Telegram 各渠道配对</li>
+<li><strong>隧道与远程访问</strong></li>
+</ul>
+<h3 id="_15">稳定性</h3>
+<ul>
+<li><strong>配置自愈</strong>：配置坏了能自己恢复</li>
+<li><strong>压缩与上下文治理</strong>：长会话自动压缩，控制 token 账</li>
+<li><strong>维护面板</strong>：健康巡检、磁盘、进程</li>
+</ul>
+<h3 id="2026-11-15">真实使用量（2026-11-15 实测）</h3>
+<pre><code>会话    597 条（累计，消息 37.2 万条）
+        其中 api_server 303 / cron 165 / discord 59 / 微信 18 / QQ 12 / 飞书 6
+技能    361 个（SKILL.md 实际落盘数）
+专家    315 位（面板口径，后端 data.total）
+        Agency 人格库实际落盘 268 条，市场专家 15 条，内置 16 条
+</code></pre>
+<p>口径不一的地方我照实写：面板显示的 315 和人格库文件的 268 不是同一个统计口径，前者可能合并了多个来源。<strong>没核准的地方不硬凑成一个数。</strong></p>
+<hr />
+<h2 id="_16">没做完的部分，写在明面上</h2>
+<div class="tbl"><table>
+<thead>
+<tr>
+<th>已经做到</th>
+<th>还差什么</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>面板能在 macOS 跑通</td>
+<td>Windows 只做了启动器适配，没真机长跑过</td>
+</tr>
+<tr>
+<td>36 个遗留文件功能都在用</td>
+<td>没真正归入三层，动了风险大于收益</td>
+</tr>
+<tr>
+<td>架构门禁能拦违规</td>
+<td>规则是人写的，人想绕就能绕</td>
+</tr>
+<tr>
+<td>部署有账本可对账</td>
+<td>升级还得手动下包覆盖，没有自动更新</td>
+</tr>
+<tr>
+<td>本地数据全在自己盘上</td>
+<td>备份要自己做，没有托管方案</td>
+</tr>
+<tr>
+<td>技能 361 个能用</td>
+<td>没有市场，换台机器不会自动同步</td>
+</tr>
+</tbody>
+</table></div>
+<hr />
+<h2 id="_17">回头看</h2>
+<p>做对的：</p>
+<ol>
+<li><strong>先定「不允许有行为变化」，再动手</strong> —— 这个约束逼出了全部验证工具</li>
+<li><strong>每切一块都验符号</strong> —— 638 这个数字每次切完都查，比任何 code review 有效</li>
+<li><strong>把规矩写成可执行检查</strong> —— 文档没人看，<code>arch_lint</code> 会拦</li>
+<li><strong>诚实记录债</strong> —— 36 个未归类文件、38 处 <code>confirm()</code> 都写在文档里，不假装没有</li>
+</ol>
+<p>靠运气的：</p>
+<ol>
+<li><strong>拆分顺序</strong> —— 切错会陷进循环依赖，我是试出来的，不是设计出来的</li>
+<li><strong>假绿那次的发现</strong> —— 如果当时没顺手看一眼 Network，这个项目会带着一个假的验收结论收工</li>
+</ol>
+<p>最大的收获不是这套代码，是那句反复验证的话：</p>
+<blockquote>
+<p><strong>代码能跑、现象正确、改动却静默失效 —— 这类问题只能靠「量化」抓，不能靠「看」。</strong></p>
+</blockquote>
+<hr />
+<h2 id="_18">相关</h2>
+<ul>
+<li>面板源码与下载：<a href="https://github.com/vector9584/fnos-hermes-panel">https://github.com/vector9584/fnos-hermes-panel</a></li>
+<li>产品介绍页：<a href="https://vector9584.github.io/fnos-hermes-panel/">https://vector9584.github.io/fnos-hermes-panel/</a></li>
+<li>上游项目：<a href="https://github.com/NousResearch/hermes-agent">https://github.com/NousResearch/hermes-agent</a></li>
+</ul>
+<p><sub>本文所有数字取自仓库实际状态与真机实测，未做美化。截图与命令输出见 <code>knowledge/项目/</code> 下的过程笔记。</sub></p>
+  </main>
+</div>
+
+<footer>
+  <div class="wrap">
+    <sub>所有数字取自仓库实际状态与真机实测，未做美化。过程笔记见 <code>knowledge/项目/</code>。</sub>
+  </div>
+</footer>
+</body>
+</html>

@@ -159,17 +159,18 @@ window.Archive.register('tree', (function () {
       if (A.modules && A.modules.search) A.modules.search.open(st, filter.value);
     };
 
-    var expandBtn = A.el('button', '展开', 'arc-rail-btn');
-    expandBtn.type = 'button';
-    expandBtn.title = '全部展开';
-    expandBtn.setAttribute('aria-label', '全部展开');
-    expandBtn.onclick = function () { setAllFolded(st, false); paint(st, p, host, open); };
-    var foldBtn = A.el('button', '收起', 'arc-rail-btn');
-    foldBtn.type = 'button';
-    foldBtn.title = '全部收起';
-    foldBtn.setAttribute('aria-label', '全部收起');
-    foldBtn.onclick = function () { setAllFolded(st, true); paint(st, p, host, open); };
-    head.append(filter, expandBtn, foldBtn);
+    /* 筛选框照页头那个搜索框：左放大镜内嵌、框内无边框。
+       会话树那边是「框 + 右侧放大镜按钮」，用户要的是「搜索框加一个放大镜」，
+       左侧内嵌更像搜索框，也和他截图里认过的页头搜索框同一副样子。 */
+    var filterBox = A.el('div', null, 'arc-filter-box');
+    var lense = A.el('span', null, 'arc-filter-lense');
+    lense.append(A.svgIcon('search', 15));
+    lense.onclick = function () { filter.focus(); };
+    filterBox.append(lense, filter);
+
+    /* 「展开」「收起」两个按钮 2026-11-15 去掉：档案页只留顶栏那一颗抽屉按钮，
+       树内单个文件夹的折叠箭头保留（那是树本身，不是重复入口）。 */
+    head.append(filterBox);
     host.append(head);
 
     p.scroller = A.el('div', null, 'arc-rail-scroll');

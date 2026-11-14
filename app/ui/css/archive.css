@@ -147,6 +147,23 @@ body.theme-dark {
   color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 7px;
 }
 .arc-filter:focus { outline: none; border-color: var(--accent); }
+/* 筛选框外壳：照页头 .arc-searchbox 的尺寸（32 高 / 圆角 9 / 左 10 右 8），放大镜内嵌在左。
+   里面的 .arc-filter 退回裸输入（无边框无底色），靠外壳出框。 */
+.arc-filter-box {
+  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 8px 0 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+}
+.arc-filter-box:focus-within { border-color: var(--accent); }
+.arc-filter-lense {
+  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); cursor: text;
+}
+.arc-filter-box .arc-filter {
+  flex: 1 1 auto; min-width: 0; width: 100%; height: 100%; padding: 0;
+  background: transparent; border: 0; border-radius: 0;
+}
+.arc-filter-box .arc-filter:focus { outline: none; border-color: transparent; }
 .arc-rail-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
 /* 展开/收起全部：两个小按钮，照案例 sb-head 右侧的做法（文字比符号稳，⇕/⇳ 有些字体里是豆腐块） */
 .arc-rail-btn {
@@ -998,24 +1015,26 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   .arc-kbd, .arc-search-go { display: none; }
   .arc-only-mobile { display: inline-flex; }
   .arc-shell { grid-template-columns: minmax(0, 1fr); }
-  /* 抽屉只盖当前看的文档区：position 从 fixed 改成 absolute，锚到 .arc-shell 上。
-     fixed 的 top:0 是从浏览器顶端算的，会连页头和左侧主导航一起盖掉，
-     用户看到的就成了「整个页面都被盖住」（2026-11-14 用户驳回）。 */
+  /* 抽屉照会话页（base.css ≤768 的 .chat-rail）：
+     从屏幕顶到底、宽 280、盖住包括页头在内的一切，遮罩 rgba(0,0,0,.35)、阴影 4px 0 24px .15，
+     z-index 200/199，显示态切换用 display（不用 opacity 过渡）——这些数值全是从会话那边抄的。
+     2026-11-14 曾改成 absolute 只盖文档区（当时嫌"整页被盖"），2026-11-15 用户明确要
+     「跟会话一样都挡住」，以用户最新口径为准。 */
   .arc-rail {
-    position: absolute; top: 0; bottom: 0; left: 0; z-index: 12;
-    width: min(84vw, 280px); background: var(--card);
+    position: fixed; top: 0; bottom: auto; left: 0;
+    height: 100vh; height: 100dvh; z-index: 200;
+    width: 280px; background: var(--card);
     border-right: 1px solid var(--border2);
-    transform: translateX(-102%); transition: transform .24s cubic-bezier(.32, .72, 0, 1);
-    box-shadow: 4px 0 24px rgba(0, 0, 0, .15);
+    transform: translateX(-100%); box-shadow: none;
   }
-  .arc-shell.rail-open .arc-rail { transform: translateX(0); }
-  /* 遮罩跟着进 shell，只压暗文档区；常驻 + opacity 过渡，别用 display 硬切 */
+  .arc-shell.rail-open .arc-rail {
+    transform: translateX(0); box-shadow: 4px 0 24px rgba(0, 0, 0, .15);
+  }
   .arc-scrim {
-    display: block; position: absolute; inset: 0; z-index: 11;
+    display: none; position: fixed; inset: 0; z-index: 199;
     background: rgba(0, 0, 0, .35);
-    opacity: 0; pointer-events: none; transition: opacity .24s ease;
   }
-  .arc-shell.rail-open .arc-scrim { opacity: 1; pointer-events: auto; }
+  .arc-shell.rail-open .arc-scrim { display: block; }
   /* 手机行高 40（案例 @media 里的 .tree-row）——手指要能点中 */
   .arc-group-head, .arc-leaf, .arc-dir, .arc-sub-head { height: 40px; }
 
