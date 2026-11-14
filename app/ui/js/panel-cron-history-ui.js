@@ -7,10 +7,11 @@
     overlay.innerHTML = '<section class="modal cron-native-editor cron-history" role="dialog" aria-modal="true" aria-label="任务执行记录">' +
       '<div class="modal-head"><h3>执行记录</h3><button class="modal-close" aria-label="关闭">×</button></div>' +
       '<div class="modal-body"><p class="cron-history-summary"></p><p class="cron-history-status" role="status"></p>' +
-      '<div class="cron-history-list"></div><button class="action cron-history-more" hidden>加载更多</button>' +
-      '<p class="cron-history-detail-status" role="status"></p><button class="action cron-history-retry" hidden>重试读取结果</button><article class="cron-history-result" hidden><h4></h4><pre tabindex="0"></pre><button class="action cron-history-download">下载原始记录</button></article></div>' +
-      '<div class="modal-foot"><button class="action cron-history-refresh">刷新记录</button></div></section>';
-    document.body.append(overlay);
+      '<div class="cron-history-list"></div><button class="btn cron-history-more" hidden>加载更多</button>' +
+      '<p class="cron-history-detail-status" role="status"></p><button class="btn cron-history-retry" hidden>重试读取结果</button><article class="cron-history-result" hidden><h4></h4><pre tabindex="0"></pre><button class="btn cron-history-download">下载原始记录</button></article></div>' +
+      '<div class="modal-foot"><button class="btn cron-history-refresh">刷新记录</button></div></section>';
+    document.body.append(overlay)
+    window.ui.adoptOverlay(overlay,{esc:false,trap:false});
     var base = '/api/cron-jobs/' + encodeURIComponent(id) + '/history';
     var selectionKey='panel-cron-history:'+id,selectedRecord=null;try{selectedRecord=JSON.parse(localStorage.getItem(selectionKey)||'null');}catch(_){}
     var list = overlay.querySelector('.cron-history-list'), status = overlay.querySelector('[role=status]');
@@ -63,7 +64,7 @@
           (job.last_status === 'ok' ? ' · 执行成功' : job.last_status === 'error' ? ' · 执行失败：' + (job.last_error || '未保存失败详情') : '') +
           (job.last_delivery_error ? '\n渠道投递失败：' + job.last_delivery_error : '');
         result.records.forEach(function (record) {
-          var button = document.createElement('button'); button.className = 'action cron-history-record';
+          var button = document.createElement('button'); button.className = 'btn cron-history-record';
           button.textContent = record.name + ' · ' + Math.max(1, Math.ceil(record.size / 1024)) + ' KB';
           button.dataset.recordId=record.id;button.onclick = function () { open(record); }; list.append(button);
         });

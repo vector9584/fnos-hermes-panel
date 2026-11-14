@@ -1,0 +1,1058 @@
+/* 档案 · 三页共用样式（2026-11-14 对照案例重排）
+ * 布局/尺寸走面板已有的主题变量（--bg0/--card/--border/--accent/--text/--muted），
+ * 深色浅色都跟着 body.theme-dark 翻；案例专门做的两套分类色（DARK_COLORS/LIGHT_COLORS）
+ * 落在 archive-core.js 的 catColor 里，这里只补几个案例特有的主题变量：
+ *   点阵底（--arc-grid-dot，暗青/浅靛）、目录竖线（--arc-guide）、hover 洗白（--arc-wash）。
+ * 所有类名以 .arc- 开头，避免撞车。
+ *
+ * 尺寸基准来自《墨档文档阅读器》案例量出来的值：
+ *   左树行 34px（手机 40）/ 圆角 7 / 图标列 16px / 字号 13
+ *   文档头通栏 16px 30px 13px，图标 36px 圆角 10，标题 19/700，按钮 34px 圆角 9
+ *   正文 14.5px / 行高 1.85，h2 19，行内 code 12.5
+ *   右目录 172px 宽、11.5px 字号，固定在视口右侧
+ */
+
+:root {
+  /* 浅色主题（面板默认，无 theme-dark 类）：靛蓝点阵、深灰竖线、深色洗白 */
+  --arc-grid-dot: rgba(94, 100, 243, .10);
+  --arc-guide: rgba(0, 0, 0, .08);
+  --arc-guide-faint: rgba(0, 0, 0, .06);
+  --arc-wash: rgba(0, 0, 0, .04);
+  /* 案例 --code / --accent-soft：代码块底（浅=面板灰）与 hover 半透明 accent 雾 */
+  --arc-code-bg: #f4f5f7;
+  --accent-soft: rgba(94, 100, 243, .12);
+}
+body.theme-dark {
+  /* 深色主题：青点阵、浅灰竖线、白色洗白（案例 --grid / --border 的深色值） */
+  --arc-grid-dot: rgba(113, 219, 192, .11);
+  --arc-guide: rgba(255, 255, 255, .09);
+  --arc-guide-faint: rgba(255, 255, 255, .07);
+  --arc-wash: rgba(255, 255, 255, .035);
+  --arc-code-bg: #141b22;
+  --accent-soft: rgba(113, 219, 192, .14);
+}
+
+/* 页面容器是 flex 行布局：三个档案页即使隐藏也必须保持 display:none，
+   否则三个 425px 的 flex 项并排，整个页面被挤成 /3 宽（2026-11-14 实测）。
+   所以 flex 布局只挂在 .active 上，默认沿用 .page 的 display:none。 */
+.arc-page { flex: 1 1 auto; width: 100%; min-width: 0; }
+.arc-page.active { display: flex; flex-direction: column; min-height: 0; height: 100%; gap: 0; }
+
+/* [hidden] 必须能压住模块自己的 display（.arc-btn 是 inline-flex、.arc-editor 是 flex）。
+   浏览器 UA 的 [hidden]{display:none} 优先级低于作者样式，实测导致：
+   阅读态编辑器整块露出来、保存/取消按钮在未编辑时就出现在工具栏（2026-11-14 实测）。
+   作用域收在档案容器内，不污染面板其他组件。 */
+.arc-page [hidden], .arc-shell [hidden], .arc-doc [hidden] { display: none !important; }
+
+/* ── 页头：一行放「标题 / 视图页签 / 工具」 ── */
+/* 这页头同时带着 panel 的 .page-header 类（整理草稿那些按钮靠它挂进来），
+   而 panel-navigation.css 有一条 `.workbench-navigation .page-header`：70px 高、padding 0 24px。
+   两条选择器权重相同、它又后加载，所以这里必须多带一个 .page-header 把权重顶到 (0,3,0)，
+   否则页头永远比案例高 16px（2026-11-14 实测 pad=0 24、h=70）。 */
+.arc-page .arc-head.page-header {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  height: auto; min-height: 54px; padding: 5px 18px;
+  border-bottom: 1px solid var(--border); background: var(--bg1);
+}
+/* 手机端 .page-header button 会强塞 min-height:44px，页签和工具钮全被撑成方块 */
+.arc-page .arc-head.page-header button { min-height: 0; }
+.arc-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 0 1 auto; }
+.arc-page .arc-head.page-header .arc-title h1 {
+  margin: 0; font-size: 14.5px; font-weight: 650; line-height: 1.4;
+  color: var(--text); white-space: nowrap; letter-spacing: 0;
+}
+.arc-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.arc-tools { display: flex; gap: 6px; flex: 0 0 auto; }
+
+/* 工具条里的搜索框（案例 toolbar 的 search-wrap）：回车直接进正文搜索 */
+.arc-searchbox {
+  display: flex; align-items: center; gap: 6px; flex: 0 1 220px; max-width: 340px;
+  margin-left: auto;
+  height: 32px; padding: 0 8px 0 10px;
+  background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+}
+.arc-searchbox:focus-within { border-color: var(--accent); }
+.arc-searchbox svg { flex: 0 0 auto; color: var(--muted); }
+.arc-searchbox input {
+  flex: 1 1 auto; min-width: 0; height: 100%; font: inherit; font-size: 12.5px;
+  color: var(--text); background: transparent; border: 0; outline: none;
+}
+.arc-searchbox input::placeholder { color: var(--muted); }
+.arc-searchbox .arc-kbd { flex: 0 0 auto; }
+.arc-search-go {
+  flex: 0 0 auto; height: 24px; padding: 0 9px; font: inherit; font-size: 11.5px;
+  color: var(--text2); background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer;
+}
+.arc-search-go:hover { color: var(--accent); border-color: var(--accent); }
+
+.arc-icon-btn {
+  display: inline-flex; align-items: center; gap: 5px; height: 32px; padding: 0 11px;
+  font: inherit; font-size: 12px; color: var(--text2); background: var(--card);
+  border: 1px solid var(--border); border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.arc-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
+.arc-burger { font-size: 15px; line-height: 1; }
+.arc-icon-btn svg { flex: 0 0 auto; }
+.arc-rail-toggle { display: none; }
+
+/* ── 视图页签：容器化的分段控件（案例 .tabs/.tab），不是整行通栏 ── */
+.arc-views {
+  flex: 0 0 auto; display: flex; gap: 4px; padding: 4px;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 11px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.arc-views::-webkit-scrollbar { display: none; }
+.arc-view-btn {
+  flex: 0 0 auto; height: 33px; padding: 0 16px; font: inherit; font-size: 13px;
+  color: var(--muted); background: transparent; border: 1px solid transparent;
+  border-radius: 8px; cursor: pointer; white-space: nowrap;
+}
+.arc-view-btn:hover { color: var(--text2); }
+.arc-view-btn.on {
+  color: var(--accent); background: var(--accent-bg); border-color: var(--accent-soft);
+  font-weight: 600;
+}
+
+.arc-status {
+  margin: 0; padding: 6px 18px; font-size: 12px; color: var(--muted);
+  background: var(--bg1); border-bottom: 1px solid var(--border);
+}
+.arc-status.is-err { color: var(--red); background: var(--red-bg); }
+
+/* ── 骨架 ── */
+.arc-shell {
+  flex: 1 1 auto; display: grid; grid-template-columns: 292px minmax(0, 1fr);
+  min-height: 0; position: relative;
+}
+.arc-rail {
+  display: flex; flex-direction: column; min-height: 0;
+  border-right: 1px solid var(--border); background: var(--bg1);
+  overflow: hidden;
+}
+.arc-main {
+  overflow-y: auto; overflow-x: hidden; min-height: 0; position: relative;
+}
+/* 文档视图自己带 30px 内边距；关系图/轨迹/密码本这些视图统一在这里补横向留白 */
+.arc-main > *:not(.arc-doc) { padding-left: 20px; padding-right: 20px; }
+.arc-main > *:not(.arc-doc):first-child { padding-top: 16px; }
+.arc-main > *:not(.arc-doc):last-child { padding-bottom: 40px; }
+
+/* ── 左树 ── */
+.arc-rail-head {
+  flex: 0 0 auto; display: flex; gap: 8px; align-items: center;
+  padding: 13px 16px 9px;
+}
+.arc-filter {
+  flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 9px; font: inherit; font-size: 12.5px;
+  color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 7px;
+}
+.arc-filter:focus { outline: none; border-color: var(--accent); }
+.arc-rail-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
+/* 展开/收起全部：两个小按钮，照案例 sb-head 右侧的做法（文字比符号稳，⇕/⇳ 有些字体里是豆腐块） */
+.arc-rail-btn {
+  flex: 0 0 auto; height: 26px; padding: 0 7px; display: inline-flex; align-items: center;
+  font: inherit; font-size: 10.5px; line-height: 1; color: var(--muted);
+  background: var(--card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+}
+.arc-rail-btn:hover { color: var(--accent); border-color: var(--accent); }
+.arc-rail-scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; min-height: 0; padding-bottom: 12px; }
+.arc-rail-foot {
+  flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 10px 14px; font-size: 11px; color: var(--muted);
+  border-top: 1px solid var(--border); font-variant-numeric: tabular-nums;
+}
+
+.arc-tree { display: flex; flex-direction: column; padding: 2px 0 8px; }
+.arc-group { margin-bottom: 2px; }
+/* 行高是这一版最关键的修正：案例 34px（手机 40），原来 25px 挤成一团。
+   圆角 7 + 左右 8px 外边距，行块才有可以悬停的面。 */
+.arc-row,
+.arc-group-head,
+.arc-sub-head,
+.arc-leaf {
+  display: flex; align-items: center; gap: 7px; width: calc(100% - 16px);
+  margin: 0 8px; font: inherit; text-align: left; background: transparent;
+  border: 1px solid transparent; border-radius: 7px; cursor: pointer;
+  overflow: hidden;
+}
+/* 分组头：整个资料来源（人格/长期记忆/知识库/技能…），字最重 */
+.arc-group-head { height: 34px; padding: 0 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.arc-group-head:hover { background: var(--bg3); }
+/* 子目录行：和分组头同高同字重，靠 .arc-kids 的虚线导线分层。
+   原来它 30px/12.5px 比文件行还矮，看着像文件的小弟，层级完全反了。 */
+.arc-dir { height: 34px; padding: 0 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.arc-dir:hover { background: var(--bg3); }
+.arc-sub-head { height: 34px; padding: 0 8px; font-size: 13px; font-weight: 600; color: var(--text); }
+.arc-sub-head:hover { background: var(--bg3); }
+/* 文件行不加粗——整列 600 会白茫茫一片，层级反而没了 */
+.arc-leaf { height: 34px; padding: 0 8px; font-size: 13px; font-weight: 400; color: var(--text2); }
+.arc-leaf:hover { background: var(--bg3); color: var(--text); }
+/* 嵌套容器：每深一级 +11px 外加 1px 虚线 + 5px 内距 = 16px。
+   层级是靠这条虚线读出来的（案例的做法），不是靠单行的 padding 假装。 */
+.arc-kids {
+  margin-left: 11px; padding-left: 5px;
+  border-left: 1px dashed var(--border);
+}
+/* 进了嵌套容器，行自己不再吃左右 8px 外边距，虚线才贴着行的左缘 */
+.arc-kids > .arc-row { width: 100%; margin: 0; }
+/* 第一层要补上分组头自己的 8px 外边距，否则第一级只缩 9px、后面每级 16px，
+   看上去像"第一层没缩进"（2026-11-14 量出来 172→181→198）。 */
+.arc-group > .arc-kids { margin-left: 19px; }
+.arc-leaf.on {
+  background: var(--accent-bg); color: var(--accent); font-weight: 600;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.arc-leaf.is-missing { opacity: .62; font-style: italic; }
+
+.arc-group-name { flex: 1 1 auto; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 折叠箭头：SVG 三角，展开时旋转 90°。原来是 ▸/▾ 文本字符，字体里没有就是空白。 */
+.arc-caret {
+  flex: 0 0 auto; width: 12px; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted); transition: transform .16s ease;
+}
+.arc-caret.is-open { transform: rotate(90deg); }
+.arc-caret svg { display: block; }
+/* 图标列固定 16px：折叠/展开换图标时名字不会左右跳（案例 .ti 的做法）。
+   SVG 居中靠 flex，不再靠 font-size/line-height 去撑字形盒。 */
+.arc-ti {
+  flex: 0 0 auto; width: 16px; height: 16px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--muted);
+}
+.arc-ti svg { display: block; }
+.arc-leaf.on .arc-ti, .arc-group-head:hover .arc-ti, .arc-sub-head:hover .arc-ti { color: var(--accent); }
+.arc-badge {
+  flex: 0 0 auto; font-size: 10px; font-weight: 400; line-height: 16px; padding: 1px 7px;
+  border-radius: 20px; color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.arc-badge.is-full { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+.arc-group-n {
+  flex: 0 0 auto; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums;
+}
+/* 目录计数胶囊（案例 .tc）：裸文字看不出是"这里面有几项"，做成小药丸 */
+.arc-cnt {
+  flex: 0 0 auto; font-size: 10px; line-height: 16px; padding: 0 6px; border-radius: 10px;
+  color: var(--muted); background: var(--bg3); font-variant-numeric: tabular-nums;
+}
+.arc-leaf-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-leaf-meta { flex: 0 0 auto; font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 只在手机上出的工具按钮（桌面有工具条搜索框，不需要重复的搜索钮） */
+.arc-only-mobile { display: none; }
+
+.arc-empty { margin: 18px 16px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+/* 主区空态照案例：大图标 + 标题 + 一句说明 */
+.arc-empty-block {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
+  padding: 80px 24px; text-align: center; color: var(--muted);
+}
+.arc-empty-icon { font-size: 42px; line-height: 1; opacity: .85; display: flex; justify-content: center; }
+.arc-empty-icon svg { display: block; }
+.arc-empty-block h3 { margin: 6px 0 0; font-size: 14px; font-weight: 600; color: var(--text2); }
+.arc-empty-block p { margin: 0; font-size: 12px; line-height: 1.7; }
+
+/* ── 文档视图 ── */
+.arc-doc { display: flex; flex-direction: column; min-height: 100%; }
+/* 文档头通栏：跨过整个主区，不再缩在正文那个 940 的窄栏里。
+   sticky 让它跟着滚动浮在正文上（案例 .doc-head 就是这么做的）。 */
+.arc-doc-head {
+  position: sticky; top: 0; z-index: 4;
+  display: flex; align-items: flex-start; gap: 14px;
+  padding: 16px 30px 13px; background: var(--bg1); border-bottom: 1px solid var(--border);
+}
+.arc-dh-icon {
+  flex: 0 0 auto; width: 36px; height: 36px; display: grid; place-items: center;
+  font-size: 17px; line-height: 1; border-radius: 10px;
+  color: var(--accent); background: var(--accent-bg); border: 1px solid transparent;
+}
+.arc-dh-main { flex: 1 1 auto; min-width: 0; }
+/* 路径单行、等宽、只显示路径本身；来源挪到下面的标签行，别在路径里挤一个胶囊 */
+.arc-dh-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px; line-height: 1.6; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-dh-title {
+  margin: 1px 0 7px; font-size: 19px; line-height: 1.3; font-weight: 700; color: var(--text);
+  overflow-wrap: anywhere;
+}
+.arc-dh-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
+.arc-dim { color: var(--muted); font-size: 11px; }
+.arc-pill {
+  font-size: 10px; padding: 1px 7px; border-radius: 20px;
+  color: var(--muted); background: var(--bg3); border: 1px solid var(--border); white-space: nowrap;
+}
+.arc-pill.is-ok { color: var(--success-text, var(--success)); background: var(--success-bg); border-color: transparent; }
+.arc-pill.is-warn { color: var(--warning-dark, var(--warning)); background: var(--warning-bg); border-color: transparent; }
+.arc-doc-actions { display: flex; gap: 7px; flex-wrap: wrap; margin-left: auto; flex: 0 0 auto; padding-top: 3px; }
+
+/* 按钮尺寸照案例：高 34、左右 13、圆角 9、字重 600 */
+.arc-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  height: 34px; padding: 0 13px; font: inherit; font-size: 12.5px; font-weight: 600;
+  color: var(--text2); background: var(--card);
+  border: 1px solid var(--border); border-radius: 9px; cursor: pointer; white-space: nowrap;
+}
+.arc-btn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.arc-btn:disabled { opacity: .45; cursor: not-allowed; }
+.arc-btn.is-primary { color: #fff; background: var(--accent); border-color: var(--accent); }
+.arc-btn.is-primary:hover:not(:disabled) { background: var(--accent-h); color: #fff; }
+.arc-btn.is-quiet { background: transparent; }
+/* 深色主题主按钮是青底配深字（案例 .btn.primary color:#10201d），浅色是靛蓝底配白字 */
+body.theme-dark .arc-btn.is-primary { color: #08221c; }
+body.theme-dark .arc-btn.is-primary:hover:not(:disabled) { color: #08221c; }
+
+/* 正文栏：整块居中，最大 940 含左右 30 内边距（案例 doc-body 的尺寸） */
+.arc-doc-body {
+  flex: 1 1 auto; width: 100%; max-width: 940px; margin: 0 auto;
+  padding: 26px 30px 70px;
+}
+/* 有右侧目录时把那条留出来：右侧 212（目录 172 + 间隔），正文最宽 880。
+   不留这一条，1440 视口下文字会跑到目录底下（2026-11-14 实测重影）。 */
+.arc-doc-body.has-outline { max-width: 1152px; padding-right: 212px; }
+.arc-doc-body.has-outline .arc-md { max-width: 880px; }
+.arc-doc-foot {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 30px 0; margin-top: 4px;
+  border-top: 1px solid var(--border); font-size: 11.5px; color: var(--muted);
+}
+.arc-foot-state.is-dirty { color: var(--warning-dark, var(--warning)); font-weight: 600; }
+
+/* markdown 排版：14.5 / 1.85（案例 .md 的基准），原来 13.5/1.78 偏小一级 */
+.arc-md { font-size: 14.5px; line-height: 1.85; color: var(--text2); min-width: 0; overflow-wrap: anywhere; }
+.arc-md > *:first-child { margin-top: 0; }
+.arc-md h1, .arc-md h2, .arc-md h3, .arc-md h4 { color: var(--text); line-height: 1.35; scroll-margin-top: 96px; font-weight: 700; }
+.arc-md h1 { font-size: 24px; margin: 28px 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.arc-md h2 { font-size: 19px; margin: 30px 0 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+.arc-md h3 { font-size: 16px; margin: 22px 0 9px; }
+.arc-md h4 { font-size: 14.5px; margin: 18px 0 6px; color: var(--text2); }
+.arc-md p { margin: 12px 0; }
+.arc-md ul, .arc-md ol { margin: 12px 0; padding-left: 24px; }
+.arc-md li { margin: 4px 0; }
+/* 列表符号用主题色（案例 .md li::marker） */
+.arc-md li::marker { color: var(--accent); }
+.arc-md li > input[type="checkbox"] { margin-right: 6px; accent-color: var(--accent); }
+.arc-md strong { color: var(--text); font-weight: 700; }
+.arc-md blockquote {
+  margin: 14px 0; padding: 9px 16px; color: var(--muted); font-size: 14.5px;
+  border-left: 3px solid var(--accent); background: var(--bg1); border-radius: 0 8px 8px 0;
+}
+.arc-md blockquote p { margin: 0; }
+/* 行内代码：边框 + 深色近黑底（案例 .md code 用 --code，我方对应 --arc-code-bg） */
+.arc-md code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px; padding: 1px 5px; border-radius: 5px;
+  background: var(--arc-code-bg); color: var(--accent); border: 1px solid var(--border);
+}
+/* 代码块（照案例 .code-block：标题条 + 行号槽 + 复制）。原来的 .arc-pre 只是
+   一个右上角挂语言标签的方块，没有行号和复制，看着像半成品。 */
+.arc-code {
+  margin: 1.1em 0; border: 1px solid var(--border); border-radius: 11px;
+  overflow: hidden; background: var(--arc-code-bg);
+}
+.arc-code-head {
+  display: flex; align-items: center; gap: 10px; height: 34px; padding: 0 10px 0 13px;
+  border-bottom: 1px solid var(--border); background: var(--accent-bg);
+}
+.arc-code-dots { display: inline-flex; gap: 5px; flex: none; }
+/* 三圆点两套配色（案例 .cb-dots 的两套值，不是装饰——浅色主题下还挂深色那套
+   就会玫瑰红/橙/青糊在浅底上，案例专门写了 light 覆盖，这里照搬） */
+.arc-code-dots i { width: 8px; height: 8px; border-radius: 50%; background: #e06c75; opacity: .8; }
+.arc-code-dots i:nth-child(2) { background: #e8b268; }
+.arc-code-dots i:nth-child(3) { background: #71dbc0; }
+body.theme-light .arc-code-dots i { background: #d9534f; opacity: .85; }
+body.theme-light .arc-code-dots i:nth-child(2) { background: #d79a20; }
+body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
+.arc-code-lang {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10.5px; font-weight: 700; letter-spacing: .9px; color: var(--muted);
+  text-transform: uppercase; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.arc-code-copy {
+  margin-left: auto; flex: none; display: inline-flex; align-items: center; justify-content: center;
+  gap: 4px; height: 24px; min-width: 58px; padding: 0 8px; font: inherit; font-size: 11px;
+  color: var(--muted); background: var(--bg1); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; transition: .16s;
+}
+.arc-code-copy:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+.arc-code-copy.is-ok { color: var(--accent); border-color: var(--accent); }
+.arc-code-body { display: flex; align-items: stretch; min-width: 0; overflow-x: auto; }
+.arc-code-gutter {
+  flex: none; min-width: 40px; display: flex; flex-direction: column;
+  padding: 12px 9px 12px 10px; text-align: right; font-size: 12.5px; line-height: 1.75;
+  font-variant-numeric: tabular-nums; color: var(--text3); opacity: .62; user-select: none;
+  border-right: 1px solid var(--border); background: var(--bg1);
+}
+.arc-code-pre { flex: 1 1 auto; min-width: 0; margin: 0; padding: 12px 14px; background: transparent; overflow: visible; }
+.arc-code-pre code {
+  display: block; padding: 0; background: none; border: none; color: var(--text);
+  font-size: 12.5px; line-height: 1.75; white-space: pre; tab-size: 2;
+}
+.arc-code-empty { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 66px; padding: 15px 13px; color: var(--text3); font-size: 12px; }
+.arc-table-wrap { margin: 14px 0; overflow-x: auto; border: 1px solid var(--border); border-radius: 10px; }
+.arc-md table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.arc-md th, .arc-md td { padding: 7px 11px; text-align: left; border-bottom: 1px solid var(--border); }
+.arc-md thead th { background: var(--bg1); color: var(--text); font-weight: 600; white-space: nowrap; }
+.arc-md tbody tr:last-child td { border-bottom: 0; }
+/* 斑马纹（案例 .md tr:nth-child(even) td）—— 宽表横向扫行时不容易串行 */
+.arc-md tbody tr:nth-child(even) td { background: var(--bg1); }
+.arc-md img { max-width: 100%; height: auto; border-radius: 8px; }
+.arc-md a { color: var(--accent); text-decoration: none; border-bottom: 1px dashed var(--accent); }
+.arc-md a:hover { border-bottom-style: solid; }
+.arc-md .arc-wiki { color: var(--blue); border-bottom: 1px dashed var(--blue); }
+.arc-md hr { margin: 22px 0; border: 0; border-top: 1px solid var(--border); }
+.arc-md mark { background: var(--warning-bg); color: var(--text); padding: 0 2px; border-radius: 3px; }
+
+/* 右侧目录：固定 172px、11.5px（案例 .outline）—— 原来字号漏设，跟着 16px 走，像一列大字标题 */
+.arc-outline {
+  position: fixed; right: 22px; width: 172px; z-index: 3;
+  max-height: 58vh; overflow-y: auto; overflow-x: hidden;
+}
+/* 目录是挂在 body 上的 fixed 块，[hidden] 得自己兜住（父级选择器管不到它） */
+.arc-outline[hidden] { display: none !important; }
+.arc-outline-title {
+  display: flex; align-items: baseline; gap: 6px;
+  margin: 0 0 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 1px; color: var(--muted);
+}
+.arc-outline-n {
+  margin-left: auto; font-size: 10px; font-weight: 400; letter-spacing: 0;
+  opacity: .75; font-variant-numeric: tabular-nums;
+}
+.arc-outline nav { display: flex; flex-direction: column; border-left: 1px solid var(--border); }
+.arc-outline-item {
+  padding: 3px 8px; font: inherit; font-size: 11.5px; text-align: left; line-height: 1.45;
+  color: var(--muted); background: transparent; border: 0; border-left: 2px solid transparent;
+  margin-left: -1px; cursor: pointer; border-radius: 0 4px 4px 0; position: relative;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-outline-item:hover { color: var(--text2); background: var(--arc-wash); }
+/* 三级必须一眼分出层次：缩进 4 / 20 / 36（每档 16px），字号 12 / 11.5 / 11 递减，
+   颜色 亮 → 常规 → 减淡，子级再挂一条 1px 竖线，视线能顺着线读下来。
+   旧版 lv1 和 lv2 都是 padding-left:8px，一级二级在像素上完全一样（2026-11-14 用户驳回）。 */
+.arc-outline-item.lv1 {
+  padding-left: 4px; font-size: 12px; font-weight: 600; color: var(--text2);
+  margin-top: 7px; padding-top: 4px; padding-bottom: 4px;
+}
+.arc-outline nav > .arc-outline-item:first-child { margin-top: 0; }
+.arc-outline-item.lv2 { padding-left: 20px; }
+.arc-outline-item.lv2::before {
+  content: ''; position: absolute; left: 11px; top: 0; bottom: 0; width: 1px;
+  background: var(--arc-guide);
+}
+.arc-outline-item.lv3 { padding-left: 36px; font-size: 11px; opacity: .8; }
+.arc-outline-item.lv3::before {
+  content: ''; position: absolute; left: 27px; top: 0; bottom: 0; width: 1px;
+  background: var(--arc-guide-faint);
+}
+.arc-outline-item.lv4 { display: none; }
+.arc-outline-item.on { color: var(--accent); border-left-color: var(--accent); opacity: 1; }
+
+/* 编辑器：去掉行号槽（案例就是一块 textarea），上面一条说明/操作栏 */
+.arc-editor { display: flex; flex-direction: column; gap: 8px; }
+.arc-editor-bar {
+  display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted);
+}
+.arc-editor-bar .arc-grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-area {
+  width: 100%; min-height: 60vh; padding: 14px 16px; resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; line-height: 1.7; color: var(--text);
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  tab-size: 2; white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.arc-area:focus { outline: none; border-color: var(--accent); }
+
+/* ── 搜索浮层 ──
+   案例是页头搜索框下方 460px 宽的下拉（.search-panel top:48 right:18），
+   不是全屏居中的命令面板。2026-11-14 按案例改回下拉，top/right 由 JS 贴着框算。 */
+.arc-search {
+  position: fixed; top: 54px; right: 18px; width: 460px; z-index: 90; display: none;
+}
+.arc-search.show { display: block; }
+.arc-search-panel {
+  width: 100%; max-height: min(440px, 70vh); display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--border2); border-radius: 12px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .34); overflow: hidden;
+}
+.arc-search-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
+.arc-search-input {
+  flex: 1 1 auto; padding: 8px 10px; font: inherit; font-size: 14px;
+  color: var(--text); background: var(--bg1); border: 1px solid var(--border); border-radius: 8px;
+}
+.arc-search-input:focus { outline: none; border-color: var(--accent); }
+.arc-kbd {
+  font-family: ui-monospace, monospace; font-size: 10.5px; padding: 1px 6px;
+  color: var(--muted); background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
+}
+.arc-search-list { flex: 1 1 auto; overflow-y: auto; padding: 6px; min-height: 80px; }
+.arc-search-foot { padding: 8px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
+.arc-hit {
+  display: block; width: 100%; text-align: left; padding: 9px 11px;
+  font: inherit; color: var(--text2); background: transparent; border: 0;
+  border-radius: 9px; cursor: pointer;
+}
+.arc-hit.on, .arc-hit:hover { background: var(--accent-bg); color: var(--text); }
+.arc-hit-top { display: flex; align-items: center; gap: 8px; }
+.arc-hit-name { font-size: 13px; font-weight: 600; }
+.arc-hit-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
+  color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
+}
+.arc-hit-badge.is-body { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); }
+.arc-hit-path {
+  font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto;
+}
+.arc-hit-snip { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
+.arc-hit-snip mark { background: var(--warning-bg); color: var(--text); border-radius: 3px; padding: 0 2px; }
+
+/* ── 力导向图 ── */
+.arc-force { display: flex; flex-direction: column; gap: 8px; }
+.arc-force-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arc-force-bar .arc-dim { margin-right: auto; font-size: 11.5px; }
+.arc-canvas {
+  display: block; width: 100%; border: 1px solid var(--border);
+  border-radius: 12px;
+  /* 点阵底 + 中心光晕两层叠（案例 .graph-canvas 的 22px 点阵）。
+     只有渐变看着像没铺完的画布，加了点阵才有"这是一张图"的设计感。 */
+  background-image:
+    radial-gradient(var(--arc-grid-dot) 1px, transparent 1px),
+    radial-gradient(circle at 50% 40%, var(--bg1), var(--bg0));
+  background-size: 22px 22px, 100% 100%;
+  touch-action: none; cursor: grab;
+}
+.arc-canvas:active { cursor: grabbing; }
+.arc-tip {
+  position: absolute; z-index: 3; max-width: 240px; padding: 6px 9px;
+  font-size: 11.5px; line-height: 1.45; color: var(--text);
+  background: var(--card); border: 1px solid var(--border2); border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, .25); pointer-events: none;
+}
+.arc-force, .arc-force-holder { position: relative; }
+/* 图例：压在画布左下角，半透明卡片，不挡操作（案例 .graph-legend 同位置） */
+.arc-legend {
+  position: absolute; left: 10px; bottom: 10px; z-index: 2;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;
+  max-width: calc(100% - 20px); padding: 5px 9px;
+  font-size: 10.5px; color: var(--text2);
+  background: color-mix(in srgb, var(--card) 86%, transparent);
+  border: 1px solid var(--border); border-radius: 7px;
+  pointer-events: none;
+}
+.arc-legend-item { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+.arc-legend-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+
+/* ── 技能轨迹页（照案例 graph-page：标题条 + 分类 chips + 工具条 / 画布 + 右侧统计栏） ── */
+/* .arc-main 给非文档视图统一加了 20px 横向留白和首尾 padding，图谱页要顶到边，
+   所以这里用同等特异性写在后面压掉它（不用 !important）。 */
+.arc-main > .arc-gpage,
+.arc-main > .arc-gpage:first-child,
+.arc-main > .arc-gpage:last-child { padding: 0; }
+.arc-gpage {
+  display: flex; flex-direction: column;
+  height: 100%; min-height: 0;
+}
+.arc-gtop {
+  flex: 0 0 auto; padding: 14px 20px 17px;
+  border-bottom: 1px solid var(--border);
+}
+.arc-gline { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.arc-gtitle {
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  font-size: 16px; font-weight: 650; letter-spacing: -.2px; color: var(--text);
+}
+/* 图谱标题旁的计数徽章。注意别复用 .arc-badge —— 那是文档头来源、
+   树注入标记、密码本分类共用的全局标签（10px/高20/圆角20），改它等于顺手改三处别的页面。 */
+.arc-gbadge {
+  padding: 2px 9px; font-size: 10.5px; font-weight: 600; letter-spacing: .2px;
+  color: var(--accent); background: var(--accent-bg); border-radius: 999px; white-space: nowrap;
+}
+.arc-gdesc { margin: 6px 0 0; font-size: 11.5px; line-height: 1.65; color: var(--muted); }
+.arc-chips {
+  display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 11px;
+  overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+}
+.arc-chips::-webkit-scrollbar { display: none; }
+/* 分类二十多个，换行会把画布压矮；一行横滑，宽度让给图 */
+.arc-chips .arc-chip { flex: 0 0 auto; }
+.arc-chip-dot {
+  display: inline-block; width: 7px; height: 7px; margin-right: 5px;
+  border-radius: 50%; vertical-align: middle;
+}
+.arc-gtools {
+  display: flex; align-items: center; gap: 7px; margin-top: 11px;
+  overflow-x: auto; scrollbar-width: none;
+}
+.arc-gtools::-webkit-scrollbar { display: none; }
+.arc-gtools > * { flex: 0 0 auto; }
+.arc-seg {
+  display: flex; height: 30px; overflow: hidden;
+  border: 1px solid var(--border); border-radius: 9px;
+}
+.arc-seg button {
+  padding: 0 12px; font: inherit; font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  color: var(--muted); background: transparent; border: 0; cursor: pointer;
+}
+.arc-seg button + button { border-left: 1px solid var(--border); }
+.arc-seg button.on { color: var(--accent); background: var(--accent-bg); }
+
+.arc-gmain { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 320px; }
+.arc-gmain-canvas {
+  position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 0;
+}
+/* 画布高度由 JS 按 wrap 实测算（resize 里 canvas.style.height=px），
+   这里只保证 wrap 有确定高度，别让 flex 把它压成 0。 */
+.arc-gmain-canvas > .arc-force { flex: 1 1 auto; height: 100%; min-height: 0; gap: 0; }
+.arc-gmain-canvas .arc-canvas {
+  border: 0; border-radius: 0;
+  background-image:
+    radial-gradient(var(--arc-grid-dot) 1px, transparent 1px),
+    radial-gradient(circle at 50% 42%, var(--bg1) 0%, var(--bg0) 72%);
+  background-size: 22px 22px, 100% 100%;
+}
+.arc-gmain-canvas > .arc-empty { margin: 18px 20px; align-self: flex-start; }
+
+.arc-stat-side {
+  flex: 0 0 auto; width: 268px; padding: 14px 16px 26px;
+  overflow-y: auto; overflow-x: hidden;
+  background: var(--bg1); border-left: 1px solid var(--border);
+}
+.arc-stat-side.is-off { display: none; }
+.arc-h {
+  margin: 17px 0 8px; font-size: 10.5px; font-weight: 700;
+  letter-spacing: .9px; color: var(--muted); text-transform: uppercase;
+}
+.arc-h:first-child { margin-top: 0; }
+.arc-bignum { display: flex; align-items: baseline; gap: 7px; margin-bottom: 7px; }
+.arc-bignum b {
+  font-size: 26px; font-weight: 650; line-height: 1; color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+.arc-bignum span { font-size: 11px; color: var(--muted); }
+.arc-detail-line {
+  display: flex; justify-content: space-between; gap: 10px;
+  padding: 3px 0; font-size: 11.5px; color: var(--muted);
+}
+.arc-detail-line b { font-weight: 600; color: var(--text2); font-variant-numeric: tabular-nums; }
+.arc-detail-name {
+  margin-bottom: 6px; font-size: 13.5px; font-weight: 650;
+  color: var(--text); overflow-wrap: anywhere;
+}
+.arc-detail-desc { margin: 8px 0 0; font-size: 11.5px; line-height: 1.65; color: var(--muted); overflow-wrap: anywhere; }
+.arc-stat-side .arc-pill { display: inline-block; margin-bottom: 3px; }
+.arc-bar-row { margin-bottom: 10px; border-radius: 5px; cursor: pointer; }
+/* 28 个分类全摊开会把「调用最多」和「节点详情」挤到统计栏 900px 以下，
+   实测桌面 900 高的视口里根本看不到（2026-11-14）。给分类分布单独一个
+   内部滚动区，保证四个区块首屏都在。 */
+.arc-bars { max-height: 198px; overflow-y: auto; overscroll-behavior: contain; padding-right: 4px; }
+.arc-bars::-webkit-scrollbar { width: 4px; }
+.arc-bars::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.arc-bars::-webkit-scrollbar-track { background: transparent; }
+.arc-bars .arc-bar-row:last-child { margin-bottom: 2px; }
+.arc-bar-row .arc-bar-top span:first-child { transition: color .15s ease; }
+.arc-bar-row:hover .arc-bar-top span:first-child { color: var(--text); }
+.arc-bar-row.on .arc-bar-top span:first-child { color: var(--accent); font-weight: 600; }
+.arc-bar-top {
+  display: flex; justify-content: space-between; gap: 8px;
+  margin-bottom: 4px; font-size: 11.5px; color: var(--text2);
+}
+.arc-bar-top span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-bar-top span:last-child { flex: 0 0 auto; color: var(--muted); font-variant-numeric: tabular-nums; }
+.arc-bar-bg { height: 5px; overflow: hidden; background: var(--bg3); border-radius: 5px; }
+.arc-bar-fill { height: 100%; border-radius: 5px; transition: width .2s ease; }
+.arc-top-item {
+  display: flex; justify-content: space-between; gap: 8px;
+  padding: 5px 0; border-bottom: 1px dashed var(--border); cursor: pointer;
+}
+.arc-top-item:last-child { border-bottom: 0; }
+.arc-top-item b {
+  min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; font-weight: 600; color: var(--text2);
+}
+.arc-top-item:hover b { color: var(--accent); }
+.arc-top-item span {
+  flex: 0 0 auto; font-size: 11.5px; color: var(--accent);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── 统计卡与排行 ── */
+.arc-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.arc-stat {
+  display: flex; flex-direction: column; gap: 2px; padding: 12px 14px;
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 10px;
+}
+.arc-stat-n { font-size: 21px; font-weight: 650; color: var(--text); font-variant-numeric: tabular-nums; line-height: 1.15; }
+.arc-stat-k { font-size: 11.5px; color: var(--muted); }
+.arc-filterrow { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.arc-chip {
+  padding: 5px 11px; font: inherit; font-size: 12px; white-space: nowrap;
+  color: var(--muted); background: var(--card); border: 1px solid var(--border);
+  border-radius: 999px; cursor: pointer;
+}
+.arc-chip.on { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); font-weight: 600; }
+.arc-panel-block { margin: 22px 0; }
+.arc-panel-block h3 { margin: 0 0 10px; font-size: 13.5px; color: var(--text); }
+.arc-rank { display: grid; grid-template-columns: minmax(120px, 210px) minmax(0, 1fr) 48px; align-items: center; gap: 10px; padding: 4px 0; }
+.arc-rank-name {
+  padding: 0; font: inherit; font-size: 12.5px; text-align: left; color: var(--text2);
+  background: transparent; border: 0; cursor: pointer;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-rank-name:hover { color: var(--accent); }
+.arc-rank-name.is-static { cursor: default; color: var(--muted); }
+.arc-rank-track { height: 7px; background: var(--bg3); border-radius: 999px; overflow: hidden; }
+.arc-rank-fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.arc-rank-fill.is-alt { background: var(--blue); }
+.arc-rank-n { font-size: 11.5px; color: var(--muted); text-align: right; font-variant-numeric: tabular-nums; }
+.arc-note-row { display: grid; grid-template-columns: minmax(120px, 240px) minmax(0, 1fr) 44px; gap: 10px; align-items: center; padding: 4px 0; font-size: 12px; }
+.arc-note-row .arc-dim { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 密码本（2026-11-14 按案例三段式重做：一级锁卡 → 卡片网格 → 二级详情） ── */
+.arc-vault { display: flex; flex-direction: column; gap: 14px; }
+.arc-vault-inner { width: 100%; max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
+
+/* 一级：锁卡 / 设置卡。案例是居中一张卡，不铺满，也不要一排按钮 */
+.arc-lock-card {
+  width: 100%; max-width: 440px; margin: 5vh auto 0;
+  padding: 30px 26px 22px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 16px;
+  box-shadow: 0 18px 44px rgba(0, 0, 0, .22);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.arc-lock-ico {
+  width: 52px; height: 52px; margin: 0 auto 4px; display: grid; place-items: center;
+  color: var(--accent); background: var(--accent-bg); border-radius: 14px;
+}
+.arc-lock-card h2 { margin: 0; font-size: 18px; color: var(--text); text-align: center; }
+.arc-lock-desc { margin: 0 0 10px; font-size: 12.5px; line-height: 1.85; color: var(--muted); }
+.arc-lock-label { font-size: 11.5px; color: var(--muted); margin-bottom: -4px; }
+.arc-lock-card .arc-pass-form { padding: 0; gap: 8px; }
+.arc-vault-hint { margin: 2px 0 0; font-size: 11px; line-height: 1.75; color: var(--muted); opacity: .85; }
+.arc-vault-input {
+  width: 100%; padding: 7px 10px; font-family: ui-monospace, monospace; font-size: 12.5px;
+  color: var(--text); background: var(--bg1); border: 1px solid var(--border); border-radius: 8px;
+}
+.arc-vault-input:focus { outline: none; border-color: var(--accent); }
+
+/* 解锁后：标题条 + 工具行 */
+.arc-vault-hero { display: flex; align-items: center; gap: 13px; }
+.arc-vault-hero-ico {
+  width: 40px; height: 40px; flex: none; display: grid; place-items: center;
+  color: var(--accent); background: var(--accent-bg); border-radius: 10px;
+}
+.arc-vault-hero-txt h2 { margin: 0; font-size: 18px; color: var(--text); }
+.arc-vault-sub { margin: 3px 0 0; font-size: 12px; color: var(--muted); }
+.arc-vault-tools { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.arc-vault-search {
+  flex: 1 1 170px; min-width: 110px; max-width: 250px; margin-left: auto;
+  padding: 6px 10px; font-size: 12px; color: var(--text);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 8px;
+}
+.arc-vault-search:focus { outline: none; border-color: var(--accent); }
+.arc-vault-pill {
+  flex: none; padding: 3px 10px; font-size: 11px; border-radius: 999px;
+  color: var(--accent); background: var(--accent-bg); white-space: nowrap;
+}
+
+/* 分类 chips：单行横滑，不折成三行把网格推下去 */
+.arc-vault-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
+.arc-vault-chip {
+  display: inline-flex; align-items: center; gap: 6px; flex: none;
+  padding: 5px 10px; font: inherit; font-size: 11.5px; color: var(--text2);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
+}
+.arc-vault-chip:hover { border-color: var(--border2); color: var(--text); }
+.arc-vault-chip.on { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); font-weight: 600; }
+.arc-vault-chip-n { font-variant-numeric: tabular-nums; opacity: .7; }
+
+/* 卡片网格：案例 minmax(240px,1fr)，悬停抬 2px */
+.arc-vault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
+.arc-vault-card {
+  display: flex; flex-direction: column; gap: 9px; text-align: left;
+  padding: 13px 14px; font: inherit; cursor: pointer;
+  background: var(--card); border: 1px solid var(--border); border-radius: 11px;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.arc-vault-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 12px 26px rgba(0, 0, 0, .2); }
+.arc-vault-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.vi-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vi-key {
+  flex: 1 1 auto; min-width: 0; font-family: ui-monospace, monospace; font-size: 12.5px; font-weight: 600;
+  color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vi-cat {
+  flex: none; padding: 2px 7px; font-size: 10.5px; color: var(--text2);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 999px;
+}
+.vi-val {
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: .5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.vi-foot { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.vi-go { color: var(--accent); opacity: .75; }
+
+/* 二级：详情 */
+.arc-vault-back { align-self: flex-start; }
+.arc-vault-head { display: flex; align-items: center; gap: 12px; }
+.arc-vault-head-ico {
+  width: 36px; height: 36px; flex: none; display: grid; place-items: center;
+  color: var(--accent); background: var(--accent-bg); border-radius: 10px;
+}
+.arc-vault-head-txt { min-width: 0; }
+.arc-vault-key {
+  margin: 0; font-family: ui-monospace, monospace; font-size: 19px; color: var(--text);
+  overflow-wrap: anywhere;
+}
+.arc-vault-head-sub { display: flex; align-items: center; gap: 10px; margin-top: 5px; font-size: 11.5px; color: var(--muted); }
+.arc-vault-valuebox {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 16px 18px; background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+}
+.arc-vault-valuehead { font-size: 11.5px; color: var(--muted); }
+.arc-vault-value {
+  margin: 0; padding: 12px 14px; font-family: ui-monospace, monospace; font-size: 13px; line-height: 1.7;
+  color: var(--text); background: var(--bg1); border: 1px solid var(--border); border-radius: 9px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.arc-vault-acts { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.arc-vault-editor {
+  width: 100%; min-height: 76px; padding: 10px 12px; resize: vertical;
+  font-family: ui-monospace, monospace; font-size: 12.5px; line-height: 1.7; color: var(--text);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 9px;
+}
+.arc-vault-editor:focus { outline: none; border-color: var(--accent); }
+.arc-vault-gate { padding: 0; gap: 8px; flex-direction: row; flex-wrap: wrap; align-items: center; }
+.arc-vault-gate .arc-vault-input { flex: 1 1 210px; width: auto; }
+.arc-vault-gate .arc-pass-feedback { flex-basis: 100%; }
+.arc-vault-gate-desc { margin: 0; font-size: 12px; line-height: 1.75; color: var(--muted); }
+.arc-vault-meta { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; }
+.arc-vault-metacell {
+  display: flex; flex-direction: column; gap: 3px; min-width: 0;
+  padding: 10px 12px; background: var(--bg1); border: 1px solid var(--border); border-radius: 9px;
+}
+.arc-vault-metak { font-size: 11px; color: var(--muted); }
+.arc-vault-metav {
+  font-family: ui-monospace, monospace; font-size: 12px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-vault-audit { display: flex; flex-direction: column; gap: 2px; }
+.arc-vault-audit-title { margin: 2px 0 6px; font-size: 12.5px; font-weight: 600; color: var(--text); }
+.arc-vault-audit-row { display: flex; gap: 12px; padding: 5px 2px; font-size: 11.5px; color: var(--muted); border-bottom: 1px dashed var(--border); }
+.arc-vault-audit-when { font-family: ui-monospace, monospace; }
+.arc-vault-audit-act { color: var(--text2); }
+
+/* 按钮的两个尺寸/形态变体（面板原有按钮只有默认档） */
+.arc-btn.is-sm { height: 29px; padding: 0 10px; font-size: 12px; border-radius: 8px; }
+.arc-btn.is-ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.arc-btn.is-ghost:hover:not(:disabled) { color: var(--text); background: var(--bg1); border-color: var(--border); }
+.arc-btn.is-block { width: 100%; }
+
+/* 左栏底部特殊入口（密码本）：与资料组之间留一道分隔，避免看着像第 N 个资料来源 */
+.arc-group-special { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.arc-special {
+  display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px;
+  font: inherit; font-size: 12.5px; color: var(--text2); text-align: left;
+  background: transparent; border: 0; border-radius: 7px; cursor: pointer;
+}
+.arc-special:hover { background: var(--bg1); color: var(--text); }
+.arc-special.on { color: var(--accent); background: var(--accent-bg); font-weight: 600; }
+.arc-special svg { flex: none; }
+.arc-special-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── 对话框 ── */
+.arc-dialog {
+  width: min(720px, 92vw); max-height: 82vh; padding: 0; overflow: hidden;
+  color: var(--text); background: var(--card); border: 1px solid var(--border2);
+  border-radius: 14px; box-shadow: 0 24px 60px rgba(0, 0, 0, .4);
+}
+.arc-dialog-narrow { width: min(420px, 92vw); }
+.arc-dialog::backdrop { background: rgba(4, 8, 14, .55); backdrop-filter: blur(3px); }
+.arc-dialog-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--border); }
+.arc-dialog-head h3 { margin: 0; font-size: 14px; }
+.arc-dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.arc-pass-form { display: flex; flex-direction: column; gap: 10px; padding: 18px; }
+.arc-pass-form h3 { margin: 0; font-size: 15px; }
+.arc-pass-form p { margin: 0; font-size: 12px; line-height: 1.6; }
+.arc-pass-feedback { min-height: 16px; color: var(--red); font-size: 12px; }
+.arc-history { max-height: 60vh; overflow-y: auto; padding: 12px 16px 18px; }
+.arc-history-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+.arc-history-row:last-child { border-bottom: 0; }
+.arc-history-top { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; }
+
+/* ── 提示条 ── */
+/* 提示条：右下角竖排堆叠（照墨档案例的位置），左边一条 accent 色条表示类型 */
+.arc-toast-host {
+  position: fixed; right: 18px; bottom: 22px; z-index: 120;
+  display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+  pointer-events: none;
+}
+.arc-toast {
+  max-width: min(76vw, 380px);
+  padding: 9px 14px; font-size: 12.5px; line-height: 1.45; color: var(--text);
+  background: var(--card); border: 1px solid var(--border2);
+  border-left: 3px solid var(--accent); border-radius: 9px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, .3);
+  opacity: 0; transform: translateY(10px);
+  transition: opacity .2s ease, transform .2s ease;
+  overflow-wrap: anywhere;
+}
+.arc-toast.show { opacity: 1; transform: none; }
+.arc-toast.is-warn { border-left-color: var(--warning); }
+.arc-toast.is-err { border-left-color: var(--red); }
+.arc-toast.is-ok { border-left-color: var(--green, var(--accent)); }
+
+.arc-scrim { display: none; }
+.arc-filterrow .arc-filter { flex: 1 1 auto; }
+
+/* ── 页面底部状态条（案例 statusbar：27px、11px、三段） ── */
+.arc-footbar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 16px;
+  min-height: 27px; padding: 0 16px; font-size: 11px; color: var(--muted);
+  background: var(--bg1); border-top: 1px solid var(--border);
+  font-variant-numeric: tabular-nums;
+}
+.arc-footbar .arc-fb-grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-footbar .arc-fb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+/* ── 移动端 ── */
+@media (max-width: 1080px) {
+  .arc-outline { display: none; }
+  .arc-doc-body { padding: 18px 16px 60px; }
+}
+@media (max-width: 900px) {
+  /* 页头在手机上排成两行：第一行只放视图页签，第二行是 ☰ / 搜索框 / ＋新建。
+     这里必须用 grid 而不是 flex + order —— order 只能调先后，不能强制换行，
+     之前 order:3 让搜索框独占一行、☰ 和「新建」挤在页签右边（2026-11-14 用户驳回）。
+     选择器带上 .page-header 是为了压过第 29 行那条 0,3,0 的 display:flex。 */
+  .arc-page .arc-head.page-header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "title  title  title"
+      "views  views  views"
+      "rail   search tools";
+    gap: 8px; padding: 8px 12px; align-items: center;
+  }
+  .arc-title { grid-area: title; }
+  .arc-title h1 { font-size: 14px; }
+  .arc-sub { display: none; }
+  .arc-views { grid-area: views; justify-self: start; padding: 3px; border-radius: 10px; }
+  .arc-view-btn { height: 31px; padding: 0 10px; font-size: 12px; }
+  /* 没有页签的页面（提示词）不能留着 "views" 那一行：grid 模板里它照样占位，
+     空行会被 row-gap 撑出 8px，页头平白多一条缝。重新声明 area 即可去掉。 */
+  .arc-page .arc-head.page-header.arc-no-views {
+    grid-template-areas:
+      "title  title  title"
+      "rail   search tools";
+  }
+  .arc-rail-toggle { grid-area: rail; display: inline-flex; }
+  /* ☰ 在左、搜索框吃满中间、新建在右 */
+  .arc-searchbox { grid-area: search; display: flex; max-width: none; height: 34px; }
+  .arc-tools { grid-area: tools; margin-left: 0; }
+  .arc-only-mobile { display: inline-flex; }
+  .arc-shell { grid-template-columns: minmax(0, 1fr); }
+  /* 抽屉只盖当前看的文档区：position 从 fixed 改成 absolute，锚到 .arc-shell 上。
+     fixed 的 top:0 是从浏览器顶端算的，会连页头和左侧主导航一起盖掉，
+     用户看到的就成了「整个页面都被盖住」（2026-11-14 用户驳回）。 */
+  .arc-rail {
+    position: absolute; top: 0; bottom: 0; left: 0; z-index: 12;
+    width: min(86vw, 330px); background: var(--card);
+    border-right: 1px solid var(--border2);
+    transform: translateX(-102%); transition: transform .24s cubic-bezier(.32, .72, 0, 1);
+    box-shadow: 12px 0 40px rgba(0, 0, 0, .28);
+  }
+  .arc-shell.rail-open .arc-rail { transform: translateX(0); }
+  /* 遮罩跟着进 shell，只压暗文档区；常驻 + opacity 过渡，别用 display 硬切 */
+  .arc-scrim {
+    display: block; position: absolute; inset: 0; z-index: 11;
+    background: rgba(4, 8, 14, .5);
+    opacity: 0; pointer-events: none; transition: opacity .24s ease;
+  }
+  .arc-shell.rail-open .arc-scrim { opacity: 1; pointer-events: auto; }
+  /* 手机行高 40（案例 @media 里的 .tree-row）——手指要能点中 */
+  .arc-group-head, .arc-leaf, .arc-dir, .arc-sub-head { height: 40px; }
+
+  .arc-doc-head { gap: 10px; padding: 12px 16px 11px; }
+  .arc-dh-icon { width: 32px; height: 32px; font-size: 15px; border-radius: 10px; }
+  .arc-dh-title { font-size: 16.5px; margin-bottom: 5px; }
+  .arc-dh-path { font-size: 10.5px; }
+  /* 手机上标签行只留「来源 / 分类 / 可编辑」，体积行数时间都在底部状态条里，
+     不然 148px 宽要塞 6 个芯片，标题被挤成四行（案例只是两行） */
+  .arc-dh-meta { gap: 6px; flex-wrap: nowrap; overflow: hidden; }
+  .arc-dh-meta .arc-dim { display: none; }
+  /* 动作区留在同一行：手机上只出图标，四个按钮才塞得下（案例 375 下就 150px 宽） */
+  .arc-doc-actions { margin-left: auto; gap: 5px; padding-top: 2px; flex-wrap: nowrap; }
+  .arc-doc-actions .arc-btn { width: 32px; height: 32px; padding: 0; }
+  .arc-doc-actions .arc-btn span { display: none; }
+  .arc-md { font-size: 14.5px; line-height: 1.8; }
+  .arc-md h1 { font-size: 20px; }
+  .arc-md h2 { font-size: 18px; }
+  .arc-editor-bar { flex-wrap: wrap; }
+  .arc-area { font-size: 13px; min-height: 66vh; }
+  /* 密码本：手机单列，锁卡不占满高度，卡片内边距收一点 */
+  .arc-vault-grid { grid-template-columns: 1fr; gap: 10px; }
+  .arc-lock-card { max-width: 100%; margin: 3vh auto 0; padding: 26px 18px 20px; }
+  .arc-vault-inner { gap: 12px; }
+  .arc-vault-tools { gap: 6px; }
+  .arc-vault-search { flex: 1 1 100%; max-width: 100%; margin-left: 0; order: 5; }
+  .arc-vault-hero { gap: 10px; }
+  .arc-vault-hero-txt h2 { font-size: 16px; }
+  .arc-vault-key { font-size: 15px; }
+  .arc-vault-meta { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
+  .arc-vault-valuebox { padding: 13px 13px; }
+  .arc-special { height: 40px; }
+  .arc-rank { grid-template-columns: minmax(96px, 140px) minmax(0, 1fr) 40px; }
+  .arc-note-row { grid-template-columns: minmax(0, 1fr) 48px; }
+  .arc-note-row .arc-dim { display: none; }
+  .arc-search { padding: 0; }
+  .arc-search-panel { max-height: min(420px, 68vh); border-radius: 12px; }
+  .arc-toast-host { right: 12px; bottom: 12px; }
+  .arc-toast { max-width: calc(100vw - 24px); }
+  .arc-force:not(.is-graph) .arc-canvas { height: 62vh !important; }
+  .arc-footbar { padding: 0 12px; gap: 10px; }
+}
+@media (max-width: 560px) {
+  /* 窄屏上「知识库」这个标题和左边导航重复，藏掉把宽度让给页签和工具 */
+  .arc-page .arc-head .arc-title { display: none; }
+  .arc-tools .arc-icon-btn span { display: none; }
+  /* 目录钮已经不在 tools 里了，得单独藏字，否则 32px 方框里挤「目录」两个字 */
+  .arc-rail-toggle .arc-label { display: none; }
+  .arc-icon-btn { width: 32px; padding: 0; justify-content: center; }
+  .arc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .arc-dialog { width: 100vw; max-height: 92vh; border-radius: 14px 14px 0 0; margin: auto 0 0; }
+  .arc-footbar .arc-fb-hide { display: none; }
+}
+
+@media (max-width: 900px) {
+  /* 图谱页：标题压扁、描述藏掉（把高度让给图），chips 横滑不换行 */
+  .arc-gtop { padding: 10px 14px 12px; }
+  .arc-gtitle { font-size: 15px; }
+  .arc-gdesc { display: none; }
+  .arc-chips {
+    flex-wrap: nowrap; overflow-x: auto;
+    margin: 9px -14px 0; padding: 0 14px 3px;
+    scrollbar-width: none;
+  }
+  .arc-chips::-webkit-scrollbar { display: none; }
+  .arc-gtools { margin-top: 9px; }
+  .arc-gmain { min-height: 0; }
+  /* 统计栏改底部抽屉（案例 .stat-side 在移动端也是从底部上来的）。
+     桌面那套 is-off 在手机上要失效，否则桌面收起后缩窗口，抽屉被锁死打不开。 */
+  .arc-stat-side {
+    position: absolute; left: 0; right: 0; bottom: 0; top: auto;
+    z-index: 4; width: auto; max-height: 62%;
+    padding: 12px 14px calc(20px + env(safe-area-inset-bottom));
+    border-left: 0; border-top: 1px solid var(--border2);
+    border-radius: 14px 14px 0 0;
+    box-shadow: 0 -12px 30px rgba(0, 0, 0, .35);
+    transform: translateY(102%);
+    transition: transform .24s cubic-bezier(.32, .72, 0, 1);
+    overscroll-behavior: contain;
+  }
+  .arc-stat-side.is-off { display: block; }
+  .arc-stat-side.open { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .arc-rail, .arc-toast { transition: none; }
+}

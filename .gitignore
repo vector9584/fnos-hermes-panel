@@ -49,3 +49,10 @@ app/ui/_dup_test.js
 app/ui/fix*.mjs
 app/ui/_check*.js
 app/ui/_dup_test.js
+
+# 编辑备份不入库
+*.bak2-*
+
+# Python 工具缓存
+dev/__pycache__/
+__pycache__/

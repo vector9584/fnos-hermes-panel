@@ -1,0 +1,251 @@
+/* ui-kit.css — 与 js/ui-kit.js 配套的基础组件样式
+ * 只做 ui-kit 自己的部分，弹窗骨架仍复用 .modal-backdrop/.modal-panel。
+ * 颜色一律走 token，不写死色值。
+ */
+
+/* ── 弹窗：进场动画 + 短屏兜底 ── */
+.uikit-backdrop {
+  animation: uikit-fade .16s ease-out;
+}
+.uikit-panel {
+  animation: uikit-rise .2s cubic-bezier(.2, .8, .3, 1);
+  max-height: min(90vh, 90dvh);
+}
+@keyframes uikit-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes uikit-rise {
+  from { opacity: 0; transform: translateY(8px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (max-width: 640px) {
+  .uikit-panel {
+    max-width: 100% !important;
+    max-height: 88dvh;
+  }
+  .uikit-confirm .uikit-panel,
+  .modal-panel.uikit-confirm {
+    max-width: calc(100vw - 20px) !important;
+  }
+}
+
+/* ── 危险按钮：面板只在少数容器内定义过 .btn.danger，弹窗里没有 ── */
+.modal-foot .btn.danger {
+  color: var(--danger);
+  border-color: var(--danger);
+}
+.modal-foot .btn.danger:hover {
+  background: var(--bg1);
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── confirm 文案 ── */
+.uikit-confirm-msg {
+  margin: 0;
+  font-size: var(--fs-md);
+  line-height: 1.65;
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* ── toast ── */
+.uikit-toasts {
+  position: fixed;
+  left: 50%;
+  bottom: calc(32px + env(safe-area-inset-bottom, 0px));
+  transform: translateX(-50%);
+  z-index: 99999;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  max-width: min(80vw, 520px);
+  width: max-content;
+}
+.uikit-toast {
+  padding: 9px 15px;
+  border-radius: var(--radius-md);
+  background: var(--bg2);
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+  border: 1px solid var(--border);
+  box-shadow: 0 8px 24px var(--shade-soft);
+  opacity: 0;
+  transform: translateY(6px);
+  transition: opacity .2s, transform .2s;
+  word-break: break-word;
+  text-align: center;
+}
+.uikit-toast.in {
+  opacity: 1;
+  transform: none;
+}
+.uikit-toast.is-ok {
+  border-color: var(--success);
+  color: var(--success);
+}
+.uikit-toast.is-warn {
+  border-color: var(--warning);
+  color: var(--warning-dark);
+}
+.uikit-toast.is-error {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+/* ── 表单字段 ── */
+.uikit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.uikit-field.is-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+.uikit-field-label {
+  font-size: var(--fs-sm);
+  color: var(--text2);
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.uikit-req {
+  color: var(--danger);
+  font-style: normal;
+}
+.uikit-input {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg1);
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-family: inherit;
+  box-sizing: border-box;
+  transition: border-color .15s, box-shadow .15s;
+}
+.uikit-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+.uikit-input:disabled {
+  opacity: .6;
+  cursor: not-allowed;
+}
+textarea.uikit-input {
+  resize: vertical;
+  min-height: 64px;
+  line-height: 1.55;
+}
+.uikit-check {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.uikit-field-hint {
+  font-size: var(--fs-xs, 12px);
+  color: var(--text3);
+  line-height: 1.4;
+}
+
+/* ── 表格 ── */
+.uikit-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg2);
+}
+.uikit-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-md);
+  color: var(--text);
+}
+.uikit-table th,
+.uikit-table td {
+  padding: 8px 12px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.uikit-table th {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text2);
+  background: var(--bg1);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.uikit-table tbody tr:last-child td {
+  border-bottom: none;
+}
+.uikit-table tbody tr:hover {
+  background: var(--bg1);
+}
+.uikit-table tr.is-clickable {
+  cursor: pointer;
+}
+.uikit-table-empty {
+  padding: 26px 12px;
+  text-align: center;
+  font-size: var(--fs-sm);
+  color: var(--text3);
+}
+
+@media (max-width: 640px) {
+  .uikit-table th,
+  .uikit-table td {
+    padding: 7px 9px;
+    white-space: normal;
+  }
+}
+
+/* ── 提示条（Element Plus 风格通知栈，2026-11-13 用户第 41 条）─────────────
+   唯一实现：js/core/utils.js 的 window.__hzToast。旧的 .uikit-toast 规则保留但已无
+   调用点（ui-kit 只转发）。位置/堆叠方向由 JS 写成 inline 的 top/right/gap，
+   这里只管长相：卡片 + 左侧类型图标 + 关闭按钮 + 进出场动效。 */
+.hz-toast-stack{position:fixed;z-index:99999;display:flex;flex-direction:column;gap:10px;
+  pointer-events:none;max-width:calc(100vw - 32px)}
+.hz-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:9px;box-sizing:border-box;
+  min-width:200px;max-width:min(420px,calc(100vw - 32px));padding:11px 12px;border-radius:10px;
+  background:#22262f;border:1px solid rgba(255,255,255,.10);color:#e7e9ee;
+  box-shadow:0 10px 28px rgba(0,0,0,.38);font-size:13px;line-height:1.55;
+  opacity:0;transform:translateY(-6px) scale(.98);
+  transition:opacity .2s ease,transform .22s cubic-bezier(.34,1.16,.64,1)}
+.hz-toast.in{opacity:1;transform:none}
+.hz-toast.out{opacity:0;transform:translateY(-4px) scale(.98)}
+.hz-toast__ico{flex:0 0 16px;height:16px;margin-top:1px;color:#9aa4b2;display:flex}
+.hz-toast.is-success .hz-toast__ico{color:#7ed07a}
+.hz-toast.is-warning .hz-toast__ico{color:#e8b04a}
+.hz-toast.is-error .hz-toast__ico{color:#ff8181}
+.hz-toast__body{flex:1 1 auto;min-width:0}
+.hz-toast__text{margin:0;white-space:pre-wrap;word-break:break-word}
+.hz-toast__x{flex:0 0 auto;margin:-2px -4px 0 4px;padding:2px 6px;border:0;border-radius:6px;
+  background:transparent;color:#8b93a1;font-size:15px;line-height:1;cursor:pointer}
+.hz-toast__x:hover{background:rgba(255,255,255,.08);color:#e7e9ee}
+/* 浅色主题：白卡片 + Element 四色，别把深色卡片糊在白底上 */
+body.theme-light .hz-toast{background:#fff;border-color:#ebeef5;color:#303133;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+body.theme-light .hz-toast__ico{color:#909399}
+body.theme-light .hz-toast.is-success .hz-toast__ico{color:#67c23a}
+body.theme-light .hz-toast.is-warning .hz-toast__ico{color:#e6a23c}
+body.theme-light .hz-toast.is-error .hz-toast__ico{color:#f56c6c}
+body.theme-light .hz-toast__x{color:#a8abb2}
+body.theme-light .hz-toast__x:hover{background:#f2f3f5;color:#303133}
+/* 手机上占满整行，别让 420px 卡在 390 屏幕里溢出 */
+@media (max-width:520px){
+  .hz-toast-stack{left:12px!important;right:12px!important;transform:none!important}
+  .hz-toast{max-width:none;width:100%;min-width:0}
+}

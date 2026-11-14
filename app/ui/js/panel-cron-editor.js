@@ -22,7 +22,7 @@
       '<div class="modal-head"><h3 id="cronEditorTitle">编辑定时任务</h3><button type="button" class="modal-close" aria-label="关闭">×</button></div>' +
       '<div class="modal-body"><p class="cron-editor-state"></p><div class="cron-editor-fields"></div>' +
       '<p class="cron-editor-feedback" role="status" aria-live="polite"></p></div>' +
-      '<div class="modal-foot"><button type="button" class="action cron-editor-discard">丢弃草稿</button><button type="button" class="action cron-editor-cancel">关闭</button><button type="submit" class="action primary">保存修改</button></div></form>';
+      '<div class="modal-foot"><button type="button" class="btn cron-editor-discard">丢弃草稿</button><button type="button" class="btn cron-editor-cancel">关闭</button><button type="submit" class="btn primary">保存修改</button></div></form>';
     var form = overlay.querySelector('form');
     var fields = overlay.querySelector('.cron-editor-fields');
     var feedback = overlay.querySelector('.cron-editor-feedback');
@@ -68,6 +68,72 @@
     help.className = 'pw-hint';
     help.textContent = '频率示例：every 30m（每 30 分钟）、0 9 * * *（每天 9 点）、2026-12-01T09:00:00+08:00（指定时间）。投递填 local 保存本地，或渠道:会话ID；多个目标用逗号分隔。';
     fields.insertBefore(help, inputs.schedule.parentNode);
+    // ── 排班助手：不让用户背 cron 语法 ──
+    var wizard = document.createElement('div');
+    wizard.className = 'cron-schedule-wizard';
+    var wTitle = document.createElement('span');
+    wTitle.className = 'cron-wizard-title';
+    wTitle.textContent = '什么时候跑';
+    var wRow = document.createElement('div');
+    wRow.className = 'cron-wizard-row';
+    function wsel(options) {
+      var s = document.createElement('select');
+      options.forEach(function (o) { var op = document.createElement('option'); op.value = o[0]; op.textContent = o[1]; s.append(op); });
+      return s;
+    }
+    function wnum(min, max, val) { var i = document.createElement('input'); i.type = 'number'; i.min = String(min); i.max = String(max); i.value = String(val); return i; }
+    var kind = wsel([['none', '选择频率…'], ['minutes', '每隔 N 分钟'], ['hourly', '每小时第 N 分'], ['daily', '每天几点'], ['weekly', '每周某天几点'], ['monthly', '每月某号几点'], ['once', '一次性日期时间']]);
+    kind.setAttribute('aria-label', '排班方式');
+    var gap = wnum(1, 1440, 30), hour = wnum(0, 23, 9), minute = wnum(0, 59, 0);
+    var weekday = wsel([['1', '周一'], ['2', '周二'], ['3', '周三'], ['4', '周四'], ['5', '周五'], ['6', '周六'], ['0', '周日']]);
+    var day = wnum(1, 28, 1);
+    var when = document.createElement('input'); when.type = 'datetime-local';
+    var apply = document.createElement('button'); apply.type = 'button'; apply.className = 'btn'; apply.textContent = '填入';
+    var wHint = document.createElement('p');
+    wHint.className = 'pw-hint';
+    wHint.textContent = '选好频率点「填入」，下面「执行时间或频率」会自己写好；想手写 cron 也行，直接改那一行。';
+    wRow.append(kind, gap, hour, minute, weekday, day, when, apply);
+    wizard.append(wTitle, wRow, wHint);
+    function wSync() {
+      var k = kind.value;
+      gap.hidden = k !== 'minutes';
+      hour.hidden = ['daily', 'weekly', 'monthly'].indexOf(k) < 0;
+      minute.hidden = ['hourly', 'daily', 'weekly', 'monthly'].indexOf(k) < 0;
+      weekday.hidden = k !== 'weekly';
+      day.hidden = k !== 'monthly';
+      when.hidden = k !== 'once';
+      apply.hidden = k === 'none';
+    }
+    kind.onchange = wSync; wSync();
+    function pad(v) { var s = String(v == null ? 0 : v); return s.length < 2 ? '0' + s : s; }
+    apply.onclick = function () {
+      var k = kind.value, expr = '';
+      if (k === 'minutes') expr = 'every ' + Math.max(1, Number(gap.value) || 30) + 'm';
+      else if (k === 'hourly') expr = (Number(minute.value) || 0) + ' * * * *';
+      else if (k === 'daily') expr = pad(minute.value) + ' ' + pad(hour.value) + ' * * *';
+      else if (k === 'weekly') expr = pad(minute.value) + ' ' + pad(hour.value) + ' * * ' + weekday.value;
+      else if (k === 'monthly') expr = pad(minute.value) + ' ' + pad(hour.value) + ' ' + (Number(day.value) || 1) + ' * *';
+      else if (k === 'once') { if (!when.value) { feedback.textContent = '先选一个日期和时间'; return; } expr = when.value + ':00+08:00'; }
+      else return;
+      inputs.schedule.value = expr;
+      inputs.schedule.dispatchEvent(new Event('input', { bubbles: true }));
+      feedback.textContent = '已填入：' + expr + '（下面那行还能改）';
+    };
+    fields.insertBefore(wizard, inputs.schedule.parentNode);
+    var deliverPick = document.createElement('div');
+    deliverPick.className = 'cron-deliver-pick';
+    var pickTitle = document.createElement('span');
+    pickTitle.textContent = '常用投递目标';
+    var pick = wsel([['', '选择…'], ['local', '只存本地，不推送'], ['origin', '回到建任务的那个会话'], ['discord', 'Discord 主页'], ['feishu', '飞书私聊'], ['qqbot', 'QQ 绑定会话'], ['weixin', '微信 Home']]);
+    pick.setAttribute('aria-label', '常用投递目标');
+    pick.onchange = function () {
+      if (!pick.value) return;
+      inputs.deliver.value = pick.value;
+      inputs.deliver.dispatchEvent(new Event('input', { bubbles: true }));
+      feedback.textContent = '投递目标已填：' + pick.value;
+    };
+    deliverPick.append(pickTitle, pick);
+    fields.insertBefore(deliverPick, inputs.deliver.parentNode);
     if (draft && draft.values) {
       requestId = draft.requestId || requestId;
       baseRevision = draft.revision;
@@ -172,7 +238,9 @@
         Array.from(form.elements).forEach(function (input) { input.disabled = false; });
       }
     };
-    document.body.append(overlay);
+    var stale = document.getElementById('cronModalOverlay');
+    if (stale) stale.remove();
+    document.body.append(overlay);window.ui.adoptOverlay(overlay,{esc:false,trap:false});
     inputs.name.focus();
   };
 }());

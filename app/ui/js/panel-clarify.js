@@ -14,11 +14,7 @@
 (function () {
   var SEQ = 0;
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  function esc(s) { return DOM.escAttr(s); }  /* 唯一实现在 core/dom.js */
 
   function respondUrl() {
     try {
@@ -114,7 +110,7 @@
       html += '<div class="pw-clarify-opts">';
       choices.forEach(function (c) {
         html += '<label class="pw-clarify-opt">' +
-          '<input type="' + (multi ? 'checkbox' : 'radio') + '" name="pwc-' + id + '" value="' + esc(c) + '">' +
+          '<input type="' + (multi ? 'checkbox' : 'radio') + '" name="pwc-' + id + '" value="' + DOM.escAttr(c) + '">' +
           '<span class="pw-clarify-mark"></span>' +
           '<span class="pw-clarify-label">' + esc(c) + '</span>' +
           '</label>';

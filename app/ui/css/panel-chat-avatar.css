@@ -1,0 +1,202 @@
+/* 消息气泡 v9（2026-11-14 按设计稿重做）
+ *
+ * 设计稿：/vol1/1000/飞牛文件/Code_20261114025153.html
+ *   · 两套配色（浅色紫气泡 / 深色薄荷绿气泡）
+ *   · 跑马灯：conic-gradient 七色 + @property 起始角顺时针滚 + hue-rotate 整圈流动，环带 4px
+ *   · 呼吸灯：halo（模糊光晕 2→6px）+ line（换色 1.5→1.9px）+ shape（drop-shadow）三条同步 2s
+ *   · 气泡：一条闭合 path，大圆角 18 / 三角侧小圆角 5 / 三角高 14 伸出 8.12
+ *
+ * 结构仍由渲染器生成（.chat-sender / .msg-bubble / .msg-actions / .msg-meta 都是 .msg 直接子节点），
+ * 这里只用 grid 显式排行。不要包 wrapper：渲染器里有
+ * asst.insertBefore(bar, asst.querySelector('.msg-meta'))，meta 不是直接子节点会抛 NotFoundError。
+ */
+.chat-body .msg{
+  max-width:100%;width:100%;
+  display:grid;
+  grid-template-columns:40px minmax(0,1fr);
+  grid-template-rows:auto auto auto;
+  column-gap:8px;row-gap:2px;
+  align-items:start;
+}
+.chat-body .msg.user{grid-template-columns:minmax(0,1fr) 40px}
+.chat-body .msg .chat-sender{display:none!important}
+
+/* ── 设计稿配色 token（只作用于聊天区，不动面板其它板块的颜色）────────── */
+.chat-body{
+  --hp-fill-them:#f4f5f7;--hp-fill-me:#6064ea;
+  --hp-ink-them:#3c404a;--hp-ink-me:#fff;
+  --hp-base-them:#dfe2ea;--hp-base-me:rgba(255,255,255,.52);
+  --hp-breath-them:#6064ea;--hp-breath-me:#a8f5dd;
+  --hp-breath-soft-them:rgba(96,100,234,.30);--hp-breath-soft-me:rgba(168,245,221,.40);
+  --hp-glow-peak:.46;--hp-glow-width:6px;--hp-glow-blur:3;
+  --hp-shadow:drop-shadow(0 2px 6px rgba(40,40,90,.15));
+  /* 跑马灯七色：两套主题共用同一套（截图里两张面板的彩框是同一条渐变） */
+  --hp-c1:#488cfb;--hp-c2:#29dbbc;--hp-c3:#ddf505;--hp-c4:#ff9f0e;
+  --hp-c5:#e440bb;--hp-c6:#655adc;--hp-c7:#488cfb;
+}
+body.theme-dark .chat-body{
+  --hp-fill-them:#181f27;--hp-fill-me:#8dd8c1;
+  --hp-ink-them:#e6e9ef;--hp-ink-me:#173a2c;
+  --hp-base-them:#394454;--hp-base-me:rgba(23,58,44,.40);
+  --hp-breath-them:#9dd6c3;--hp-breath-me:#4b32a8;
+  --hp-breath-soft-them:rgba(157,214,195,.34);--hp-breath-soft-me:rgba(75,50,168,.34);
+  --hp-glow-peak:.48;--hp-glow-width:6px;--hp-glow-blur:3.5;
+  --hp-shadow:drop-shadow(0 2px 7px rgba(0,0,0,.45));
+}
+
+.chat-body .msg-avatar{
+  grid-column:1;grid-row:1 / span 3;
+  /* 外形只做裁切：方形 10px 圆角 / 圆形 50%，由 .circle 切换。不画边框、不给底色。 */
+  width:40px;height:40px;border-radius:10px;
+  background:transparent;border:0;
+  display:flex;align-items:center;justify-content:center;
+  font-size:15px;line-height:1;overflow:hidden;
+  user-select:none;-webkit-user-select:none;
+  margin-top:0;flex:none;
+}
+.chat-body .msg-avatar.bot{background:var(--blue-bg);border-color:transparent;font-size:16px}
+.chat-body .msg-avatar.me{background:var(--accent);color:var(--white);border-color:transparent;font-size:13px;font-weight:600}
+.chat-body .msg.user .msg-avatar{grid-column:2;grid-row:1 / span 3}
+.chat-body .msg-avatar.circle{border-radius:50%}
+
+/* 气泡本体：底色/文字色全部走 --hp-*；圆角与描边交给 SVG（这里是 JS 没跑起来时的兜底） */
+.chat-body .msg .msg-bubble{
+  grid-column:2;grid-row:1;justify-self:start;
+  position:relative;overflow:visible;isolation:isolate;
+  max-width:100%;
+  font-size:14px;line-height:1.62;
+  border:0;border-radius:18px;box-shadow:none;
+  /* 2026-11-13 用户口径：气泡最右/最左对齐对侧头像边线（桌面 -24px / 手机 -28px，实测命中） */
+  max-width:calc(100% - 24px);
+}
+.chat-body .msg.user .msg-bubble{grid-column:1;grid-row:1;justify-self:end}
+.chat-body .msg.assistant .msg-bubble{
+  --hp-fill:var(--hp-fill-them);--hp-base:var(--hp-base-them);--hp-ink:var(--hp-ink-them);
+  --hp-breath:var(--hp-breath-them);--hp-breath-soft:var(--hp-breath-soft-them);
+  background:var(--hp-fill);color:var(--hp-ink);
+}
+.chat-body .msg.user .msg-bubble{
+  --hp-fill:var(--hp-fill-me);--hp-base:var(--hp-base-me);--hp-ink:var(--hp-ink-me);
+  --hp-breath:var(--hp-breath-me);--hp-breath-soft:var(--hp-breath-soft-me);
+  background:var(--hp-fill);color:var(--hp-ink);
+}
+/* base.css 里有 body.theme-dark .msg.user .msg-bubble{color:#06251d}（特异性 0,3,1），
+   这里补同级别选择器（本文件后加载）字色才真跟着 --hp-ink 走。 */
+body .chat-body .msg.user .msg-bubble,
+body .chat-body .msg.assistant .msg-bubble{color:var(--hp-ink)}
+/* 深色主题里 base.css 那条是 body.theme-dark .msg.user .msg-bubble{color:#06251d}（0,4,1），
+   比上面高一级，这里得补到 (0,5,1) 才压得住。 */
+body.theme-dark .chat-body .msg.user .msg-bubble,
+body.theme-dark .chat-body .msg.assistant .msg-bubble{color:var(--hp-ink)}
+
+/* 用户气泡里的行内元素跟着气泡字色走（薄荷绿底上的深绿字） */
+.chat-body .msg.user .msg-bubble a{color:inherit;text-decoration:underline}
+.chat-body .msg.user .msg-bubble .md-text code,
+.chat-body .msg.user .msg-bubble code{background:rgba(0,0,0,.10);color:inherit}
+
+.chat-body .msg .msg-meta{
+  grid-column:2;grid-row:2;justify-self:start;
+  margin:0;padding:0 2px;
+  font-size:10.5px;line-height:1.4;color:var(--text3);
+}
+.chat-body .msg.user .msg-meta{grid-column:1;grid-row:2;justify-self:end}
+
+.chat-body .msg .msg-actions{
+  grid-column:2;grid-row:3;justify-self:start;
+  margin:2px 0 0;padding:0;
+}
+.chat-body .msg.user .msg-actions{grid-column:1;grid-row:3;justify-self:end}
+
+/* ── 一条闭合轮廓：填充 / 光晕 / 描边 三个 path 共用同一个 d ────────────── */
+.chat-body .msg .msg-bubble>svg.hp-frame{
+  position:absolute;left:-16px;top:0;
+  width:calc(100% + 32px);height:100%;
+  z-index:-1;overflow:visible;pointer-events:none;
+}
+.chat-body .msg .msg-bubble>svg.hp-frame path{
+  stroke-linejoin:round;stroke-linecap:round;
+}
+.chat-body .msg .msg-bubble .hp-shape{fill:var(--hp-fill);stroke:none;filter:var(--hp-shadow)}
+.chat-body .msg .msg-bubble .hp-line{fill:none;stroke:var(--hp-base);stroke-width:1.5px}
+.chat-body .msg .msg-bubble .hp-halo{fill:none;stroke:var(--hp-breath);stroke-width:2px;opacity:0;display:none}
+
+/* ── 跑马灯：环带层四边外扩（x 16 / y 4），mask 是同一条 d 描 4px ─────────
+   4px 是居中描边 ⇒ 向内 2px、向外 2px；上下也必须外扩，否则圆角弧顶正好落在
+   y=0 / y=H 被裁掉，看起来像被横着削平。 */
+.chat-body .msg .msg-bubble .hp-ring{
+  --hp-mask:linear-gradient(transparent,transparent);   /* JS 注入前的兜底：全透明 */
+  position:absolute;left:-16px;top:-4px;
+  width:calc(100% + 32px);height:calc(100% + 8px);
+  z-index:0;pointer-events:none;display:none;
+  background:conic-gradient(from var(--ring-angle) at 50% 50%,
+    var(--hp-c1),var(--hp-c2),var(--hp-c3),var(--hp-c4),
+    var(--hp-c5),var(--hp-c6),var(--hp-c7));
+  -webkit-mask-image:var(--hp-mask);mask-image:var(--hp-mask);
+  -webkit-mask-size:100% 100%;mask-size:100% 100%;
+  -webkit-mask-repeat:no-repeat;mask-repeat:no-repeat;
+  /* 两条动画同周期：色带顺时针滚 + 整圈色相流动 */
+  animation:hp-ring-spin 1.5s linear infinite,
+            hp-ring-hue 1.5s linear infinite;
+}
+@keyframes hp-ring-spin{from{--ring-angle:0deg}to{--ring-angle:360deg}}
+@keyframes hp-ring-hue{from{filter:hue-rotate(0deg)}to{filter:hue-rotate(360deg)}}
+
+/* 正在跑：彩色跑马灯（环带本身就是描边，静态细线让位） */
+.chat-body .msg.running .hp-ring{display:block}
+.chat-body .msg.running .hp-line{stroke:transparent}
+
+/* ── 排队呼吸灯：三条动画同步 2s，颜色按【气泡填充】反着选 ────────────────
+   浅色紫气泡（亮度 .175）→ 亮青白 #a8f5dd；深色薄荷绿气泡（亮度 .59）→ 深紫 #4b32a8。
+   同色系会糊进气泡里，必须反着选。 */
+.chat-body .msg.queued .hp-halo{
+  display:block;
+  animation:hp-breath-glow 2s ease-in-out infinite;
+}
+.chat-body .msg.queued .hp-line{animation:hp-breath-line 2s ease-in-out infinite}
+.chat-body .msg.queued .hp-shape{animation:hp-breath-shape 2s ease-in-out infinite}
+@keyframes hp-breath-glow{
+  0%,100%{opacity:0;stroke-width:2px}
+  50%    {opacity:var(--hp-glow-peak);stroke-width:var(--hp-glow-width)}
+}
+@keyframes hp-breath-line{
+  0%,100%{stroke:var(--hp-base);stroke-width:1.5px}
+  50%    {stroke:var(--hp-breath);stroke-width:1.9px}
+}
+@keyframes hp-breath-shape{
+  0%,100%{filter:var(--hp-shadow)}
+  50%    {filter:drop-shadow(0 2px 8px var(--hp-breath-soft))}
+}
+
+@media (prefers-reduced-motion:reduce){
+  .chat-body .msg .msg-bubble .hp-ring{animation:none;filter:hue-rotate(120deg)}
+  .chat-body .msg.queued .hp-halo,
+  .chat-body .msg.queued .hp-line,
+  .chat-body .msg.queued .hp-shape{animation:none}
+  .chat-body .msg.queued .hp-line{stroke:var(--hp-breath)}
+}
+
+@media(max-width:820px){
+  /* 2026-11-13 第 40 条：手机端同样贴到对侧头像边线。旧值 86% 是「留白美」时代的，
+     实测 390 宽下两侧各空 13px。这里 -28px 是按手机网格(40px 头像 + 8px gap + 12px 内边距)
+     量出来的：助手右沿 328 = 用户头像左沿，用户左沿 52 = 助手头像右沿。 */
+  .chat-body .msg .msg-bubble{max-width:calc(100% - 28px)}
+}
+
+/* ── 真头像：把 .chat-sender 里的 .pw-avatar（可能是 gif 的 <img>）搬进 40px 方图。
+ * 槽位自己不再画 emoji；背景/边框留着当图片还没加载出来时的底。 */
+.chat-body .msg-avatar .pw-avatar{
+  width:100%;height:100%;margin:0;padding:0;border:0;
+  border-radius:inherit;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  font-size:13px;line-height:1;background:transparent;
+}
+.chat-body .msg-avatar .pw-avatar img,
+.chat-body .msg-avatar .pw-avatar-image{
+  width:100%;height:100%;object-fit:cover;border-radius:inherit;display:block;
+}
+.chat-body .msg-avatar .pw-avatar.circle,
+.chat-body .msg-avatar .pw-avatar.pw-avatar-circle{border-radius:50%}
+
+/* 真头像时槽位自身不再有边框/底色，避免像套了个环 */
+.chat-body .msg-avatar.real{border:0;background:transparent}
+.chat-body .msg-avatar .pw-avatar:has(>img){border-color:transparent;background:transparent;border-radius:inherit}

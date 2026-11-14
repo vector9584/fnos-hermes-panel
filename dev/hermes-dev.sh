@@ -66,13 +66,20 @@ cmd_status() {
 
 cmd_check() {
   local ok=0
+  # 2026-11-11：这里原来没有 local f，循环变量把调用方（cmd_deploy 的 $f）踩掉了，
+  # 备份路径于是拼成 backups//vol1/.../monitor.js 这种鬼东西，cp 静默失败、没有备份。
+  local f
   for f in "$@"; do
     case "$f" in
       *.py)
         $PY_BIN -m py_compile "$f" 2>&1 && echo "✅ py_compile $f" || { echo "❌ py_compile $f"; ok=1; }
         ;;
       *.js|*.html)
-        local tmp=/tmp/_chk_$$.js
+        # 2026-11-11：临时文件原来写 /tmp，Node 靠「最近的 package.json」判 ESM，
+        # /tmp 下没有 package.json → server/*.js（type:module）每次都被判成
+        # "Cannot use import statement outside a module"，deploy server 一直是假红灯。
+        # 改成把临时文件放在源文件同目录（同一份 package.json 作用域内）。
+        local tmp="$(dirname "$f")/.chk_$$_x.js"
         if [ "${f##*.}" = html ]; then
           $PY_BIN - "$f" "$tmp" <<'EOF' || ok=1
 import re,sys
@@ -94,24 +101,69 @@ cmd_deploy() {
   [ "${2:-}" = "--no-restart" ] && do_restart=0
   local stamp; stamp=$(date +%Y%m%d_%H%M%S)
   case "$what" in
-    ui|server)
-      local f="index.html"; [ "$what" = server ] && f="monitor.js"
-      local rel="$what/$f"
+    ui)
+      # 2026-11-11：原来只部署 index.html，js/*.js、css/*.css 改了不会过去，
+      # 还会出现「?v= 版本号变了但文件还是旧的」。现在把 index.html + 所有 ui/js/*.js + ui/css/*.css 一起比对部署。
+      #
+      # 2026-11-11 二次教训（「我没看到任何变化」）：index.html 里 36 个 ?v= 是手写的固定串，
+      # 文件内容换了但 URL 没换 → 浏览器一直用缓存里的旧 CSS/JS，改了等于没改。
+      # 这里在部署前把每个 ?v= 重写成该文件内容的短 md5：内容变→URL 变→必然重新拉；
+      # 内容没变→URL 不变→继续吃缓存。不需要任何人再记得 bump 版本号。
+      python3 - "$SRC_REPO/app/ui" <<'PYBUMP' || true
+import hashlib, os, re, sys
+root = sys.argv[1]
+idx = os.path.join(root, 'index.html')
+try:
+    s = open(idx, encoding='utf-8').read()
+except OSError:
+    sys.exit(0)
+n = [0]
+def sub(m):
+    head, path = m.group(1), m.group(2)
+    fp = os.path.join(root, path)
+    if not os.path.isfile(fp):
+        return m.group(0)
+    h = hashlib.md5(open(fp, 'rb').read()).hexdigest()[:8]
+    n[0] += 1
+    return '%s="%s?v=%s"' % (head, path, h)
+new = re.sub(r'(src|href)="((?:js|css)/[^"?]+)(?:\?v=[^"]*)?"', sub, s)
+if new != s:
+    open(idx, 'w', encoding='utf-8').write(new)
+    print('已重写 %d 处资源版本号（内容哈希）' % n[0])
+PYBUMP
+      # 2026-11-13：原来只 ls ui/js/*.js ui/css/*.css —— 不含 js/core/、js/chat/、
+      # js/panels/、js/modals/ 这些子目录，于是「改了、部署了、没生效」反复出现。
+      # 改成 find 递归，一层目录不再是同步边界。
+      local rel deployed=0
+      for rel in ui/index.html $(cd "$SRC_REPO/app" && find ui/js ui/css -type f \( -name '*.js' -o -name '*.css' \) 2>/dev/null | sort); do
+        [ -f "$SRC_REPO/app/$rel" ] || continue
+        cmp -s "$SRC_REPO/app/$rel" "$APP_DIR/$rel" && continue
+        cmd_check "$SRC_REPO/app/$rel" >/dev/null || { echo "❌ 语法不过，不部署 $rel"; return 1; }
+        mkdir -p "$HERMES_HOME/backups"
+        cp "$APP_DIR/$rel" "$HERMES_HOME/backups/$(basename $rel).$stamp.bak" 2>/dev/null || true
+        # 2026-11-14：新增子目录（js/archive/）时目标目录不存在，cat > 会报
+        # "No such file or directory" 而脚本继续往下走，结果是「已部署」字样 + 文件根本没落地。
+        mkdir -p "$(dirname "$APP_DIR/$rel")" || { echo "❌ 建不了目录 $rel"; return 1; }
+        # 用 cat > 原地写，保住 hermes-agent 属主（cp 覆盖会把属主改成当前用户）
+        cat "$SRC_REPO/app/$rel" > "$APP_DIR/$rel"
+        echo "已部署 $rel  (备份: backups/$(basename $rel).$stamp.bak)"
+        md5sum "$APP_DIR/$rel" "$SRC_REPO/app/$rel"
+        deployed=1
+      done
+      [ "$deployed" = 1 ] || echo "ui 与 git 源一致，无需部署"
+      echo "✅ UI 是静态文件，浏览器刷新即生效，不用重启"
+      ;;
+    server)
+      local f="monitor.js" rel="server/monitor.js"
       [ -f "$SRC_REPO/app/$rel" ] || { echo "❌ git 源缺 $rel"; return 1; }
       cmd_check "$SRC_REPO/app/$rel" || { echo "❌ 语法不过，不部署"; return 1; }
       mkdir -p "$HERMES_HOME/backups"
-      cp "$APP_DIR/$rel" "$HERMES_HOME/backups/$(basename $f).$stamp.bak"
+      cp "$APP_DIR/$rel" "$HERMES_HOME/backups/$f.$stamp.bak"
       # 用 cat > 原地写，保住 hermes-agent 属主（cp 覆盖会把属主改成当前用户）
       cat "$SRC_REPO/app/$rel" > "$APP_DIR/$rel"
-      echo "已部署 $rel  (备份: backups/$(basename $f).$stamp.bak)"
+      echo "已部署 $rel  (备份: backups/$f.$stamp.bak)"
       md5sum "$APP_DIR/$rel" "$SRC_REPO/app/$rel"
-      if [ "$what" = ui ]; then
-        echo "✅ UI 是静态文件，浏览器刷新即生效，不用重启"
-      elif [ "$do_restart" = 1 ]; then
-        restart_app && echo "✅ monitor.js 已生效"
-      else
-        echo "⚠️  需要重启才生效：dev/hermes-dev.sh restart"
-      fi
+      if [ "$do_restart" = 1 ]; then restart_app && echo "✅ monitor.js 已生效"; else echo "⚠️  需要重启才生效：dev/hermes-dev.sh restart"; fi
       ;;
     py)
       local files; files=$(cd "$SRC_REPO" && git status --porcelain 2>/dev/null | awk '{print $2}' | grep '\.py$')

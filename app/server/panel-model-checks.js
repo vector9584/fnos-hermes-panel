@@ -99,9 +99,38 @@ export class ModelChecks{
 export function createModelChecksHandler({checks,checkToken}){
  const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
  return async(req,path)=>{
-  if(!path.startsWith('/api/panel-models/checks')&&path!=='/api/panel-models/catalog')return null;
+  if(!path.startsWith('/api/panel-models/checks')&&path!=='/api/panel-models/catalog'&&path!=='/api/panel-models/probe')return null;
   if(!checkToken(req))return reply({ok:false,error:'请重新登录后验证模型'},401);
   try{
+   if(path==='/api/panel-models/probe'&&req.method==='POST'){
+    // 表单里还没保存的服务也要能测：前端直传 base_url+key，或用服务 ID 借已存密钥。
+    const body=await req.json(),model=typeof body.model==='string'?body.model.trim():'';
+    if(!model||model.length>500)throw stateError('请先选择要测试的模型',400);
+    let target={name:'临时测试',base_url:'',api_key:'',api_mode:typeof body.api_mode==='string'?body.api_mode:'',model,extra_body:{},extra_headers:{}};
+    if(typeof body.provider_id==='string'&&body.provider_id){
+     const resolved=await checks.source({action:'resolve',provider:body.provider_id,model});
+     target={...resolved.target,...(target.api_mode?{api_mode:target.api_mode}:{})};
+    }
+    const url=typeof body.base_url==='string'?body.base_url.trim():'';
+    if(url){const parsed=new URL(url);if(!['http:','https:'].includes(parsed.protocol))throw stateError('服务地址需为 HTTP/HTTPS',400);target.base_url=url;}
+    if(typeof body.api_key==='string'&&body.api_key.trim())target.api_key=body.api_key.trim();
+    if(!target.base_url)throw stateError('请先填写服务地址',400);
+    const started=Date.now();
+    try{
+     // 推理型模型（deepseek-v4 这类）会把 16 个 token 全花在思考上，content 为空。
+     // 先试小额度快测，遇到"没返回可显示回复"再放大一次额度重试。
+     let result;
+     try{result=await checkModelResponse(target,{timeoutMs:25000,maxTokens:64,prompt:'只回复两个字：收到'});}
+     catch(error){
+      if(/没有返回可显示的回复/.test(error.message||''))result=await checkModelResponse(target,{timeoutMs:40000,maxTokens:512,prompt:'只回复两个字：收到'});
+      else throw error;
+     }
+     return reply({ok:true,latency_ms:result.latency_ms||Date.now()-started,response_model:result.response_model||'',output:String(result.output||'').slice(0,300)});
+    }catch(error){
+     if(error.status)throw error;
+     throw stateError(error.message?('测试失败：'+error.message):'测试失败，检查地址与密钥',502);
+    }
+   }
    if(path==='/api/panel-models/catalog'&&req.method==='GET')return reply(await checks.source({action:'catalog'}));
    if(path==='/api/panel-models/checks'){
     if(req.method==='GET')return reply({ok:true,checks:checks.list()});

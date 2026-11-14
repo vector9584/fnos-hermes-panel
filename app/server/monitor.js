@@ -18,6 +18,7 @@ import { handleCustomRoute } from "./custom_routes.js";
 import { skillInstallName } from "./panel-skill-path.js";
 import { handleWorkspace, sessionSystem, sessionIdentity, sessionSnapshot, readWorkspace } from "./panel-workspace.js";
 import { UI_CAPABILITIES_PROMPT, buildChatHistory } from "./panel-chat-prompt.js";
+import { createChatCompress } from "./panel-chat-compress.js";
 import { atomicWriteJSON, safeId } from "./panel-state.js";
 import { ChatQueue } from "./panel-queue.js";
 import { createQueueHandler } from "./panel-queue-http.js";
@@ -29,12 +30,14 @@ import { ModelChecks, createModelSource, createModelChecksHandler } from "./pane
 import {LibraryReviews,createLibraryReviewHandler} from './panel-library-reviews.js';
 import {LibraryStore,createLibraryHandler} from './panel-library.js';
 import {createLibrarySources} from './panel-library-sources.js';
+import {createArchiveVault} from './panel-archive.js';
 import {PlanStore,createPlanHandler,createPlanLaunch} from './panel-plans.js';
 import {bindSessionPlan} from './panel-workspace.js';
 import { RoomStore, RoomRunner, createRoomHandler } from "./panel-rooms.js";
 import { createRoomExecution } from "./panel-room-execution.js";
 import { expertCatalog, saveExpert, getExpert } from "./panel-experts.js";
 import { createAuxiliaryHandler } from "./panel-auxiliary.js";
+import { createSpeechConfigHandler } from "./panel-speech-config.js";
 import { createConnectorToolsHandler } from "./panel-connector-tools.js";
 import { ConnectorStore, createConnectorHandler } from "./panel-connectors.js";
 import { createConnectorProbeHandler } from "./panel-connector-probe.js";
@@ -474,7 +477,11 @@ function computeSessionUsage(session, options = {}) {
     conversation: conversationTokens,
     total,
     window: options.contextWindow || DEFAULT_CONTEXT_WINDOW,
+    /* 2026-11-13：pct 原来被 Math.min(100) 夹住，超窗也显示 100%，看不出「已经超了」。
+       pct 保持夹紧值兼容旧前端，pctRaw 给真值（可 >100），over 标记是否超窗。 */
     pct: Math.min(100, Math.round((total / (options.contextWindow || DEFAULT_CONTEXT_WINDOW)) * 100)),
+    pctRaw: Math.round((total / (options.contextWindow || DEFAULT_CONTEXT_WINDOW)) * 1000) / 10,
+    over: total > (options.contextWindow || DEFAULT_CONTEXT_WINDOW),
   };
 }
 
@@ -1200,7 +1207,19 @@ const SESSION_META_TTL = 5000;                // ms，兜底重建周期
 // 活跃 profile 内存缓存（模块级！handleFetch 每请求执行，若声明在函数内每次请求都会重置而失效）
 let _activeProfileCache = null;
 function _sessionMetaFromData(s) {
-  return { id: s.id, title: s.title, created_at: s.created_at, updated_at: s.updated_at, message_count: (s.messages || []).length };
+  /* 2026-11-13：列表圆点按「这条会话最后发生了什么」着色，元数据带上末条状态。
+     只读数组尾元素，不额外解析，元数据缓存开销不变。 */
+  const msgs = s.messages || [];
+  const last = msgs.length ? msgs[msgs.length - 1] : null;
+  const lastAssistant = last && last.role === 'assistant' ? last : null;
+  return {
+    id: s.id, title: s.title, created_at: s.created_at, updated_at: s.updated_at, message_count: msgs.length,
+    last_role: last ? last.role : null,
+    last_ts: last && last.ts ? last.ts : null,
+    last_status: lastAssistant ? (lastAssistant.queue_status || 'done') : null,
+    last_error_code: lastAssistant && lastAssistant.error_code ? lastAssistant.error_code : null,
+    last_duration_ms: lastAssistant && lastAssistant.duration_ms ? lastAssistant.duration_ms : null,
+  };
 }
 function _buildSessionMetaMap() {
   const map = new Map();
@@ -1230,7 +1249,19 @@ function listSessions() {
   if (!_sessionMetaCache || (now - _sessionMetaCache.builtAt) > SESSION_META_TTL) {
     _sessionMetaCache = { builtAt: now, map: _buildSessionMetaMap() };
   }
-  return Array.from(_sessionMetaCache.map.values()).sort((a, b) => b.updated_at - a.updated_at);
+  /* 实时态叠加：running 只在内存（activeChatStreams），needs_input 看队列里挂着的 clarify。
+     缓存里只有落盘状态，所以每次返回时现叠一层，不写缓存。 */
+  const rows = Array.from(_sessionMetaCache.map.values()).sort((a, b) => b.updated_at - a.updated_at);
+  return rows.map(m => {
+    let jobs = [];
+    try { jobs = panelChatQueue.list(m.id) || []; } catch { jobs = []; }
+    const running = activeChatStreams.has(m.id);
+    const needsInput = jobs.some(j => j && j.pending_clarify);
+    const queued = jobs.filter(j => j && j.status === 'pending').length;
+    const interrupted = !running && !needsInput && (m.last_status === 'interrupted' || m.last_status === 'failed');
+    return { ...m, running, needs_input: needsInput, queued_count: queued,
+      state: running ? 'running' : needsInput ? 'needs_input' : interrupted ? 'interrupted' : 'idle' };
+  });
 }
 function getSession(id) {
   const f = sessionFile(id);
@@ -1274,6 +1305,14 @@ function restoreSession(id) {
   if (_sessionMetaCache) _sessionMetaCache.map.set(id, _sessionMetaFromData(s));
   try { _sessionSigCache.set(id, computeSessionSig(s)); } catch {}
   return s;
+}
+
+// 彻底删除归档会话：物理删文件，不可恢复（归档=rename 到 ARCHIVED，这里才是真删）
+function purgeArchivedSession(id) {
+  const f = archivedSessionFile(id);
+  if (!existsSync(f)) throw Object.assign(new Error("归档会话不存在"), {status: 404});
+  unlinkSync(f);
+  return true;
 }
 
 // ── 会话同步签名：多窗口/多端消息同步（前端轮询几十字节的签名，变化才拉全量）──
@@ -1703,6 +1742,10 @@ function clarifyWaitMs() {
   } catch { return 12 * 60 * 1000; }
 }
 const activeChatStreams = new Map();
+let _chatCompress = null;   // /api/chat/compress 的懒加载实例（首次调用时建，复用并发锁）
+// 2026-11-13：本轮开始时间（SSE/WS 两个入口各写一次），finalize 时折算 duration_ms 落盘，
+// 刷新后 msg-statusbar 才有真实耗时，不再靠前端内存里的 Date.now() 现算。
+const _turnStart = new Map();
 const wsMessageQueue = new Map(); // session_id → message，WS 连接前暂存
 // 流结果缓存：WS 断开后 SSE fallback 可复用已完成的流结果，避免重新请求 LLM
 // 格式: session_id → { status:'running'|'done'|'error', reply:'', tools:[], error:'', waiters:[] }
@@ -1798,7 +1841,7 @@ function sweepZombieStreams(session) {
   let changed = false;
   for (const m of session.messages) {
     if (m && m.role === "assistant" && m._streaming && (now - (m.ts || 0) > 60000)) {
-      changed = interruptAssistantMessage(m, {now}) || changed;
+      changed = interruptAssistantMessage(m, {now: () => now}) || changed;
     }
   }
   if (changed) saveSession(session);
@@ -1833,12 +1876,19 @@ function finalizeAssistantMessage(sessionId, content, options = {}, streamId) {
       target.sender = target.sender || _sender;
       if (options.identity) Object.assign(target, options.identity);
       if (options.queueStatus) target.queue_status = options.queueStatus;
+      if (options.errorCode) target.error_code = options.errorCode;
+      /* 2026-11-13：把本轮真实耗时落盘，msg-statusbar 右侧时间刷新后仍然在。 */
+      const _t0 = _turnStart.get(sessionId);
+      if (_t0) { target.duration_ms = Math.max(0, Date.now() - _t0); target.finished_at = Date.now(); _turnStart.delete(sessionId); }
       delete target._streaming;
       delete target._streamId;
       if (options.tools) target.tools = options.tools;
     } else {
       const msg = { role: "assistant", content, ts: Date.now(), sender: _sender, ...options.identity };
       if (options.queueStatus) msg.queue_status = options.queueStatus;
+      if (options.errorCode) msg.error_code = options.errorCode;
+      const _t0n = _turnStart.get(sessionId);
+      if (_t0n) { msg.duration_ms = Math.max(0, Date.now() - _t0n); msg.finished_at = Date.now(); _turnStart.delete(sessionId); }
       if (options.tools) msg.tools = options.tools;
       msgs.push(msg);
     }
@@ -1936,6 +1986,7 @@ function createChatStream(sessionId, message, reqSignal, systemOverride, modelOv
 
       const stopCtrl = new AbortController();
       activeChatStreams.set(sessionId, stopCtrl);
+      _turnStart.set(sessionId, Date.now());
 
       const keepaliveTimer = setInterval(() => {
         try { controller.enqueue(enc.encode(`: keepalive\n\n`)); } catch {}
@@ -2344,6 +2395,7 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
   if (execution.signal?.aborted) abortExecution();
   ws.data.stopCtrl = stopCtrl;
   activeChatStreams.set(sessionId, stopCtrl);
+  _turnStart.set(sessionId, Date.now());
   wsClients.set(sessionId, ws);
   sendJSON({ info: '正在思考…' });
 
@@ -2548,7 +2600,7 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
       const partialContent = fullReply || (hadToolCalls
         ? `（本轮中断：${requestError}；已执行 ${responseTools.length} 个工具调用，发「继续」接着跑）`
         : `(请求失败: ${requestError})`);
-      finalizeAssistantMessage(sessionId, partialContent, { tools: interruptPendingTools(responseTools), systemOverride, identity: replyIdentity, queueStatus:'failed' }, streamId);
+      finalizeAssistantMessage(sessionId, partialContent, { tools: interruptPendingTools(responseTools), systemOverride, identity: replyIdentity, queueStatus:'failed', errorCode: timedOutByTimer ? 'provider_timeout' : 'provider_error' }, streamId);
       sendJSON({ error: `所有模型均失败: ${requestError}` });
       cacheEntry.status = 'error'; cacheEntry.error = requestError; cacheEntry.reply = fullReply;
     } else {
@@ -2647,6 +2699,7 @@ const panelLibraryReviews=new LibraryReviews({root:join(VAR_DIR,'panel-state/lib
 try{panelLibraryReviews.load();}catch(error){panelLibraryReviews.fault=error;log('[library-reviews] '+error.message);}
 const handlePanelLibraryReviews=createLibraryReviewHandler({reviews:panelLibraryReviews,checkToken});
 const handlePanelLibrary=createLibraryHandler({store:panelLibraryStore,checkToken});
+const handleArchiveVault=createArchiveVault({dataDir:DATA_DIR,checkToken,python:join(VENV_BIN,'python3'),serverRoot:join(APP_DIR,'server'),state:join(VAR_DIR,'panel-state')});
 const panelPlanStore=new PlanStore({root:join(VAR_DIR,'panel-state'),legacyConfig:CONFIG_FILE,legacyFlows:join(DATA_DIR,'flows'),expert:getExpert});
 const handlePanelPlans=createPlanHandler({store:panelPlanStore,checkToken,launch:createPlanLaunch({queue:panelChatQueue,
  ensureSession:(id,title)=>{if(!getSession(id))saveSession({id,title,messages:[],created_at:Date.now(),updated_at:Date.now()});},
@@ -4021,6 +4074,9 @@ async function handleModelChecks(req, path) {
 const handleAuxiliary = createAuxiliaryHandler({python: `${VENV_BIN}/python3`, serverRoot: join(APP_DIR, 'server'),
   getConfig: () => { const profile = _cronProfileName(); return profile && profile !== 'default' ? join(DATA_DIR, 'profiles', safeId(profile), 'config.yaml') : HERMES_CONFIG; },
   backupRoot: join(VAR_DIR, 'panel-state/auxiliary-backups'), checkToken});
+const handleSpeechConfig = createSpeechConfigHandler({python: `${VENV_BIN}/python3`, serverRoot: join(APP_DIR, 'server'),
+  getConfig: () => { const profile = _cronProfileName(); return profile && profile !== 'default' ? join(DATA_DIR, 'profiles', safeId(profile), 'config.yaml') : HERMES_CONFIG; },
+  lockRoot: join(VAR_DIR, 'panel-state'), checkToken});
 const handleConnectorTools = createConnectorToolsHandler({getConnector, readState: () => panelConnectorStore.all(), checkToken, call: callConnectorTool});
 const handleConnectorConfig = createConnectorHandler({catalog: CONNECTOR_CATALOG, store: panelConnectorStore, checkToken, probe: probeConnector});
 const handleMaintenance = createMaintenanceHandler({checkToken, repositories: [
@@ -4069,12 +4125,16 @@ async function handleFetch(req) {
   if (modelChecksResponse) return modelChecksResponse;
   const auxiliaryResponse = await handleAuxiliary(req, path);
   if (auxiliaryResponse) return auxiliaryResponse;
+  const speechConfigResponse = await handleSpeechConfig(req, path);
+  if (speechConfigResponse) return speechConfigResponse;
   const libraryReviewResponse = await handlePanelLibraryReviews(req, path);
   if (libraryReviewResponse) return libraryReviewResponse;
   const filesResponse = await handlePanelFiles(req, path);
   if (filesResponse) return filesResponse;
   const libraryResponse = await handlePanelLibrary(req, path);
   if (libraryResponse) return libraryResponse;
+  const archiveVaultResponse = await handleArchiveVault(req, path);
+  if (archiveVaultResponse) return archiveVaultResponse;
   const planResponse = await handlePanelPlans(req, path);
   if (planResponse) return planResponse;
   const roomResponse = await handlePanelRooms(req, path);
@@ -4431,8 +4491,8 @@ async function handleFetch(req) {
       log(`[app-update] 开始自动更新 ${version || ""}（通道=${source}）：${url || "WebDAV"}`);
       // 下载源：优先 alist 分享直链（用户飞牛 5667/p/<分享码>/<文件>，公众下载通道免认证、国内快）
       // —— WebDAV（5244）仅为发布推送通道，不用于公众下载
-      const _shareBase = (process.env.HERMES_SHARE_BASE || "https://share.example.com:5667").replace(/\/+$/, "");
-      const _shareCode = process.env.HERMES_SHARE_CODE || "REDACTED_SHARE_CODE";
+      const _shareBase = (process.env.HERMES_SHARE_BASE || "").replace(/\/+$/, "");
+      const _shareCode = process.env.HERMES_SHARE_CODE || "";
       const _verTag = String(version || "").replace(/^fnos-hermes-agent_v|^v/, "");
       const _shareFile = _verTag ? `fnos-hermes-agent_v${_verTag}.fpk` : "";
       let dl = null;
@@ -4440,9 +4500,9 @@ async function handleFetch(req) {
       if (_shareFile) {
         // ① WebDAV（用户内部更新通道，凭证从 data/.env 读取，不硬编码）
         const _envCfg = (() => { try { const t = readFileSync(`${DATA_DIR}/.env`, "utf8"); const g = k => { const m = t.match(new RegExp("^" + k + "\\s*=\\s*(.+)$", "m")); return m ? m[1].trim() : ""; }; return { u: g("HERMES_WD_USER"), p: g("HERMES_WD_PASS"), b: g("HERMES_WD_BASE") }; } catch { return { u: "", p: "", b: "" }; } })();
-        const _wdBase = (_envCfg.b || "https://webdav.example.com").replace(/\/+$/, "");
+        const _wdBase = (_envCfg.b || "").replace(/\/+$/, "");
         const _wdPath = (_envCfg.p2 || "Fnosapp").replace(/^\/+|\/+$/g, "");
-        if (source !== "github") {
+        if (source !== "github" && _wdBase) {
           try {
             // 匿名调用 OpenList API 获取 raw_url（无需认证，公众下载通道）
             const apiUrl = `${_wdBase}/api/fs/get`;
@@ -4469,7 +4529,7 @@ async function handleFetch(req) {
           } catch (e) { log(`[app-update] OpenList 下载异常: ${e.message}`); dl = null; }
         }
         // ② alist 分享直链（公众通道，免认证）——仅 auto 通道使用
-        if (source === "auto" && !dl && !buf) {
+        if (source === "auto" && !dl && !buf && _shareBase && _shareCode) {
           try {
             const shareUrl = `${_shareBase}/p/${_shareCode}/${_shareFile}`;
             log(`[app-update] 尝试从 alist 分享直链下载: ${shareUrl}`);
@@ -7310,15 +7370,38 @@ function _saveChannelChanges(id, body){
       const _u = new URL(req.url, "http://localhost");
       const _reqProfile = (_u.searchParams.get("profile") || "").trim();
       const _profileDir = _reqProfile ? _resolveProfileDir(_reqProfile) : _activeProfileDir();
-      let soul = "", memory = "", notes = "";
+      let soul = "", memory = "", notes = "", user = "", agents = "";
       try { soul = readFileSync(`${_profileDir}/SOUL.md`, "utf8"); } catch {}
       try { memory = readFileSync(`${_profileDir}/memories/MEMORY.md`, "utf8"); } catch {}
       try { notes = readFileSync(`${DATA_DIR}/notes.md`, "utf8"); } catch {}
+      /* 2026-11-13（资料面板「助手」板块）：USER.md 与 AGENTS.md 也要能读能改。
+         两者都在 profile 目录下，路径写死不接受请求参数，避免变成任意文件读写。 */
+      try { user = readFileSync(`${_profileDir}/memories/USER.md`, "utf8"); } catch {}
+      try { agents = readFileSync(`${_profileDir}/AGENTS.md`, "utf8"); } catch {}
       // 读取记忆配置（config.yaml 中的 memory 段）
       const cfg = _readHermesConfig();
       const memEnabled = !/memory:\s*\n\s*enabled:\s*false/.test(cfg);
       const _effProfile = _reqProfile || _getActiveProfile();
-      return new Response(JSON.stringify({ ok: true, soul, memory, notes, memory_enabled: memEnabled, profile: _effProfile, profile_dir: _profileDir }), { headers: jsonHeaders() });
+      /* 能力清单：只取技能名，不读正文（355 个 SKILL.md 全文会把响应撑到几兆）。 */
+      let skills = [];
+      try {
+        const sdir = `${_profileDir}/skills`;
+        for (const name of readdirSync(sdir)) {
+          const f = `${sdir}/${name}/SKILL.md`;
+          if (existsSync(f)) { try { skills.push({ name, bytes: statSync(f).size }); } catch {} }
+        }
+        skills.sort((a, b) => a.name.localeCompare(b.name));
+      } catch {}
+      /* 密码本：只给键名和掩码，值不出服务端。要看值走 POST reveal（需要显式确认）。 */
+      let envKeys = [];
+      try {
+        const raw = readFileSync(`${DATA_DIR}/.env`, "utf8");
+        envKeys = raw.split(/\r?\n/).map(l => l.trim()).filter(l => l && !l.startsWith("#")).map(l => {
+          const i = l.indexOf("=");
+          return i > 0 ? { key: l.slice(0, i).trim(), hint: (l.slice(i + 1).trim().length ? "已设置" : "空") } : null;
+        }).filter(Boolean);
+      } catch {}
+      return new Response(JSON.stringify({ ok: true, soul, memory, notes, user, agents, skills, env_keys: envKeys, memory_enabled: memEnabled, profile: _effProfile, profile_dir: _profileDir }), { headers: jsonHeaders() });
     } catch (e) {
       return new Response(JSON.stringify({ ok: false, error: e.message }), { status: 500, headers: jsonHeaders() });
     }
@@ -7339,6 +7422,18 @@ function _saveChannelChanges(id, body){
       }
       if (body.notes !== undefined) {
         writeFileSync(`${DATA_DIR}/notes.md`, String(body.notes), { mode: 0o644 });
+      }
+      /* USER.md / AGENTS.md 写入：同样只认固定路径；写前留一份 .bak 便于回滚。 */
+      if (body.user !== undefined) {
+        if (!existsSync(`${_profileDir}/memories`)) mkdirSync(`${_profileDir}/memories`, { recursive: true });
+        const f = `${_profileDir}/memories/USER.md`;
+        if (existsSync(f)) { try { copyFileSync(f, f + ".bak"); } catch {} }
+        writeFileSync(f, String(body.user), { mode: 0o644 });
+      }
+      if (body.agents !== undefined) {
+        const f = `${_profileDir}/AGENTS.md`;
+        if (existsSync(f)) { try { copyFileSync(f, f + ".bak"); } catch {} }
+        writeFileSync(f, String(body.agents), { mode: 0o644 });
       }
       const _effProfile = _reqProfile || _getActiveProfile();
       return new Response(JSON.stringify({ ok: true, profile: _effProfile, profile_dir: _profileDir }), { headers: jsonHeaders() });
@@ -8286,6 +8381,24 @@ function _saveChannelChanges(id, body){
     }
   }
 
+  // ── POST /api/chat/compress —— 面板会话真压缩（2026-11-13）───────────────
+  // 面板上下文真身是 chat/sessions/<id>.json 的 messages，压缩由 python 脚本落地：
+  // 早段消息换成语义摘要、保留最近一批、写回同一 session（id 不变），原文件先备份。
+  // 之前 /compress 是假命令（只往对话里塞一句"帮我写摘要"），这里才是真入口。
+  if (path === "/api/chat/compress" && req.method === "POST") {
+    let _cbody = {};
+    try { _cbody = await req.json(); } catch (_) { _cbody = {}; }
+    const _csid = String(_cbody.session_id || "").trim();
+    if (_csid && activeChatStreams.has(_csid)) {
+      return new Response(JSON.stringify({ ok: false, error: "这个会话正在生成回复，等这一轮结束再压缩" }), { status: 409, headers: jsonHeaders() });
+    }
+    if (!_chatCompress) {
+      _chatCompress = createChatCompress({ sessionsDir: SESSIONS_DIR, dataDir: DATA_DIR, serverDir: dirname(fileURLToPath(import.meta.url)), log });
+    }
+    const _cres = await _chatCompress(_cbody);
+    return new Response(JSON.stringify(_cres.json), { status: _cres.status, headers: jsonHeaders() });
+  }
+
   // 匹配 /api/sessions/:id/usage
   const usageMatch = path.match(/^\/api\/sessions\/([^/]+)\/usage$/);
   if (usageMatch && req.method === "GET") {
@@ -8343,6 +8456,18 @@ function _saveChannelChanges(id, body){
   if (restoreMatch && req.method === "POST") {
     try { const s = restoreSession(decodeURIComponent(restoreMatch[1])); return new Response(JSON.stringify({ok:true,session:_sessionMetaFromData(s)}), {headers: jsonHeaders()}); }
     catch (e) { return new Response(JSON.stringify({error:e.message || '恢复失败'}), {status:e.status || 500, headers: jsonHeaders()}); }
+  }
+
+  // 彻底删除归档会话（批量）。必须先于 /api/sessions/:id，且复用 archived 前缀避免误判。
+  if (path === "/api/sessions/archived/purge" && req.method === "POST") {
+    let ids = [];
+    try { const b = await req.json(); ids = Array.isArray(b && b.ids) ? b.ids : []; }
+    catch { return new Response(JSON.stringify({error: "invalid body"}), {status: 400, headers: jsonHeaders()}); }
+    ids = ids.map(x => String(x || "").trim()).filter(Boolean);
+    if (!ids.length) return new Response(JSON.stringify({error: "没有选中会话"}), {status: 400, headers: jsonHeaders()});
+    const results = ids.map(id => { try { purgeArchivedSession(id); return {id, ok: true}; } catch (e) { return {id, ok: false, error: e.message || "删除失败"}; } });
+    const purged = results.filter(r => r.ok).length;
+    return new Response(JSON.stringify({ok: purged > 0, purged, failed: results.length - purged, results}), {headers: jsonHeaders()});
   }
 
   // 匹配 /api/sessions/:id

@@ -3,6 +3,15 @@ const TERMINAL_TOOL_STATES = new Set([
   'interrupted', 'cancelled', 'canceled',
 ]);
 
+// 调用方可能把时间戳（数字）当 now 传进来 —— monitor.js 的 sweepZombieStreams
+// 就传过 `{now}`，导致 message.ts = now() 抛 "now is not a function"（2026-11-12）。
+// 这里统一归一化成函数，数字按固定时间戳处理，非法值退回 Date.now。
+const toClock = now => {
+  if (typeof now === 'function') return now;
+  const fixed = Number(now);
+  return Number.isFinite(fixed) ? () => fixed : Date.now;
+};
+
 /**
  * Finish a persisted assistant turn after its stream is interrupted.
  * Tool history is retained; only calls without a terminal state are marked
@@ -31,6 +40,7 @@ function mergeTools(existing, incoming) {
 
 export function interruptAssistantMessage(message, {now = Date.now, phrase = '（这条回复在生成过程中被打断，内容不完整）', tools} = {}) {
   if (!message || message.role !== 'assistant') return false;
+  now = toClock(now);
   if (Array.isArray(tools) && tools.length) message.tools = mergeTools(message.tools, tools);
   if (Array.isArray(message.tools)) {
     message.tools = message.tools.map(tool => {
@@ -53,6 +63,7 @@ export function interruptAssistantMessage(message, {now = Date.now, phrase = '�
 
 export function recoverInterruptedAssistantMessage(session, job, {now = Date.now} = {}) {
   if (!session || !Array.isArray(session.messages) || !job?.id) return null;
+  now = toClock(now);
   let message = session.messages.find(item => item.role === 'assistant' && item.request_id === job.id);
   if (!message) {
     const userIndex = session.messages.findIndex(item => item.role === 'user' && item.request_id === job.id);

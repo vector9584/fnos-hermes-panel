@@ -6,10 +6,11 @@
     overlay.innerHTML = '<form class="modal cron-native-editor" role="dialog" aria-modal="true" aria-label="Webhook 投递">' +
       '<div class="modal-head"><h3>Webhook 投递</h3><button type="button" class="modal-close" aria-label="关闭">×</button></div>' +
       '<div class="modal-body"><p>任务产生结果后投递到以下地址。消息模板中的 {output} 会替换成任务输出。</p>' +
-      '<div class="cron-hooks-list"></div><button type="button" class="action cron-hook-add">添加投递目标</button>' +
+      '<div class="cron-hooks-list"></div><button type="button" class="btn cron-hook-add">添加投递目标</button>' +
       '<p role="status" class="cron-editor-feedback">正在读取…</p></div>' +
-      '<div class="modal-foot"><button type="button" class="action cron-hooks-discard">丢弃草稿</button><button type="submit" class="action primary" disabled>保存投递配置</button></div></form>';
-    document.body.append(overlay);
+      '<div class="modal-foot"><button type="button" class="btn cron-hooks-discard">丢弃草稿</button><button type="submit" class="btn primary" disabled>保存投递配置</button></div></form>';
+    document.body.append(overlay)
+    window.ui.adoptOverlay(overlay,{esc:false,trap:false});
     var form = overlay.querySelector('form'), list = overlay.querySelector('.cron-hooks-list');
     var feedback = overlay.querySelector('[role=status]'), save = overlay.querySelector('[type=submit]');
     var add = overlay.querySelector('.cron-hook-add');
@@ -61,11 +62,11 @@
         var status = document.createElement('p');
         status.textContent = row.last_status === 'ok' ? '上次投递成功' : row.last_status === 'error' ? '上次投递失败：' + row.last_error : '等待任务产生新结果';
         section.append(status);
-        var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'action'; remove.textContent = '移除此目标';
+        var remove = document.createElement('button'); remove.type = 'button'; remove.className = 'btn'; remove.textContent = '移除此目标';
         remove.onclick = function () {
           rows.splice(index, 1); persist(); render();
           feedback.replaceChildren(document.createTextNode('已移出表单，保存后生效。'));
-          var undo = document.createElement('button'); undo.type = 'button'; undo.className = 'action'; undo.textContent = '撤销';
+          var undo = document.createElement('button'); undo.type = 'button'; undo.className = 'btn'; undo.textContent = '撤销';
           undo.onclick = function () { rows.splice(index, 0, row); persist(); render(); feedback.textContent = '已恢复投递目标'; };
           feedback.append(undo);
         };

@@ -27,7 +27,7 @@
    }
    if(job.error)row.append(el('p',job.error,'model-check-error'));
    if(job.status==='running'){
-    var cancel=el('button',job.cancel_requested_at?'正在取消…':'取消验证','action');cancel.disabled=!!job.cancel_requested_at;
+    var cancel=el('button',job.cancel_requested_at?'正在取消…':'取消验证','btn');cancel.disabled=!!job.cancel_requested_at;
     cancel.onclick=async function(){cancel.disabled=true;try{await request('checks/'+encodeURIComponent(job.id)+'/cancel','POST',{});await refresh(false);}catch(error){status.textContent=error.message;cancel.disabled=false;}};row.append(cancel);
    }
    list.append(row);
@@ -54,5 +54,5 @@
   }catch(error){status.textContent=error.message+'；可重试提交，重复请求不会重复执行。';}
   finally{submitting=false;controls();}
  };
- setInterval(function(){if(document.getElementById('page-models').classList.contains('active'))refresh(false);},2000);
+ setInterval(function(){if(document.getElementById('page-models-checks').classList.contains('active'))refresh(false);},2000);
 }());

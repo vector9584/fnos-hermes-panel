@@ -11,7 +11,7 @@ if(window.__fusionV030Loaded) return;
 window.__fusionV030Loaded = true;
 
 /* ── 工具 ── */
-function esc30(s){ return String(s==null?"":s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function esc30(s){ return DOM.escDouble(s); } /* 唯一实现在 core/dom.js */
 function toast30(msg,type){ if(window.toast){ try{ window.toast(msg,type); return; }catch(e){} } if(window.alert) alert(msg); }
 function api30(path,method,body){
   method=method||"GET";
@@ -26,28 +26,12 @@ function fmt30(ts){ if(!ts) return ""; var d=new Date(ts); return ("0"+d.getHour
 function fmtDate30(ts){ if(!ts) return ""; var d=new Date(ts); return (d.getMonth()+1)+"月"+d.getDate()+"日 "+fmt30(ts); }
 function el30(tag,html,cls){ var e=document.createElement(tag); if(html!=null) e.innerHTML=html; if(cls) e.className=cls; return e; }
 function modal30(title,bodyHTML,footHTML){
-  var opener=document.activeElement;
-  var ov=el30("div",'<div class="modal-overlay" style="position:fixed;left:0;top:0;width:100vw;height:100vh;background:rgba(0,0,0,.45);z-index:9000;display:flex;align-items:center;justify-content:center;padding:16px">'+
-    '<div class="modal" role="dialog" aria-modal="true" aria-label="'+esc30(title)+'" style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);width:100%;max-width:620px;max-height:88vh;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.2)">'+
-    '<div class="modal-head" style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--border);flex-shrink:0"><h3 style="margin:0;font-size:16px">'+esc30(title)+'</h3><button class="modal-close" aria-label="关闭" title="关闭" style="width:28px;height:28px;border:none;background:transparent;cursor:pointer;font-size:20px;color:var(--text3)">×</button></div>'+
-    '<div class="modal-body" style="padding:16px;overflow-y:auto;flex:1;min-height:0;display:flex;flex-direction:column;gap:12px">'+bodyHTML+'</div>'+
-    (footHTML?'<div class="modal-foot" style="display:flex;justify-content:flex-end;gap:10px;padding:14px 16px;border-top:1px solid var(--border);flex-shrink:0">'+footHTML+'</div>':'')+
-    '</div></div>');
-  document.body.appendChild(ov);
-  var close=ov.querySelector('.modal-close'),dialog=ov.querySelector('[role="dialog"]');
-  function dismiss(){if(!ov.isConnected)return;ov.remove();if(opener&&opener.isConnected)opener.focus();}
-  close.onclick=dismiss;
-  ov.addEventListener('click',function(event){if(event.target===ov.firstElementChild)dismiss();});
-  ov.addEventListener('keydown',function(event){
-    if(event.key==='Escape'){event.preventDefault();dismiss();return;}
-    if(event.key!=='Tab')return;
-    var items=Array.from(dialog.querySelectorAll('button,input,select,textarea,[tabindex]:not([tabindex="-1"])')).filter(function(item){return !item.disabled&&!item.hidden&&item.getClientRects().length;});
-    if(!items.length)return;
-    if(event.shiftKey&&document.activeElement===items[0]){event.preventDefault();items[items.length-1].focus();}
-    else if(!event.shiftKey&&document.activeElement===items[items.length-1]){event.preventDefault();items[0].focus();}
-  });
-  close.focus();
-  return ov;
+  /* 适配器。唯一实现是 core/ui-kit.js 的 UI.modal（Esc／焦点陷阱／backdrop 关闭／
+     滚动锁／层级栈都在那边）。这里只保留老签名和"返回 overlay 元素"的约定；
+     以前那套内联样式的独立弹窗已删——它就是"改一个弹窗要改四遍"的来源。 */
+  var m=window.ui.modal({title:title,bodyHTML:bodyHTML,footerHTML:footHTML,
+    overlayClass:'modal-overlay',className:'modal'});
+  return m.backdropEl;
 }
 function btn30(label,onclick,primary){
   var b=el30("button",esc30(label),"btn"+(primary?" primary":""));
@@ -90,7 +74,7 @@ window.roomAtDialog=function(){
     var on=typeof roomAt!=="undefined"&&roomAt.has(m.key);
     return '<label class="room-ck"><input type="checkbox" value="'+m.key+'"'+(on?' checked':'')+' style="accent-color:var(--accent)"><span>'+(m.emoji||'🧠')+' '+esc30(m.label)+'</span></label>';
   }).join('');
-  modal30("@ 成员（可多选，并行回复）", membersHtml+'<div style="font-size:11.5px;color:var(--muted)">不选择任何成员 = 主 Hermes 回复</div>',
+  modal30("@ 成员（可多选，并行回复）", membersHtml+'<div style="font-size:11.5px;color:var(--muted)">不选择成员：由主持人按任务组织专家讨论</div>',
     '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">取消</button><button class="btn primary" onclick="roomAtDialogConfirm()">确定</button>');
 };
 window.roomAtDialogConfirm=function(){
@@ -301,7 +285,7 @@ window.roomCreateDialog=function(){
     '<button class="btn" onclick="this.closest(\'.modal-overlay\').remove()">取消</button>'+
     '<button class="btn primary" onclick="roomCreateConfirm()">创建房间</button>'+
     '</div></div></div>';
-  var div=document.createElement('div'); div.innerHTML=html; document.body.appendChild(div.firstChild);
+  var div=document.createElement('div'); div.innerHTML=html; window.ui.adoptOverlay(document.body.appendChild(div.firstChild));
   api30('/api/config').then(function(r){
     var sel=document.getElementById('roomCreateModel'); if(!sel) return;
     var ps=(r&&(r.providers||r.ymlProviders))||[];
@@ -351,7 +335,7 @@ window.chPollWeixinQr=function(qrcode, seq, retry){
     var stEl=document.getElementById('wxQrStatus');
     if(st==='wait'){ setTimeout(function(){ if(seq===cur()) window.chPollWeixinQr(qrcode, seq); }, 3000); }
     else if(st==='scaned'){ if(stEl) stEl.textContent='已扫码，请在微信中确认登录…'; setTimeout(function(){ if(seq===cur()) window.chPollWeixinQr(qrcode, seq); }, 3000); }
-    else if(st==='expired'){ var body=document.getElementById('chModalBody'); if(body) body.innerHTML='<div class="conn-hint">二维码已过期，请重新获取。</div><button class="action" style="margin-top:10px" onclick="chStartWeixinQr()">重新获取二维码</button>'; }
+    else if(st==='expired'){ var body=document.getElementById('chModalBody'); if(body) body.innerHTML='<div class="conn-hint">二维码已过期，请重新获取。</div><button class="btn" style="margin-top:10px" onclick="chStartWeixinQr()">重新获取二维码</button>'; }
     else if(st==='confirmed'){
       if(stEl) stEl.textContent='登录成功，正在保存凭证…';
       apiPost('/api/channels/weixin',{ credentials:{ WEIXIN_TOKEN:res.token||'', WEIXIN_ACCOUNT_ID:res.account_id||'', WEIXIN_BASE_URL:res.base_url||'' } }).then(function(){
@@ -400,7 +384,7 @@ window.chPollQqbotQr=function(taskId, seq, slot, retry){
       if(stEl) stEl.textContent='✅ 已绑定机器人'+(slot>1?' '+slot:'')+' App ID: '+(res.app_id||'')+'，正在保存凭证并重启网关…';
       setTimeout(function(){ if(typeof apiGet==="function") apiGet('/api/channels').then(function(r2){ if(typeof _chState!=="undefined") _chState.channels=(r2&&r2.channels)||_chState.channels; renderChannels(); }); if(typeof chShowQrSuccess==="function") chShowQrSuccess('QQ 机器人'+(slot>1?' '+slot:'')); }, 2000);
     }
-    else if(st==='expired'){ var b=document.getElementById('chModalBody'); if(b) b.innerHTML='<div class="conn-hint">二维码已过期，请重新获取。</div><button class="action" style="margin-top:10px" onclick="chStartQqbotQr('+slot+')">重新获取二维码</button>'; }
+    else if(st==='expired'){ var b=document.getElementById('chModalBody'); if(b) b.innerHTML='<div class="conn-hint">二维码已过期，请重新获取。</div><button class="btn" style="margin-top:10px" onclick="chStartQqbotQr('+slot+')">重新获取二维码</button>'; }
   }).catch(function(e){
     if(retry<5){ setTimeout(function(){ if(seq===cur()) window.chPollQqbotQr(taskId, seq, slot, retry+1); }, 2500); return; }
     var stEl=document.getElementById('qqQrStatus'); if(stEl) stEl.textContent='轮询出错：'+(e.message||e);
@@ -777,6 +761,8 @@ window.roomMsgAppend=function(kind,label,text,isMe,key,ts){
     }
     box.appendChild(el); box.scrollTop=box.scrollHeight;
   }catch(e){}
+  /* 头像/身份由 panel-workspace 提供，这里只给一个可选后置钩子 */
+  if(el&&window.pwDecorateRoom)window.pwDecorateRoom(el,label,isMe);
   return el;
 };
 /* 群聊消息操作按钮：复制（保留格式）/ 刷新（重新生成） */
@@ -829,6 +815,7 @@ window.roomStreamEl=function(label,key){
   el.appendChild(acts);
   box.appendChild(el); box.scrollTop=box.scrollHeight;
   el.__roomStore=_store;
+  if(window.pwDecorateRoom)window.pwDecorateRoom(el,label,false);
   return el;
 };
 window.connectRoomStream=function(id){

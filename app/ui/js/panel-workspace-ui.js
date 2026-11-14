@@ -2,12 +2,32 @@
 (function(){
 'use strict';
 var state={folders:[],sessions:{},favorites:[],identity:{user_name:'Vector',user_avatar:'👤',assistant_name:'Hermes',assistant_avatar:'🤖'},voice:{engine:'windows',fallback:true}};
-var ready,searchTimer,searchSeq=0,searchRows=[],expertList=[],speechJob=0,speechAudio=null,speechAbort=null,speechUrl=null;
+var _pwApi=null,ready,searchTimer,searchSeq=0,searchRows=[],expertList=[],speechJob=0,speechAudio=null,speechAbort=null,speechUrl=null;
 var E=escapeHtml;
 async function request(path,method,body){var r=await api('/api/workspace-ui'+path,method||'GET',body);if(r.error||r.ok===false)throw Error(r.error||'操作失败');return r;}
 async function reload(){var next=await request('');if(!next.sessions||!Array.isArray(next.folders))throw Error('会话工作区数据未就绪，请刷新重试');state=next;renderRail();return state;}
-function modal(title,body,foot){if(close()===false)throw Error('声音设置正在保存，请稍候');var opener=document.activeElement,d=document.createElement('div');d.className='modal-overlay';d.id='pwOverlay';d.innerHTML='<div class="modal pw-modal" role="dialog" aria-modal="true" aria-label="'+E(title)+'"><div class="modal-head"><h3>'+E(title)+'</h3><button type="button" class="modal-close" aria-label="关闭">×</button></div><div class="modal-body">'+body+'</div>'+(foot?'<div class="modal-foot">'+foot+'</div>':'')+'</div>';d._pwOpener=opener;d.addEventListener('click',function(e){if(e.target===d||e.target.closest('.modal-close'))close();});d.addEventListener('keydown',function(e){if(e.key==='Escape'){e.preventDefault();close();return;}if(e.key!=='Tab')return;var items=Array.from(d.querySelectorAll('button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),a[href],[tabindex]:not([tabindex="-1"])')).filter(function(item){return !item.hidden&&item.getClientRects().length;});if(!items.length)return;var first=items[0],last=items[items.length-1],outside=!d.contains(document.activeElement);if(e.shiftKey&&(document.activeElement===first||outside)){e.preventDefault();last.focus();}else if(!e.shiftKey&&(document.activeElement===last||outside)){e.preventDefault();first.focus();}});document.body.appendChild(d);setTimeout(function(){var input=d.querySelector('input:not([type=checkbox])');(input||d.querySelector('.modal-close'))?.focus();},0);return d;}
-function close(){clearTimeout(searchTimer);searchSeq++;var d=document.getElementById('pwOverlay');if(d){if(d._voiceSaving)return false;d._speechAbort?.abort();var a=d.querySelector('audio');if(a){a.pause();if(a.src)URL.revokeObjectURL(a.src);}var opener=d._pwOpener;d.remove();if(opener&&opener.isConnected)opener.focus();}}
+function modal(title,body,foot){
+  /* 适配器：唯一实现是 core/ui-kit.js 的 UI.modal。
+     id='pwOverlay' 和 .pw-modal 类名都保留——close() 靠 id 定位，CSS 靠类名。*/
+  if(close()===false)throw Error('声音设置正在保存，请稍候');
+  var opener=document.activeElement;
+  _pwApi=window.ui.modal({title:title,bodyHTML:body,footerHTML:foot,
+    overlayClass:'modal-overlay',className:'modal pw-modal',id:'pwOverlay',
+    onClose:function(){_pwApi=null;}});
+  var d=_pwApi.backdropEl;
+  d._pwOpener=opener;
+  return d;
+}
+function close(){
+  clearTimeout(searchTimer);searchSeq++;
+  var d=document.getElementById('pwOverlay');
+  if(!d)return;
+  if(d._voiceSaving)return false;
+  if(d._speechAbort)d._speechAbort.abort();
+  var a=d.querySelector('audio');
+  if(a){a.pause();if(a.src)URL.revokeObjectURL(a.src);}
+  if(_pwApi)_pwApi.close();else d.remove();
+}
 function fail(e){toast(e.message||String(e));}
 function field(label,id,value,type){return '<div class="field"><label for="'+id+'">'+E(label)+'</label><input id="'+id+'" type="'+(type||'text')+'" value="'+E(value||'')+'"></div>';}
 function folderPath(id){var names=[],seen=new Set();while(id&&!seen.has(id)){seen.add(id);var f=state.folders.find(x=>x.id===id);if(!f)break;names.unshift(f.name);id=f.parent_id;}return names.join(' / ');}
@@ -22,22 +42,75 @@ function avatarHTML(value,shape){shape=shape||state.identity?.avatar_shape;var c
  // 外链头像：浏览器直接取远端图；referrerpolicy 不把面板地址带给图床，图片挂了退化成图标
  if(/^https?:\/\//i.test(v))return '<img class="'+cls+'" src="'+E(v)+'" alt="" loading="lazy" referrerpolicy="no-referrer" onerror="this.outerHTML=\'🖼️\'">';
  return E(v||'🤖');}
-function updateComposerIdentity(){var e=activeExpert(),plan=(state.sessions[currentSession]||{}).plan;var planBar=document.getElementById('sessionPlanBar');if(plan&&!planBar){planBar=document.createElement('div');planBar.id='sessionPlanBar';planBar.className='selected-expert-bar';document.getElementById('chatComposer')?.prepend(planBar);}if(planBar){planBar.hidden=!plan;if(plan){planBar.replaceChildren();var text=document.createElement('span'),details=document.createElement('button'),clear=document.createElement('button');text.textContent='本会话方案：'+plan.name;details.textContent='查看快照';details.onclick=function(){var d=modal('会话任务方案','<pre id="sessionPlanContents" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>');d.querySelector('pre').textContent=plan.name+'\n'+(plan.description||'')+'\n\n'+(plan.kind==='team'?(plan.members||[]).map(m=>(m.name||m.id)+'\n'+m.prompt).join('\n\n'):(plan.steps||[]).map((step,i)=>'步骤 '+(i+1)+' · '+step.id+'\n职责：'+step.expert+'\n依赖：'+((step.depends_on||[]).join('、')||'无')+'\n'+step.task).join('\n\n'));};clear.textContent='结束方案';clear.onclick=async function(){try{await request('/session','PUT',{id:currentSession,clear_plan:true});await reload();toast('后续消息恢复普通会话；已排队任务保留快照');}catch(error){fail(error);}};planBar.append(text,details,clear);}}var button=document.getElementById('btnExpert');if(button){button.title='本会话专家：'+(e?e.name:'默认助手');button.setAttribute('data-tip',button.title);/* 保持 HTML 的 openMini(this,'expert') 吸附层，工具栏六个按钮全走同一套弹层 *//* 按钮保持纯图标，专家名只进 hover 提示，避免工具栏出现带字按钮 */
-button.querySelectorAll('.expert-label').forEach(function(n){n.remove();});button.setAttribute('aria-label',button.title);if(!button.querySelector('svg'))button.insertAdjacentHTML('afterbegin','<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>');}var bar=document.getElementById('selectedExpertBar');if(bar){bar.style.display='none';bar.innerHTML='';}}
+function updateComposerIdentity(){var e=activeExpert(),plan=(state.sessions[currentSession]||{}).plan;var planBar=document.getElementById('sessionPlanBar');if(plan&&!planBar){planBar=document.createElement('div');planBar.id='sessionPlanBar';planBar.className='selected-expert-bar';document.getElementById('chatComposer')?.prepend(planBar);}if(planBar){planBar.hidden=!plan;if(plan){planBar.replaceChildren();var text=document.createElement('span'),details=document.createElement('button'),clear=document.createElement('button');text.textContent='本会话方案：'+plan.name;details.textContent='查看快照';details.onclick=function(){var d=modal('会话任务方案','<pre id="sessionPlanContents" style="white-space:pre-wrap;overflow-wrap:anywhere"></pre>');d.querySelector('pre').textContent=plan.name+'\n'+(plan.description||'')+'\n\n'+(plan.kind==='team'?(plan.members||[]).map(m=>(m.name||m.id)+'\n'+m.prompt).join('\n\n'):(plan.steps||[]).map((step,i)=>'步骤 '+(i+1)+' · '+step.id+'\n职责：'+step.expert+'\n依赖：'+((step.depends_on||[]).join('、')||'无')+'\n'+step.task).join('\n\n'));};clear.textContent='结束方案';clear.onclick=async function(){try{await request('/session','PUT',{id:currentSession,clear_plan:true});await reload();toast('后续消息恢复普通会话；已排队任务保留快照');}catch(error){fail(error);}};planBar.append(text,details,clear);}}var button=document.getElementById('btnExpert');if(button){var btnTip='本会话专家：'+(e?e.name:'默认助手');button.setAttribute('data-tip',btnTip);button.removeAttribute('title');/* 保持 HTML 的 openMini(this,'expert') 吸附层，工具栏六个按钮全走同一套弹层 *//* 按钮保持纯图标，专家名只进 hover 提示，避免工具栏出现带字按钮 */
+button.querySelectorAll('.expert-label').forEach(function(n){n.remove();});button.setAttribute('aria-label',btnTip);if(!button.querySelector('svg'))button.insertAdjacentHTML('afterbegin','<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>');}var bar=document.getElementById('selectedExpertBar');if(bar){bar.style.display='none';bar.innerHTML='';}}
+var PW_FOLDER_ICO='<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false"><path d="M2.6 6.4A2.4 2.4 0 0 1 5 4h3.7c.64 0 1.25.25 1.7.7L11.9 6.1H19a2.4 2.4 0 0 1 2.4 2.4v9.1A2.4 2.4 0 0 1 19 20H5a2.4 2.4 0 0 1-2.4-2.4z"/></svg>';
 window.pwRailHTML=function(){
  var ex=activeExpert(),identity=state.identity;
  updateComposerIdentity();var html='';
- function item(s){var streaming=!!_tabStreaming[s.id],title=s.title&&s.title!=='New Chat'?s.title:'新会话',id=E(s.id);return '<div class="session-item '+(s.id===currentSession?'active ':'')+(streaming?'streaming':'')+'" data-sid="'+id+'"><button class="session-open" type="button" onclick="railSessionClick(\''+id+'\',event)" title="双击编辑名称与归类" ondblclick="renameSession(\''+id+'\',event)" aria-current="'+(s.id===currentSession?'page':'false')+'"><span class="dot'+(streaming?' streaming':'')+'"></span><span class="si-body"><span class="title">'+E(title)+'</span><span class="meta">'+E(fmtDateTime(s.updated_at))+(s.message_count?' · '+s.message_count+' 条':'')+'</span></span></button><button class="del" type="button" aria-label="归档会话：'+E(title)+'" title="归档会话" onclick="delSession(\''+id+'\',event)">×</button></div>';}
+ function item(s){var streaming=!!_tabStreaming[s.id];
+ /* 2026-11-13：圆点只表示状态——needs_input(等 clarify) > running(正在跑) > interrupted(上轮中断/失败) > idle。
+   _tabStreaming 是本页内存里的实时态，s.state 是服务端落盘态（刷新后仍然准），两者取先到的那个。 */
+ var dst=(s.needs_input||s.state==='needs_input')?'needs_input':((streaming||s.running)?'running':(s.state==='interrupted'?'interrupted':'idle')),
+ title=s.title&&s.title!=='New Chat'?s.title:'新会话',id=E(s.id),
+ meta=fmtDateTime(s.updated_at)+(s.message_count?' · '+s.message_count+' 条':'')+(s.queued_count>0?' · 排队 '+s.queued_count:'');
+ return '<div class="session-item '+(s.id===currentSession?'active ':'')+(dst==='running'?'streaming ':'')+'" data-sid="'+id+'"><button class="session-open" type="button" onclick="railSessionClick(\''+id+'\',event)" title="双击编辑名称与归类" ondblclick="renameSession(\''+id+'\',event)" aria-current="'+(s.id===currentSession?'page':'false')+'"><span class="dot" data-state="'+dst+'" aria-label="'+({idle:'空闲',running:'正在回复',needs_input:'等你决定',interrupted:'上轮中断'}[dst])+'"></span><span class="si-body"><span class="title">'+E(title)+'</span><span class="meta">'+E(meta)+'</span></span></button><button class="del" type="button" aria-label="归档会话：'+E(title)+'" title="归档会话" onclick="delSession(\''+id+'\',event)">×</button></div>';}
  function sessions(id){return _sessions.filter(s=>((state.sessions[s.id]||{}).folder_id||'')===id).map(item).join('');}
- function tree(parent,seen){return state.folders.filter(f=>(f.parent_id||'')===parent&&!seen.has(f.id)).map(f=>{var next=new Set(seen);next.add(f.id);return PwTree.node({key:'folder:'+f.id,icon:'📁',label:f.name,body:tree(f.id,next)+sessions(f.id),acts:'<button type="button" aria-label="编辑文件夹：'+E(f.name)+'" title="编辑文件夹" onclick="pwFolder(\''+f.id+'\')">⋯</button>'+'<button type="button" aria-label="新建子文件夹：'+E(f.name)+'" title="新建子文件夹" onclick="pwFolder(null,\''+f.id+'\')">＋</button>'});}).join('');}
+ function tree(parent,seen,d){d=d||0;return state.folders.filter(f=>(f.parent_id||'')===parent&&!seen.has(f.id)).map(f=>{var next=new Set(seen);next.add(f.id);return PwTree.node({key:'folder:'+f.id,depth:d,icon:PW_FOLDER_ICO,label:f.name,body:tree(f.id,next,d+1)+sessions(f.id),acts:'<button type="button" aria-label="编辑文件夹：'+E(f.name)+'" title="编辑文件夹" onclick="pwFolder(\''+f.id+'\')">⋯</button>'+'<button type="button" aria-label="新建子文件夹：'+E(f.name)+'" title="新建子文件夹" onclick="pwFolder(null,\''+f.id+'\')">＋</button>'});}).join('');}
  html+=tree('',new Set());html+=PwTree.node({key:'folder:none',icon:'🗂',label:'未分类',body:sessions(''),def:true}); 
  // An externally removed folder must not hide its conversations.
  html+=_sessions.filter(s=>{var id=(state.sessions[s.id]||{}).folder_id;return id&&!state.folders.some(f=>f.id===id);}).map(item).join('');
- // 已归档会话：head 只留两个图标，这个入口降级为列表末尾一行文字 
- html+='<div class="rail-archived-row" role="button" tabindex="0" onclick="pwArchivedSessions()" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();pwArchivedSessions();}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h16v11a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 19z"/><path d="M3 5.5h18V8H3z"/><line x1="10" y1="12" x2="14" y2="12"/></svg>已归档会话</div>';
+ // 已归档会话：入口已上移到 rail-head（新建文件夹图标左侧，只留图标），列表末尾不再占一行
  return html;
 };
-window.pwArchivedSessions=async function(){try{var out=await api('/api/sessions/archived','GET'),rows=(out&&out.sessions)||[];var body=rows.length?'<div class="pw-results">'+rows.map(function(s){return '<div class="pw-result"><b>'+E(s.title||'新会话')+'</b><p>'+E(fmtDateTime(s.updated_at))+(s.message_count?' · '+s.message_count+' 条':'')+'</p><button class="btn primary" data-restore="'+E(s.id)+'">恢复</button></div>';}).join('')+'</div>':'<div class="pw-hint">没有已归档会话。</div>';var d=modal('已归档会话',body);d.querySelectorAll('[data-restore]').forEach(function(btn){btn.onclick=async function(){btn.disabled=true;try{var r=await api('/api/sessions/'+encodeURIComponent(btn.dataset.restore)+'/restore','POST',{});if(!r.ok)throw Error(r.error||'恢复失败');await loadSessions();close();openTab(btn.dataset.restore);toast('会话已恢复');}catch(e){btn.disabled=false;fail(e);}};});}catch(e){fail(e);}};
+window.pwArchivedSessions=async function(){
+ try{
+  var out=await api('/api/sessions/archived','GET'),rows=(out&&out.sessions)||[];
+  var body=rows.length?'<div class="pw-archived">'+rows.map(function(s){
+    return '<div class="pw-archived-row pw-arch-pick">'
+      +'<input type="checkbox" class="pw-arch-cb" data-id="'+E(s.id)+'" aria-label="选择该会话">'
+      +'<div class="pw-archived-main"><span class="pw-archived-title">'+E(s.title||'新会话')+'</span><span class="pw-archived-meta">'+E(fmtDateTime(s.updated_at))+(s.message_count?' · '+s.message_count+' 条消息':' · 0 条消息')+'</span></div>'
+      +'<button type="button" class="btn pw-archived-act" data-restore="'+E(s.id)+'">恢复</button></div>';
+   }).join('')+'</div>':'<div class="pw-hint">没有已归档会话。</div>';
+  var foot=rows.length
+    ?'<label class="pw-arch-all"><input type="checkbox" id="pwArchAll">全选</label>'
+     +'<button type="button" class="btn" data-dismiss>关闭</button>'
+     +'<button type="button" class="btn danger" id="pwArchDel" disabled>彻底删除</button>'
+    :'<button type="button" class="btn" data-dismiss>关闭</button>';
+  var d=modal('已归档会话',body,foot);
+  var delBtn=d.querySelector('#pwArchDel'),allCb=d.querySelector('#pwArchAll'),dismiss=d.querySelector('[data-dismiss]');
+  var cbs=Array.prototype.slice.call(d.querySelectorAll('.pw-arch-cb'));
+  function picked(){return cbs.filter(function(c){return c.checked;});}
+  function sync(){
+    var n=picked().length;
+    cbs.forEach(function(c){var r=c.closest('.pw-archived-row');if(r)r.classList.toggle('is-picked',c.checked);});
+    if(delBtn){delBtn.disabled=!n;delBtn.textContent=n?'彻底删除 ('+n+')':'彻底删除';}
+    if(allCb){allCb.checked=n>0&&n===cbs.length;allCb.indeterminate=n>0&&n<cbs.length;}
+  }
+  cbs.forEach(function(c){c.onchange=sync;});
+  if(allCb)allCb.onchange=function(){cbs.forEach(function(c){c.checked=allCb.checked;});sync();};
+  if(dismiss)dismiss.onclick=function(){close();};
+  d.querySelectorAll('[data-restore]').forEach(function(btn){btn.onclick=async function(){
+    btn.disabled=true;
+    try{var r=await api('/api/sessions/'+encodeURIComponent(btn.dataset.restore)+'/restore','POST',{});if(!r.ok)throw Error(r.error||'恢复失败');await loadSessions();close();openTab(btn.dataset.restore);toast('会话已恢复');}
+    catch(e){btn.disabled=false;fail(e);}
+  };});
+  if(delBtn)delBtn.onclick=async function(){
+    var ids=picked().map(function(c){return c.dataset.id;});
+    if(!ids.length)return;
+    var msg=ids.length===1?'彻底删除这个会话？正文和分类会一并删掉，不能恢复。':('彻底删除选中的 '+ids.length+' 个会话？正文和分类会一并删掉，不能恢复。');
+    if(!(await ui.confirm(msg,{danger:true})))return;
+    var old=delBtn.textContent;delBtn.disabled=true;delBtn.textContent='删除中…';
+    try{
+      var r=await api('/api/sessions/archived/purge','POST',{ids:ids});
+      if(!r.purged)throw Error(r.error||'删除失败');
+      await loadSessions();close();await window.pwArchivedSessions();
+      toast(r.failed?('已彻底删除 '+r.purged+' 个，'+r.failed+' 个失败'):('已彻底删除 '+r.purged+' 个会话'));
+    }catch(e){delBtn.disabled=false;delBtn.textContent=old;fail(e);}
+  };
+  sync();
+ }catch(e){fail(e);}
+};
 window.pwToggleFolder=function(id){var btn=document.querySelector('.pw-tree-node[data-tree-key="folder:'+id+'"] > .pw-tree-head > .pw-tree-toggle');if(btn)PwTree.toggle(btn);}; 
 window.pwNewMenu=function(){var d=modal('新建','<div class="pw-row"><button class="btn primary" id="pwNewChat">＋ 新会话</button><button class="btn" id="pwNewFolder">＋ 文件夹</button></div>');d.querySelector('#pwNewChat').onclick=function(){close();setTimeout(function(){if(window.openNewSessionModal)openNewSessionModal();},60);};d.querySelector('#pwNewFolder').onclick=function(){pwFolder();};};
 window.pwCreateChat=function(title){var d=modal('新建会话',field('会话名称','pwCreateTitle',title||'')+'<div class="field"><label for="pwCreateFolder">归类</label><select id="pwCreateFolder">'+folderOptions('')+'</select></div>','<button class="btn primary" id="pwCreateConfirm">创建会话</button>');d.querySelector('#pwCreateConfirm').onclick=async function(){this.disabled=true;try{const name=d.querySelector('#pwCreateTitle').value.trim();if(!name)throw Error('请输入会话名称');const s=await api('/api/sessions','POST',{});if(!s.id)throw Error(s.error||'创建会话失败');const renamed=await api('/api/sessions/rename','POST',{id:s.id,title:name});if(!renamed.ok)throw Error(renamed.error||'会话已创建，但名称保存失败');s.title=renamed.title||name;await request('/session','PUT',{id:s.id,folder_id:d.querySelector('#pwCreateFolder').value});saveDraft(currentSession);_sessions.unshift(s);_openTabs.push(s.id);persistTabs();close();switchPage('chat');openTab(s.id);}catch(e){fail(e);}finally{this.disabled=false;}};};
@@ -48,20 +121,20 @@ window.handleSlashCommand=async function(raw){const match=String(raw||'').trim()
  if(name==='stop'||name==='interrupt'){await chatStop();return;}
  if(name==='queue'){if(window.slashRun&&slashRun.queue){slashRun.queue(arg);return;}if(!arg)throw Error('用法：/queue [all]　不带参数看当前会话队列，带 all 看全部');return;}
  if(name==='steer'){if(window.slashRun&&slashRun.steer){slashRun.steer(arg);return;}throw Error('用法：/steer <补充要求>');}
- if(name==='goal'){if(window.slashRun&&slashRun.goal){slashRun.goal(arg);return;}throw Error('用法：/goal <目标>');} if(name==='compress'){if(!currentSession)throw Error('请先打开会话');sendRaw('请把当前会话压缩成一份可继续工作的摘要：保留已完成的结论、未完成事项、关键文件路径与决策，压缩后简短说明还剩什么。'+(arg?('　聚焦：'+arg):''));toast('已请求压缩摘要（面板暂无真压缩入口，产出的是摘要，不是真压缩）');return;}
+ if(name==='goal'){if(window.slashRun&&slashRun.goal){slashRun.goal(arg);return;}throw Error('用法：/goal <目标>');} if(name==='compress'){if(!currentSession)throw Error('请先打开会话');if(!window.runCompress)throw Error('压缩模块未加载，请刷新页面');await window.runCompress(arg,currentSession);return;}
  if(name==='personality'){await pwPersonality(arg);return;}
  if(name==='title'){if(!currentSession)throw Error('请先打开会话');if(!arg){renameSession(currentSession);return;}const r=await api('/api/sessions/rename','POST',{id:currentSession,title:arg});if(!r.ok)throw Error(r.error);await loadSessions();updateHeader();return;}
  if(name==='plan'){const run=text=>sendRaw('请先为下面的请求编写可审阅的执行计划，说明步骤、依赖、风险与验证方式；本轮先给计划。\n\n'+text);if(arg)run(arg);else inputAction('编写计划','你希望规划什么','',run);return;}
  if(name==='model'||name==='provider'){var _mb=document.getElementById('btnModel');if(_mb&&window.openMini){window.openMini(_mb,'model');return;}switchPage('models');return;}
  if(name==='usage'||name==='insights'){switchPage('usage');return;}
  if(name==='status'){if(window.slashRun&&slashRun.status){slashRun.status(arg);return;}switchPage('overview');return;}
- if(name==='help'){modal('命令表','<p><b>会话</b>：/new、/title、/stop（/interrupt 同义）、/queue、/steer、/goal、/compress</p><p><b>计划</b>：/plan</p><p><b>设置</b>：/model（就地选）、/personality</p><p><b>查看</b>：/usage、/status、/help</p><p class="pw-hint">输入 / 会弹补全列表：↑↓ 选、Enter 或 Tab 确认、Esc 关。带参数的命令选中后变成标签，只需在输入框打参数。</p><p class="pw-hint">/steer 中止当前回合并按你的补充重发；/goal 目标存本地，之后每轮自动带上；/compress 请求生成可继续工作的摘要。</p>');return;}
+ if(name==='help'){modal('命令表','<p><b>会话</b>：/new、/title、/stop（/interrupt 同义）、/queue、/steer、/goal、/compress</p><p><b>计划</b>：/plan</p><p><b>设置</b>：/model（就地选）、/personality</p><p><b>查看</b>：/usage、/status、/help</p><p class="pw-hint">输入 / 会弹补全列表：↑↓ 选、Enter 或 Tab 确认、Esc 关。带参数的命令选中后变成标签，只需在输入框打参数。</p><p class="pw-hint">/steer 中止当前回合并按你的补充重发；/goal 目标存本地，之后每轮自动带上；/compress 真压缩上下文（早段消息换摘要、保留最近一批，原会话先备份；加「预览」只看不写）。</p>');return;}
  throw Error('不认识 /'+name+'。输入 / 看全部命令，或 /help。原文已保留在输入框。');
  }catch(e){const ta=document.getElementById('chatInput');ta.value=raw;autoResize(ta);saveDraft(currentSession);fail(e);}};
 window.handlePanelSlashCommand=window.handleSlashCommand;
 window.pickQuick=function(command){closeMini();handleSlashCommand(command);};
-PV.quickGroups=[{title:'会话',commands:[{ico:'＋',title:'新建会话',cmd:'/new',sub:'填写名称与归类'},{ico:'✎',title:'名称与归类',cmd:'/title',sub:'编辑当前会话'},{ico:'■',title:'停止执行',cmd:'/stop',sub:'停止当前会话正在执行的一轮'}]},{title:'回答方式',commands:[{ico:'◌',title:'表达风格',cmd:'/personality',sub:'简洁、技术、教学或创意'},{ico:'☷',title:'编写计划',cmd:'/plan',sub:'填写目标，先获得执行计划'}]},{title:'查看',commands:[{ico:'◈',title:'模型服务',cmd:'/model',sub:'服务、模型与辅助任务'},{ico:'↗',title:'实际用量',cmd:'/usage',sub:'查看记录中的使用情况'},{ico:'?',title:'操作帮助',cmd:'/help',sub:'面板支持的快捷操作'}]}];
-window.pwFolder=function(id,parent){var f=state.folders.find(f=>f.id===id),d=modal(f?'编辑文件夹':'新建文件夹',field('名称','pwFolderName',f?f.name:'')+'<div class="field"><label>上级文件夹</label><select id="pwFolderParent">'+folderOptions(f?f.parent_id:parent)+'</select></div>',(f?'<button class="btn" id="pwDeleteFolder">删除文件夹</button>':'')+'<button class="btn primary" id="pwSaveFolder">保存</button>');d.querySelector('#pwFolderParent option').textContent='顶层';d.querySelector('#pwSaveFolder').onclick=async function(){try{await request('/folders',f?'PUT':'POST',{id:id,name:d.querySelector('#pwFolderName').value,parent_id:d.querySelector('#pwFolderParent').value});await reload();close();}catch(e){fail(e);}};if(f)d.querySelector('#pwDeleteFolder').onclick=async function(){if(!confirm('删除文件夹后，会话和子文件夹移到上一级，内容会保留。'))return;try{await request('/folders','DELETE',{id:id});await reload();close();}catch(e){fail(e);}};};
+PV.quickGroups=[{title:'会话',commands:[{ico:'＋',title:'新建会话',cmd:'/new',sub:'填写名称与归类'},{ico:'✎',title:'名称与归类',cmd:'/title',sub:'编辑当前会话'},{ico:'⇲',title:'压缩上下文',cmd:'/compress',sub:'早段换成摘要、保留最近一批'},{ico:'■',title:'停止执行',cmd:'/stop',sub:'停止当前会话正在执行的一轮'}]},{title:'回答方式',commands:[{ico:'◌',title:'表达风格',cmd:'/personality',sub:'简洁、技术、教学或创意'},{ico:'☷',title:'编写计划',cmd:'/plan',sub:'填写目标，先获得执行计划'}]},{title:'查看',commands:[{ico:'◈',title:'模型服务',cmd:'/model',sub:'服务、模型与辅助任务'},{ico:'↗',title:'实际用量',cmd:'/usage',sub:'查看记录中的使用情况'},{ico:'?',title:'操作帮助',cmd:'/help',sub:'面板支持的快捷操作'}]}];
+window.pwFolder=function(id,parent){var f=state.folders.find(f=>f.id===id),d=modal(f?'编辑文件夹':'新建文件夹',field('名称','pwFolderName',f?f.name:'')+'<div class="field"><label>上级文件夹</label><select id="pwFolderParent">'+folderOptions(f?f.parent_id:parent)+'</select></div>',(f?'<button class="btn" id="pwDeleteFolder">删除文件夹</button>':'')+'<button class="btn primary" id="pwSaveFolder">保存</button>');d.querySelector('#pwFolderParent option').textContent='顶层';d.querySelector('#pwSaveFolder').onclick=async function(){try{await request('/folders',f?'PUT':'POST',{id:id,name:d.querySelector('#pwFolderName').value,parent_id:d.querySelector('#pwFolderParent').value});await reload();close();}catch(e){fail(e);}};if(f)d.querySelector('#pwDeleteFolder').onclick=async function(){if(!(await ui.confirm('删除文件夹后，会话和子文件夹移到上一级，内容会保留。')))return;try{await request('/folders','DELETE',{id:id});await reload();close();}catch(e){fail(e);}};};
 window.__pwRenameSession=function(sid,e){if(e)e.stopPropagation();var s=_sessions.find(x=>x.id===sid);if(!s)return;var meta=state.sessions[sid]||{};var d=modal('会话名称与归类',field('会话名称','pwSessionTitle',s.title==='New Chat'?'':s.title)+'<div class="field"><label>文件夹</label><select id="pwSessionFolder">'+folderOptions(meta.folder_id)+'</select></div>','<button class="btn primary" id="pwSaveSession">保存</button>');d.querySelector('#pwSaveSession').onclick=async function(){try{var title=d.querySelector('#pwSessionTitle').value.trim();if(!title)throw Error('请输入会话名称');var r=await api('/api/sessions/rename','POST',{id:sid,title:title});if(!r.ok)throw Error(r.error);await request('/session','PUT',{id:sid,folder_id:d.querySelector('#pwSessionFolder').value});s.title=r.title;await reload();renderSessionTabs();updateHeader();close();}catch(e){fail(e);}};};
 window.renameSession=window.__pwRenameSession;  /* 兼容旧调用；index.html 里的同名函数是转发器 */
 function avatarField(label,id,value,shape){return '<div class="field"><label>'+E(label)+'</label><div class="pw-avatar-input"><span class="pw-avatar '+(shape==='circle'?'circle':'')+'" id="'+id+'Preview">'+avatarHTML(value,shape)+'</span><div class="pw-avatar-actions"><button type="button" class="btn pw-avatar-pick" data-pick="'+id+'">选择图片</button><span class="pw-avatar-tip">PNG / JPG / GIF / WebP · ≤ 5 MB</span></div><input type="file" id="'+id+'File" accept="image/png,image/jpeg,image/gif,image/webp" hidden><input class="pw-avatar-url" id="'+id+'Url" type="url" inputmode="url" autocomplete="off" placeholder="或粘贴图片网址 https://…（外链不占上传体积）"><input type="hidden" id="'+id+'" value="'+E(value)+'"></div></div>';}
@@ -76,8 +149,7 @@ window.chatSenderName=function(){var e=activeExpert();return E(e?e.name:state.id
 window.chatUserName=function(){return E((state.identity||{}).user_name||'你');};
 var oldWelcome=welcomeHTML;
 window.welcomeHTML=function(){var e=activeExpert();if(!e)return oldWelcome();return '<div class="pw-welcome"><span class="pw-avatar'+avatarShapeClass()+'">'+avatarHTML(e.emoji)+'</span><h2>'+E(e.name)+'</h2><p>说说你要解决的问题、期望的结果和限制条件。</p><div class="pw-quick-prompts">'+(e.quick_prompts||[]).map((q,i)=>'<button class="btn" data-expert-question="'+i+'">'+E(q)+'</button>').join('')+'</div></div>';};
-var oldMsg=msgHTML;
-window.msgHTML=function(m){var copy=Object.assign({},m);if(copy.sender)copy.sender=E(copy.sender);if(copy.persona_name)copy.persona_name=E(copy.persona_name);var d=document.createElement('div');d.innerHTML=oldMsg(copy);var identity=state.identity||{},expert=activeExpert();/* 主身份消息的头像跟设置实时走（2026-11-12）：以前头像在发消息那一刻写死进 sender_avatar，改完头像后当前会话整屏历史还是旧图，看起来就是「改了不生效」。专家/协调者消息仍用自己的图标。 */var _k=m.sender_kind||'',_own=(m.role!=='user')&&(_k==='default'||(_k!=='expert'&&_k!=='coordinator'&&(!m.sender_avatar||m.sender===identity.assistant_name)));var name=m.sender||m.persona_name||(m.role==='user'?identity.user_name:expert?expert.name:identity.assistant_name)|| (m.role==='user'?'你':'Hermes'),avatar=(m.role==='user'?(identity.user_avatar||'👤'):(_own?(identity.assistant_avatar||'🤖'):(m.sender_avatar||(expert?expert.emoji:identity.assistant_avatar))))||(m.role==='user'?'👤':'🤖');if(d.querySelector('.cron-lead'))return d.innerHTML;var meta=d.querySelector('.msg-meta');if(meta)meta.textContent=name+' · '+fmtDateTime(m.ts||m.created_at||Date.now());var h=d.querySelector('.chat-sender');if(h){h.innerHTML='<span class="pw-avatar'+avatarShapeClass()+'">'+avatarHTML(avatar)+'</span><span>'+E(name)+'</span>';}if(d.firstElementChild&&m.request_id)d.firstElementChild.dataset.requestId=m.request_id;return d.innerHTML;};
+window.pwDecorateMsg=function(html,m){var d=document.createElement('div');d.innerHTML=html;var identity=state.identity||{},expert=activeExpert();/* 主身份消息的头像跟设置实时走（2026-11-12）：以前头像在发消息那一刻写死进 sender_avatar，改完头像后当前会话整屏历史还是旧图，看起来就是「改了不生效」。专家/协调者消息仍用自己的图标。 */var _k=m.sender_kind||'',_own=(m.role!=='user')&&(_k==='default'||(_k!=='expert'&&_k!=='coordinator'&&(!m.sender_avatar||m.sender===identity.assistant_name)));var name=m.sender||m.persona_name||(m.role==='user'?identity.user_name:expert?expert.name:identity.assistant_name)|| (m.role==='user'?'你':'Hermes'),avatar=(m.role==='user'?(identity.user_avatar||'👤'):(_own?(identity.assistant_avatar||'🤖'):(m.sender_avatar||(expert?expert.emoji:identity.assistant_avatar))))||(m.role==='user'?'👤':'🤖');if(d.querySelector('.cron-lead'))return d.innerHTML;var meta=d.querySelector('.msg-meta');if(meta)meta.textContent=name+' · '+fmtDateTime(m.ts||m.created_at||Date.now());var h=d.querySelector('.chat-sender');if(h){h.innerHTML='<span class="pw-avatar'+avatarShapeClass()+'">'+avatarHTML(avatar)+'</span><span>'+E(name)+'</span>';}if(d.firstElementChild&&m.request_id)d.firstElementChild.dataset.requestId=m.request_id;return d.innerHTML;};
 window.pwDecorateLive=function(){document.querySelectorAll('#chatBody .chat-sender').forEach(h=>{if(h.querySelector('.pw-avatar')||h.closest('.cron-lead'))return;var user=h.closest('.msg.user'),e=activeExpert();h.innerHTML='<span class="pw-avatar'+avatarShapeClass()+'">'+avatarHTML(user?state.identity.user_avatar:e?e.emoji:state.identity.assistant_avatar)+'</span><span>'+E(user?state.identity.user_name:e?e.name:state.identity.assistant_name)+'</span>';});};
 async function experts(){var r=await request('/experts?limit=400');expertList=r.experts;window.BUILTIN_EXPERTS_ARR=expertList;return expertList;}
 function normalized(e){return {id:e.slug||e.id,name:e.name||e.label,emoji:_wfEmoji(e.emoji||e.icon),prompt:e.prompt||'',skills:e.skills||[]};}
@@ -102,7 +174,7 @@ window.renderExpertsPage=function(){renderMineExperts();renderBuiltinExperts();}
 window.refreshExperts=async function(){await experts();await renderBuiltinExperts();await renderMineExperts();};
 window.renderBuiltinExperts=async function(){const grid=document.getElementById('expBuiltinGrid');if(!grid)return;try{const list=await experts();_renderExpertList('builtin',list,{kind:'builtin',searchId:'expBuiltinSearch'});}catch(e){grid.innerHTML='<div class="empty-state">'+E(e.message)+'<button class="btn" onclick="renderBuiltinExperts()">重试</button></div>';}};
 var oldCard=_expertCardHtml;
-window._expertCardHtml=function(e,kind){if(kind!=='builtin')return oldCard(e,kind);var id=e.slug||e.id,fav=state.favorites.includes(id);return '<div class="exp-card"><div class="exp-card-head"><div class="exp-card-avatar">'+E(_wfEmoji(e.emoji))+'</div><div><div class="exp-card-title">'+E(e.name)+'</div><div class="exp-card-scene">'+E(e.scene||'通用')+'</div></div></div><div class="exp-card-desc">'+E(e.desc||(e.prompt||'').slice(0,140))+'</div><div class="pw-expert-action"><button class="action sm primary" data-pw-chat="'+E(id)+'">开始对话</button><button class="action sm" data-pw-room="'+E(id)+'">加入群聊</button><button class="action sm" data-pw-fav="'+E(id)+'">'+(fav?'★ 已收藏':'☆ 收藏')+'</button><button class="action sm" data-pw-edit="'+E(id)+'">查看设定</button></div></div>';};
+window._expertCardHtml=function(e,kind){if(kind!=='builtin')return oldCard(e,kind);var id=e.slug||e.id,fav=state.favorites.includes(id);return '<div class="exp-card"><div class="exp-card-head"><div class="exp-card-avatar">'+E(_wfEmoji(e.emoji))+'</div><div><div class="exp-card-title">'+E(e.name)+'</div><div class="exp-card-scene">'+E(e.scene||'通用')+'</div></div></div><div class="exp-card-desc">'+E(e.desc||(e.prompt||'').slice(0,140))+'</div><div class="pw-expert-action"><button class="btn sm primary" data-pw-chat="'+E(id)+'">开始对话</button><button class="btn sm" data-pw-room="'+E(id)+'">加入群聊</button><button class="btn sm" data-pw-fav="'+E(id)+'">'+(fav?'★ 已收藏':'☆ 收藏')+'</button><button class="btn sm" data-pw-edit="'+E(id)+'">查看设定</button></div></div>';};
 window.renderMineExperts=function(){var grid=document.getElementById('expMineGrid');if(!grid)return;experts().then(list=>{var q=(document.getElementById('expMineSearch').value||'').toLowerCase();var fav=list.filter(e=>state.favorites.includes(e.slug||e.id)&&((e.name||'')+' '+(e.desc||'')).toLowerCase().includes(q));grid.innerHTML=fav.map(e=>_expertCardHtml(e,'builtin')).join('')||'<div class="empty-state">在内置专家中收藏常用角色，即可在这里快速开始对话或组建群聊。</div>';}).catch(fail);};
 window.pwProfiles=function(){pwPersonality();};
 window.filterRail=function(q){clearTimeout(searchTimer);if(!q.trim())return;searchTimer=setTimeout(()=>pwSearch(q),250);};
@@ -159,7 +231,7 @@ window.openVoiceSettings=async function(){
  '<div class="field"><label>系统回退音色</label><select id="pwSystemVoice"><option value="zh-CN-XiaoxiaoNeural">晓晓（女·温暖）</option><option value="zh-CN-YunxiNeural">云希（男·自然）</option></select></div>'+
  '<div class="field"><label>播放速度（本浏览器）</label><select id="pwVoiceRate">'+[0.75,1,1.15,1.3,1.5].map(v=>'<option value="'+v+'">'+v+'×</option>').join('')+'</select></div>'+
  '<div class="pw-row"><label><input type="checkbox" id="pwAutoplay"> 回复完成后自动朗读</label><label><input type="checkbox" id="pwAutosend"> 语音输入自动发送</label><label><input type="checkbox" id="pwVoiceChat"> 连续语音对话</label><label><input type="checkbox" id="pwVoiceBarge"> 说话打断朗读</label></div>'+
- '<p class="pw-hint">Windows 按完整回复合成后播放。精细音色与情绪参数可在 <a href="https://example.com:7089/pick/" target="_blank" rel="noopener">语音工作台</a> 调整。系统服务也不可用时，继续尝试浏览器朗读。</p>'+
+ '<p class="pw-hint">Windows 按完整回复合成后播放。精细音色与情绪参数可在 <a href="https://example.com/pick/" target="_blank" rel="noopener">语音工作台</a> 调整。系统服务也不可用时，继续尝试浏览器朗读。</p>'+
  '<button class="btn" id="pwVoiceTest">试听已保存声音</button><audio id="pwVoicePreview" controls style="display:none;width:100%;margin-top:12px"></audio>'+
  '<p id="pwVoiceSaveStatus" class="maintenance-feedback" role="status"></p>',
  '<button class="btn primary" id="pwSaveVoice">保存</button><button class="btn" id="pwVoiceReview">核对最新设置</button><button class="btn" id="pwVoiceDiscard">放弃草稿</button>');
@@ -173,8 +245,8 @@ window.openVoiceSettings=async function(){
  function adopt(view,keep){confirmedPayload=null;base=view;voiceLoaded=!!view.current;d.querySelector('#pwVoiceId').innerHTML=(view.voices||[]).map(x=>'<option value="'+E(x.id)+'">'+E(x.name)+'</option>').join('');d.querySelector('#pwVoiceId').disabled=!voiceLoaded;d.querySelector('#pwVoiceEmotion').disabled=!voiceLoaded;d.querySelector('#pwVoiceHint').textContent=view.bridge_error||view.bridge_warning||'Windows音色与自动语气由工作台共享，修改会影响使用它的其他渠道。';if(!keep)fill({pwVoiceEngine:view.preferences.engine,pwVoiceFallback:view.preferences.fallback,pwSystemVoice:view.preferences.system_voice,pwVoiceId:view.current?.id||'',pwVoiceEmotion:view.current?.emo_auto!==false});else fill(keep);if(['saving','needs_review'].includes(view.last_save?.status))status.textContent='上次声音保存未全部确认，请核对当前工作台声音后保存。';}
  try{adopt(await request('/voice'));var draft=JSON.parse(localStorage.getItem(draftKey)||'null');if(draft?.version===1){fill(draft.values);base=draft.base||base;status.textContent='已恢复未保存的声音选择；保存前会核对版本。';}}catch(e){status.textContent=e.message;d.querySelector('#pwVoiceId').disabled=true;d.querySelector('#pwVoiceEmotion').disabled=true;}
  ids.forEach(id=>d.querySelector('#'+id).addEventListener('change',persist));
- d.querySelector('#pwVoiceReview').onclick=async function(){try{var keep=values(),latest=await request('/voice');var text='当前已保存：'+(latest.preferences.engine==='windows'?'Windows':'系统')+'；回退'+(latest.preferences.fallback?'开':'关')+'；系统音色 '+latest.preferences.system_voice+'；Windows '+(latest.current?.id||'暂不可读取')+'；自动语气'+(latest.current?.emo_auto?'开':'关')+'。采用该版本并保留当前输入？';if(!confirm(text))return;adopt(latest,keep);persist();status.textContent='已核对最新版本，请检查输入后保存。';}catch(e){status.textContent=e.message;}};
- d.querySelector('#pwVoiceDiscard').onclick=function(){if(!confirm('放弃未保存的声音选择？'))return;try{localStorage.removeItem(draftKey);}catch(_){status.textContent='浏览器无法清除草稿，请恢复存储后重试';return;}close();openVoiceSettings();};
+ d.querySelector('#pwVoiceReview').onclick=async function(){try{var keep=values(),latest=await request('/voice');var text='当前已保存：'+(latest.preferences.engine==='windows'?'Windows':'系统')+'；回退'+(latest.preferences.fallback?'开':'关')+'；系统音色 '+latest.preferences.system_voice+'；Windows '+(latest.current?.id||'暂不可读取')+'；自动语气'+(latest.current?.emo_auto?'开':'关')+'。采用该版本并保留当前输入？';if(!(await ui.confirm(text)))return;adopt(latest,keep);persist();status.textContent='已核对最新版本，请检查输入后保存。';}catch(e){status.textContent=e.message;}};
+ d.querySelector('#pwVoiceDiscard').onclick=async function(){if(!(await ui.confirm('放弃未保存的声音选择？')))return;try{localStorage.removeItem(draftKey);}catch(_){status.textContent='浏览器无法清除草稿，请恢复存储后重试';return;}close();openVoiceSettings();};
  async function saveVoice(){
   if(!base)throw Error('请先核对最新设置');
   var selected={id:d.querySelector('#pwVoiceId').value,emo_auto:d.querySelector('#pwVoiceEmotion').checked},payload={preference_revision:base.preference_revision,bridge_revision:base.bridge_revision,preferences:{engine:d.querySelector('#pwVoiceEngine').value,fallback:d.querySelector('#pwVoiceFallback').checked,system_voice:d.querySelector('#pwSystemVoice').value}};
@@ -191,18 +263,28 @@ window.openVoiceSettings=async function(){
  d.querySelector('#pwVoiceTest').onclick=async function(){var button=this;try{button.disabled=true;button.textContent='合成中…';status.textContent='正在按当前选择合成试听…';d._speechAbort?.abort();d._speechAbort=new AbortController();var engine=d.querySelector('#pwVoiceEngine').value,systemVoice=d.querySelector('#pwSystemVoice').value,selectedWindowsVoice=d.querySelector('#pwVoiceId').value,blob;if(engine==='windows'&&selectedWindowsVoice!==base?.current?.id)throw Error('当前 Windows 音色尚未保存；先保存后再试听，避免试听时改动共享语音工作台。');try{blob=await speechBlob('你好，这是语音试听。',engine,d._speechAbort.signal,systemVoice);}catch(e){if(e.name==='AbortError'||!d.isConnected||engine!=='windows'||!d.querySelector('#pwVoiceFallback').checked)throw e;blob=await speechBlob('你好，这是系统回退语音。','system',d._speechAbort.signal,systemVoice);d.querySelector('#pwVoiceHint').textContent=e.message+'；本次试听已使用 '+systemVoice+' 系统回退。';}var a=d.querySelector('#pwVoicePreview');if(!d.isConnected)return;if(a.src)URL.revokeObjectURL(a.src);a.src=URL.createObjectURL(blob);a.style.display='block';a.playbackRate=Number(localStorage.getItem('pw_voice_rate')||1);await a.play();status.textContent='试听播放中：'+(blob.speechEngine==='windows'?'Windows 音色 '+selectedWindowsVoice:'系统音色 '+systemVoice);}catch(e){if(e.name!=='AbortError'&&d.isConnected){status.textContent=e.message;fail(e);}}finally{button.disabled=false;button.textContent='试听当前选择';}};
 };
 
-var oldRoomAppend=roomMsgAppend, oldRoomStream=roomStreamEl;
 function roomIdentity(el,label,isMe){if(!el)return;var room=roomsStore.find(r=>r.id===currentRoom),member=room&&(room.members||[]).find(m=>m.label===label);var av=el.querySelector('.av,.rs-av'),name=el.querySelector('.meta b,.room-sender .sn');if(!av&&isMe){av=document.createElement('span');av.className='rs-av';var sender=el.querySelector('.room-sender');if(sender)sender.prepend(av);}if(av){av.classList.toggle('circle',state.identity?.avatar_shape==='circle');av.innerHTML=avatarHTML(isMe?state.identity.user_avatar:member?member.emoji:state.identity.assistant_avatar);}if(name&&isMe)name.textContent=state.identity.user_name;}
-window.roomMsgAppend=function(kind,label,text,isMe,key,ts){var el=oldRoomAppend(kind,label,text,isMe,key,ts);roomIdentity(el,label,isMe);return el;};
-window.roomStreamEl=function(label,key){var el=oldRoomStream(label,key);roomIdentity(el,label,false);return el;};
+window.pwDecorateRoom=function(el,label,isMe){roomIdentity(el,label,isMe);return el;};
+/* 渠道记录预览态：以前用 window.switchTab / openTab / newTab / sendRaw 四处覆盖去拦，
+   谁后加载谁赢。现在只提供 tabs.js 外壳认的这一个接口，基础实现回 tabs.js。
+   active 读的是 tabs.js 里的全局 _channelViewActive，两边看同一个值。 */
+window.chatChannel={
+  get active(){return !!_channelViewActive;},
+  leave:function(){
+    _channelViewActive=false;
+    var c=document.getElementById('chatComposer'); if(c) c.hidden=false;
+    var rb=document.getElementById('chReturnBtn'); if(rb) rb.style.display='none';
+  },
+  afterSwitch:function(id){ if(String(id)===String(currentSession)) loadSessionMessages(id); }
+};
+
 document.addEventListener('click',async function(e){var b=e.target.closest('[data-pw-chat],[data-pw-room],[data-pw-fav],[data-pw-edit]');if(!b)return;if(b.dataset.pwChat)pwExpertChat(b.dataset.pwChat);if(b.dataset.pwRoom)pwRoom(b.dataset.pwRoom);if(b.dataset.pwEdit)openBuiltinExpertEditor(b.dataset.pwEdit);if(b.dataset.pwFav){try{var id=b.dataset.pwFav,f=state.favorites.slice(),i=f.indexOf(id);if(i<0)f.push(id);else f.splice(i,1);await request('/preferences','PUT',{favorites:f});await reload();renderBuiltinExperts();renderMineExperts();}catch(err){fail(err);}}});
-var oldSendRaw=sendRaw;window.sendRaw=function(text){if(_channelViewActive){toast('当前是渠道记录预览，请先返回面板会话');return;}return oldSendRaw(text);};
-var oldSwitchTab=switchTab;window.switchTab=function(id){var wasChannel=_channelViewActive;_channelViewActive=false;document.getElementById('chatComposer').hidden=false;var rb=document.getElementById('chReturnBtn');if(rb)rb.style.display='none';var same=id===currentSession;var result=oldSwitchTab(id);if(wasChannel&&same)loadSessionMessages(id);return result;};
-var oldNewTab=newTab;window.newTab=function(){_channelViewActive=false;document.getElementById('chatComposer').hidden=false;var rb=document.getElementById('chReturnBtn');if(rb)rb.style.display='none';return oldNewTab();};
-var oldOpenTab=openTab;window.openTab=function(id){var wasChannel=_channelViewActive;_channelViewActive=false;document.getElementById('chatComposer').hidden=false;var rb=document.getElementById('chReturnBtn');if(rb)rb.style.display='none';var result=oldOpenTab(id);if(wasChannel&&id===currentSession)loadSessionMessages(id);return result;};
-var oldExitChannel=exitChannelView;window.exitChannelView=function(){document.getElementById('chatComposer').hidden=false;return oldExitChannel();};
-var oldPoll=pollSessionSync;window.pollSessionSync=function(){if(_channelViewActive)return;return oldPoll();};
-var oldAt=roomAtDialog;window.roomAtDialog=function(){oldAt();document.querySelectorAll('.modal-overlay div').forEach(function(d){if(d.children.length===0&&d.textContent==='不选择任何成员 = 主 Hermes 回复')d.textContent='不选择成员：由主持人按任务组织专家讨论';});};
+
+
+
+
+
+
 function init(){ready=fetchToken().then(reload);ready.then(function(){if(currentSession&&!_tabStreaming[currentSession]&&!_channelViewActive)loadSessionMessages(currentSession,false,true);}).catch(fail);/* 侧栏顶部只留两个图标（2026-11-11 用户要求）：文件夹=新建文件夹、加号=新建会话。
    原来自这里动态注入的 ⚙(名称与头像) 和 🔍(搜索消息内容) 已删除，head 改为 index.html 静态两按钮，
    同时把「第一个 .icon-btn 改成新建菜单」的劫持也去掉（会把文件夹按钮指错）。

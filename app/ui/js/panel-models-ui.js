@@ -3,13 +3,119 @@
  var grid=document.getElementById('providerGrid');if(!grid)return;
  var data=null,last=null;try{last=JSON.parse(localStorage.getItem('panel-model-change')||'null');}catch(_){}
  function n(tag,text,cls){var e=document.createElement(tag);if(text!=null)e.textContent=text;if(cls)e.className=cls;return e;}
- function button(text,run,cls){var e=n('button',text,cls||'action');e.type='button';e.onclick=run;return e;}
+ function button(text,run,cls){var e=n('button',text,cls||'btn');e.type='button';e.onclick=run;return e;}
  var feedback=n('p','','maintenance-feedback'),routes=n('section',null,'panel-model-routes'),moaState=null,moaRead=null;feedback.setAttribute('role','status');var fbSlot=document.getElementById('providerFeedbackSlot'),rtSlot=document.getElementById('modelRoutesSlot');(fbSlot||grid).append(feedback);(rtSlot||grid).append(routes);
  async function api(body){var r=await fetch(apiUrl('/api/panel-models'),{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:body?JSON.stringify(body):undefined,cache:'no-store'}),out=await r.json();if(!r.ok||!out.ok){var error=Error(out.error||'模型配置操作失败');error.status=r.status;throw error;}return out;}
  function accept(out){data=out;_cfg.providers=out.providers.filter(p=>p.enabled);_cfg.primary=out.primary;_cfg.active_provider=out.active_provider;_cfg.fallback_providers=out.fallback_providers;window.__hermesConfigured=out.hermes_configured;renderConfigBanner();_syncModelBtn();}
  function remember(out){if(out.change_id){last={id:out.change_id,revision:out.revision};try{localStorage.setItem('panel-model-change',JSON.stringify(last));}catch(_){}}window.panelRuntimeRefresh?.();}
  async function mutate(body){var out=await api({...body,revision:data.revision});remember(out);accept(out);render();feedback.textContent=out.changed?'配置已保存，待重启应用生效':'配置没有变化';return out;}
+ function primaryNow(){var p=data.primary||{};return [String(p.provider||'').replace(/^custom:/,''),String(p.model||'')];}
+ function sameTarget(item,pair){return String(item.provider||'').replace(/^custom:/,'')===pair[0]&&String(item.model||'')===pair[1];}
+ function routeEntries(list){return (list||[]).map(function(x){return {key:x.key,provider:x.provider,model:x.model};});}
+ async function saveRoutes(provider,model,entries,okText){
+  feedback.textContent='正在保存路线…';
+  try{
+   var out=await api({action:'routes',provider:provider,model:model,entries:entries,revision:data.revision});
+   remember(out);accept(out);render();
+   feedback.textContent=out.changed?((okText||'路线已保存')+'；待重启应用生效'):(okText||'路线没有变化');
+  }catch(e){
+   if(e.status===409){feedback.textContent='模型配置刚在别处被改过，已刷新成最新版本；请再操作一次';await load();return;}
+   feedback.textContent=e.message;try{render();}catch(_){}
+  }
+ }
+ function commitOrder(list){var pr=primaryNow();saveRoutes(pr[0],pr[1],routeEntries(list),'回退顺序已调整');}
+ function bindDrag(chain){
+  var dragging=null,startOrder=[];
+  function rows(){return [...chain.querySelectorAll('li')];}
+  function rowAt(y){var hit=null;rows().forEach(function(li){var r=li.getBoundingClientRect();if(y>=r.top&&y<=r.bottom)hit=li;});return hit;}
+  function onMove(e){
+   if(!dragging)return;
+   e.preventDefault();
+   var over=rowAt(e.clientY);
+   if(!over||over===dragging)return;
+   var r=over.getBoundingClientRect();
+   if(e.clientY>r.top+r.height/2)over.after(dragging);else over.before(dragging);
+  }
+  function finish(){
+   if(!dragging)return;
+   var el=dragging;dragging=null;
+   el.classList.remove('is-dragging');
+   document.removeEventListener('pointermove',onMove);
+   document.removeEventListener('pointerup',finish);
+   document.removeEventListener('pointercancel',finish);
+   var list=rows(),order=list.map(function(li){return li.dataset.key;});
+   if(order.join('|')===startOrder.join('|'))return;
+   commitOrder(list.map(function(li){return JSON.parse(li.dataset.item);}));
+  }
+  chain.querySelectorAll('.route-handle').forEach(function(handle){
+   handle.addEventListener('pointerdown',function(e){
+    if(e.button&&e.button!==0)return;
+    e.preventDefault();
+    dragging=handle.closest('li');
+    startOrder=rows().map(function(li){return li.dataset.key;});
+    dragging.classList.add('is-dragging');
+    if(handle.setPointerCapture)try{handle.setPointerCapture(e.pointerId);}catch(_){}
+    document.addEventListener('pointermove',onMove,{passive:false});
+    document.addEventListener('pointerup',finish);
+    document.addEventListener('pointercancel',finish);
+   });
+   handle.addEventListener('keydown',function(e){
+    if(e.key!=='ArrowUp'&&e.key!=='ArrowDown')return;
+    e.preventDefault();
+    var li=handle.closest('li'),list=rows(),i=list.indexOf(li),j=i+(e.key==='ArrowUp'?-1:1);
+    if(j<0||j>=list.length)return;
+    if(e.key==='ArrowUp')list[j].before(li);else list[j].after(li);
+    handle.focus();
+    commitOrder(rows().map(function(x){return JSON.parse(x.dataset.item);}));
+   });
+  });
+ }
+ function removeChain(index){
+  var list=data.fallbacks.slice(),gone=data.fallbacks[index];
+  list.splice(index,1);
+  var pr=primaryNow();
+  saveRoutes(pr[0],pr[1],routeEntries(list),'已把 '+gone.model+' 移出回退');
+ }
+ function addChain(provider,model){
+  var pr=primaryNow();
+  if(provider===pr[0]&&model===pr[1]){feedback.textContent='主模型不能同时当回退';return;}
+  var list=data.fallbacks.slice();list.push({provider:provider,model:model});
+  saveRoutes(pr[0],pr[1],routeEntries(list),'已把 '+model+' 加到回退末尾');
+ }
  async function load(){feedback.textContent='正在读取模型服务…';try{accept(await api());render();feedback.textContent='已读取 '+data.providers.length+' 个模型服务';}catch(e){feedback.textContent=e.message;grid.replaceChildren(button('重新读取',load));}}
+ /* 模型卡片测试：复用 /api/panel-models/checks 验证作业，落到单个模型粒度 */
+ async function checkReq(path,method,body){var r=await fetch(apiUrl('/api/panel-models/'+path),{method:method||'GET',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:body?JSON.stringify(body):undefined,cache:'no-store'}),out=await r.json();if(!r.ok||!out.ok)throw Error(out.error||'验证请求失败');return out;}
+ async function runCheck(provider,model,res,btn){
+  btn.disabled=true;res.className='model-chip-result pending';res.textContent='测试中…';
+  try{
+   if(typeof fetchToken==='function')await fetchToken();
+   var request_id='chip-'+Date.now()+'-'+Math.random().toString(36).slice(2),out=await checkReq('checks','POST',{provider:provider,model:model,request_id:request_id});
+   var id=(out.check&&out.check.id)||out.id;if(!id)throw Error('验证作业没有返回编号');
+   var deadline=Date.now()+120000,job=null;
+   while(Date.now()<deadline){
+    await new Promise(function(done){setTimeout(done,1200);});
+    var list=await checkReq('checks'),all=(list.checks||[]);
+    job=all.find(function(item){return item.id===id;});
+    if(job&&job.status!=='running')break;
+   }
+   if(!job)throw Error('验证结果读取超时，稍后可在验证记录里查看');
+   if(job.status==='done'&&job.result){res.className='model-chip-result ok';res.textContent='✓ '+(job.result.latency_ms/1000).toFixed(1)+'s';res.title=(job.result.output||'').slice(0,300);}
+   else{res.className='model-chip-result fail';res.textContent='✗ '+(job.status==='done'?'未通过':(job.error||'验证失败')).slice(0,40);res.title=job.error||'';}
+  }catch(error){res.className='model-chip-result fail';res.textContent='✗ '+String(error.message||error).slice(0,40);res.title=String(error.message||error);}
+  finally{btn.disabled=false;}
+ }
+ function modelChips(p){
+  var picked=p.models.filter(function(m){return m.enabled;}),box=n('div',null,'model-chip-list');
+  if(!picked.length){box.append(n('p','这个服务还没有启用的模型，点“编辑服务”添加','pw-hint'));return box;}
+  var limit=12,more=picked.length>limit,shown=more?picked.slice(0,limit):picked;
+  shown.forEach(function(m){
+   var chip=n('div',null,'model-chip'),res=n('span',null,'model-chip-result'),btn=button('测试',null,'model-chip-test');
+   btn.onclick=function(){runCheck(p.id,m.id,res,btn);};
+   chip.append(n('span',m.id,'model-chip-id'),res,btn);box.append(chip);
+  });
+  if(more)box.append(n('p','另有 '+(picked.length-limit)+' 个模型未列出，可在“验证记录”里逐个选择','pw-hint'));
+  return box;
+ }
  function label(provider){return data.providers.find(p=>p.id===provider.replace(/^custom:/,''))?.name||provider;}
  function routeFor(provider,model){
   var id=String(provider||'').replace(/^custom:/,'');
@@ -63,22 +169,249 @@
   });
   d.actions.append(save);
  }
+ var deckState=null;
  function render(){
   routes.replaceChildren();
-  var head=n('div',null,'section-head');
-  head.append(n('h3','主模型'),button('更换主模型',()=>routeDialog()),button('刷新',load));
-  if(last)head.append(button('撤销上次修改',async function(){this.disabled=true;try{await mutate({action:'restore',change_id:last.id});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));
-  var primaryBlock=n('section',null,'model-block'),line=n('p',null,'model-primary');
-  if(data.primary.provider){line.append(n('span',label(data.primary.provider),'model-svc'),n('span',' · ','model-sep'),n('code',data.primary.model));}
-  else line.textContent='尚未设置主模型 —— 现在没有默认对话模型';
-  primaryBlock.append(head,line,n('p','换了只对新开的会话生效；已经在聊的窗口还是启动时那个模型。','pw-hint'));
-  var fbHead=n('div',null,'model-block-sub');
-  fbHead.append(n('h4','失败回退（从上往下顶上）'),button('调整顺序',()=>routeDialog()));
-  primaryBlock.append(fbHead);
+  var modelChoices=[];
+  data.providers.forEach(function(p){if(!p.enabled)return;p.models.forEach(function(m){if(m.enabled)modelChoices.push([JSON.stringify([p.id,m.id]),m.id+'（'+p.name+'）']);});});
+  var primaryPair=primaryNow(),primaryValue=primaryPair[1]?JSON.stringify(primaryPair):'';
+
+  function deckAccent(seed){
+   var palette=[[226,193,132],[122,162,247],[120,200,160],[180,150,245],[235,145,120],[110,200,225]];
+   var h=0;String(seed||'').split('').forEach(function(c){h=(h*31+c.charCodeAt(0))%9973;});
+   return palette[h%palette.length].join(' ');
+  }
+  function deckBrand(seed){
+   var palette=[[186,156,255],[126,214,240],[244,176,140],[150,196,250],[224,160,240],[132,214,180]];
+   var h=0;String(seed||'').split('').forEach(function(c){h=(h*37+c.charCodeAt(0))%7919;});
+   return palette[h%palette.length].join(' ');
+  }
+  function deckEmblemWrap(name){
+   var wrap=n('span',null,'mdeck-emblem'),svg=document.createElementNS('http://www.w3.org/2000/svg','svg'),txt=document.createElementNS('http://www.w3.org/2000/svg','text');
+   svg.setAttribute('viewBox','0 0 100 100');
+   txt.setAttribute('x','50');txt.setAttribute('y','52');txt.setAttribute('text-anchor','middle');txt.setAttribute('dominant-baseline','middle');
+   txt.setAttribute('font-size','36');txt.setAttribute('font-weight','700');txt.setAttribute('fill','currentColor');
+   txt.textContent=String(name||'?').trim().slice(0,2).toUpperCase();
+   svg.append(txt);wrap.append(n('span',null,'mdeck-emblem-glow'),svg);return wrap;
+  }
+  function deckTags(list){
+   var box=n('span',null,'mdeck-tags');
+   (list||[]).forEach(function(t){if(t)box.append(n('span',t));});
+   return box;
+  }
+
+  /* —— 抽卡：卡片只留卡面，点一下长成配置页 —— */
+  function deckClose(){
+   if(!deckState)return;
+   var st=deckState;deckState=null;
+   document.removeEventListener('keydown',st.esc);
+   if(st.card)st.card.style.visibility='';
+   st.veil.style.transition='opacity .16s ease';
+   st.veil.style.opacity='0';
+   st.sheet.style.transition='opacity .16s ease,transform .2s ease';
+   st.sheet.style.transform='translateY(8px) scale(.99)';
+   setTimeout(function(){st.veil.remove();},190);
+  }
+  /* 飞行卡就是那张卡本身 —— 同一份卡面内容、同一个样式作用域。
+     2026-11-13 修：旧版把 .mdeck-emblem/.mdeck-name… 全设 opacity:0 再挂到 body 下，
+     既丢了 #providerGrid 选择器作用域、又掏空了卡面，飞行期间只剩一个灰矩形；
+     配上第一帧就压满的幕布，观感就是「先灰一片、再一坨东西闪出来」。
+     现在：只做位移 + 末段淡出，卡面完整地飞过去，配置页在它身下同时淡入。 */
+  function deckMorph(cardEl,sheet,toRect){
+   var from=cardEl.getBoundingClientRect();
+   var to=toRect||sheet.getBoundingClientRect();
+   var ghost=cardEl.cloneNode(true);
+   ghost.removeAttribute('tabindex');ghost.setAttribute('aria-hidden','true');
+   ghost.classList.add('mdeck-ghost');
+   var g=ghost.style;
+   g.position='fixed';g.margin='0';g.pointerEvents='none';g.zIndex='1002';
+   g.left=from.left+'px';g.top=from.top+'px';g.width=from.width+'px';g.height=from.height+'px';
+   g.borderRadius='18px';g.transformOrigin='center center';
+   g.transition='transform .44s cubic-bezier(.22,.75,.2,1),opacity .2s ease .24s';
+   document.body.append(ghost);   /* 挂 body：网格会被重绘清空（实测 232ms 连根拔掉），veil 渐入会把卡面压暗 */
+   cardEl.style.visibility='hidden';   /* 飞行卡顶替原卡，避免分身重影 */
+   var dx=(to.left+to.width/2)-(from.left+from.width/2);
+   var dy=(to.top+to.height/2)-(from.top+from.height/2);
+   requestAnimationFrame(function(){
+    g.transform='translate('+dx.toFixed(1)+'px,'+dy.toFixed(1)+'px)';g.opacity='0';
+    setTimeout(function(){ghost.remove();cardEl.style.visibility='';},620);
+   });
+  }
+  function deckFoot(st){
+   var foot=st.foot;if(!foot)return;
+   foot.replaceChildren(n('span','关掉这一页不会丢已保存的配置','mdeck-foot-label'));
+  }
+  function deckPaint(){if(!deckState)return;deckState.bodyWrap.replaceChildren(deckState.spec.build());deckFoot(deckState);}
+  function deckOpen(cardEl,spec){
+   deckClose();
+   var veil=n('div',null,'mdeck-veil'),sheet=n('article',null,'mdeck-sheet');
+   sheet.style.setProperty('--accent',spec.accent);
+   sheet.setAttribute('role','dialog');sheet.setAttribute('aria-modal','true');sheet.setAttribute('aria-label',spec.title);
+   var head=n('div',null,'mdeck-sheet-head'),ident=n('div',null,'mdeck-sheet-ident');
+   var closeBtn=button('✕',function(){deckClose();},'mdeck-sheet-close');closeBtn.setAttribute('aria-label','关闭配置页');
+   var titleBox=n('div',null,'mdeck-sheet-title');
+   titleBox.append(n('span',spec.title,'mdeck-sheet-name'),n('span',spec.sheetSub||spec.sub,'mdeck-sheet-sub'),deckTags(spec.tags));
+   ident.append(deckEmblemWrap(spec.emblem),titleBox);
+   head.append(ident,closeBtn);
+   var bodyWrap=n('div',null,'mdeck-sheet-body');bodyWrap.append(spec.build());
+   var foot=n('div',null,'mdeck-sheet-foot');
+   foot.append(n('span','配置工具','mdeck-foot-label'));
+   var reloadBtn=button('重新读取配置',function(){deckClose();load();},'btn');
+   reloadBtn.title='从磁盘重读当前配置；页面里没保存的改动会被丢弃';
+   foot.append(reloadBtn);
+   if(last){
+    var undoBtn=button('撤销上次修改',function(){var b=this;b.disabled=true;mutate({action:'restore',change_id:last.id}).then(function(){deckClose();}).catch(function(e){feedback.textContent=e.message;b.disabled=false;});},'btn');
+    undoBtn.title='把上一次保存的改动整体还原';
+    foot.append(undoBtn);
+   }
+   sheet.append(head,bodyWrap,foot);
+   veil.append(sheet);document.body.append(veil);
+   /* 先拿干净几何（transform 会污染 getBoundingClientRect），再设起始态 */
+   var toRect=sheet.getBoundingClientRect();
+   sheet.style.opacity='0';sheet.style.transform='translateY(10px) scale(.985)';
+   veil.style.opacity='0';
+   deckMorph(cardEl,sheet,toRect);
+   requestAnimationFrame(function(){
+    veil.style.opacity='1';
+    sheet.style.transition='opacity .3s ease .06s,transform .44s cubic-bezier(.22,.75,.2,1)';
+    sheet.style.opacity='1';sheet.style.transform='none';
+    sheet.classList.add('mdeck-in');
+   });
+   var esc=function(e){if(e.key==='Escape'){e.preventDefault();deckClose();}};
+   document.addEventListener('keydown',esc);
+   veil.addEventListener('click',function(e){if(e.target===veil)deckClose();});
+   deckState={veil:veil,sheet:sheet,bodyWrap:bodyWrap,foot:foot,spec:spec,card:cardEl,esc:esc};
+  deckFoot(deckState);
+   setTimeout(function(){var f=sheet.querySelector('select,.mdeck-sheet-body button');f&&f.focus();},520);
+  }
+  function deckCard(spec){
+   var el=n('section',null,'provider-card mdeck-card');
+   el.style.setProperty('--accent',spec.accent);
+   el.style.setProperty('--brand',spec.brand||spec.accent);
+   if(spec.disabled)el.classList.add('model-disabled');
+   el.tabIndex=0;el.setAttribute('role','button');
+   el.setAttribute('aria-label',spec.title+' · 打开配置页');
+   var ring=n('span',null,'mdeck-ring'),face=n('div',null,'mdeck-face');
+   face.append(n('span',null,'mdeck-stripes'),n('span',null,'mdeck-vignette'),n('span',null,'mdeck-sheen'));
+   face.append(
+    n('span',spec.rarityText,'mdeck-rarity'+(spec.rarityClass||'')),
+    deckEmblemWrap(spec.emblem),
+    n('span',spec.title,'mdeck-name'),
+    n('span',spec.sub,'mdeck-sub'),
+    deckTags(spec.tags),
+    n('span','打开配置','mdeck-open-hint')
+   );
+   el.append(ring,face);
+   el.addEventListener('click',function(){deckOpen(el,spec);});
+   el.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();deckOpen(el,spec);}});
+   return el;
+  }
+
+  /* 主模型 + 失败回退：卡面只写状态，全部操作在抽出来的配置页 */
+  function routeBody(){
+  var box=n('div',null,'mdeck-sheet-form');
+  var primaryPick=select(box,'主模型',modelChoices,primaryValue,true);
+  primaryPick.setAttribute('aria-label','主模型');
+  primaryPick.onchange=function(){
+   var picked;try{picked=JSON.parse(primaryPick.value);}catch(_){return;}
+   if(!picked||picked.length!==2)return;
+   var duplicate=data.fallbacks.find(function(x){return sameTarget(x,picked);});
+   if(duplicate&&duplicate.has_overrides){primaryPick.value=primaryValue;feedback.textContent='该模型带有独立回退参数；先在下面把它移出回退，再设为主模型';return;}
+   var entries=routeEntries(data.fallbacks.filter(function(x){return !sameTarget(x,picked);}));
+   saveRoutes(picked[0],picked[1],entries,'主模型已切到 '+picked[1]);
+  };
+  box.append(n('span','失败回退','route-sub'));
   var chain=n('ol',null,'model-fallback-list');
-  data.fallbacks.forEach(item=>{var li=n('li');li.append(n('span',label(item.provider),'model-svc'),n('span',' · ','model-sep'),n('code',item.model));if(item.has_overrides)li.append(n('span',' · 保留独立参数','pw-hint'));chain.append(li);});
-  primaryBlock.append(chain);
-  if(!data.fallbacks.length)primaryBlock.append(n('p','还没配回退 —— 主模型一挂这一轮就直接失败。点「调整顺序」加一个。','pw-hint'));
+  data.fallbacks.forEach(function(item,index){
+   var li=n('li',null,'model-route-row');
+   li.dataset.key=item.key||item.provider+'|'+item.model;
+   li.dataset.item=JSON.stringify({key:item.key,provider:item.provider,model:item.model});
+   var handle=n('button','⠿','route-handle');handle.type='button';
+   handle.setAttribute('aria-label','拖动调整顺序，或按上下方向键移动');
+   li.append(handle,n('span',item.model+'（'+label(item.provider)+'）','route-name'));
+   if(item.has_overrides)li.append(n('span','独立参数','route-tag'));
+   li.append(button('移出',function(){removeChain(index);},'btn route-del'));
+   chain.append(li);
+  });
+  box.append(chain);
+  if(!data.fallbacks.length)box.append(n('p','没有回退，主模型报错这一轮就直接失败。','pw-hint'));
+  bindDrag(chain);
+  var spareModels=modelChoices.filter(function(choice){var pair=JSON.parse(choice[0]);return !(pair[0]===primaryPair[0]&&pair[1]===primaryPair[1])&&!data.fallbacks.some(function(x){return sameTarget(x,pair);});});
+  if(spareModels.length){var adder=select(box,'',spareModels,'',true,'加入回退');adder.setAttribute('aria-label','加入回退');adder.onchange=function(){var pair;try{pair=JSON.parse(adder.value);}catch(_){return;}if(!pair||pair.length!==2)return;addChain(pair[0],pair[1]);};}
+  else box.append(n('p','没有可加入回退的模型：先把别的模型启用起来。','pw-hint'));
+  return box;
+  }
+  var routeCard=deckCard({
+   accent:'226 193 132',emblem:'主路',title:'主模型与失败回退',
+   rarityText:'✦ 主线路',rarityClass:' ssr',
+   sub:primaryPair[1]?'当前 '+primaryPair[1]+'（'+label(primaryPair[0])+'）':'还没选主模型',
+   tags:['回退 '+data.fallbacks.length+' 个',primaryPair[1]?'主模型已选':'未选主模型'],
+   build:routeBody
+  });
+  routeCard.classList.add('model-route-card','featured');
+
+  grid.replaceChildren();
+  grid.append(routeCard);
+  data.providers.forEach(function(p){
+   var protocol=({'chat_completions':'CHAT','codex_responses':'RESP','anthropic_messages':'CLAUDE','bedrock_converse':'BEDROCK','codex_app_server':'APP'}[p.api_mode]||'自动');
+   var liveModels=p.models.filter(function(m){return m.enabled;});
+   function providerBody(){
+   /* 2026-11-13（用户第 9 条）：卡片点开只有保存，没有删除，想删只能改 config.yaml。
+      这里在配置页底部补一个删除动作；被主模型/回退引用时后端会拒绝，前端只负责说清原因。 */
+   var box=n('div',null,'mdeck-sheet-form');
+   box.append(PanelModelEditor.build({
+    provider:p,
+    revision:data&&data.revision,
+    close:deckClose,
+    onSaved:function(out){accept(out);render();feedback.textContent='服务已保存，待应用';}
+   }));
+   var zone=n('section',null,'model-danger-zone');
+   zone.append(n('h3','删除这个服务'),n('p','只删这条服务的地址、密钥与模型清单；如果它还在主模型或回退路线里，会先被拦下来。','pw-hint'));
+   var del=button('删除「'+p.name+'」',async function(){
+    if(!confirm('确定删除模型服务「'+p.name+'」？删除后它的地址、密钥和模型清单都不再保留。'))return;
+    del.disabled=true;del.textContent='正在删除…';
+    try{
+     var out=await mutate({action:'delete',id:p.id});
+     deckClose();feedback.textContent=out.changed?'已删除「'+p.name+'」，待重启应用生效':'没有变化';
+    }catch(e){
+     del.disabled=false;del.textContent='删除「'+p.name+'」';
+     zone.querySelector('.model-danger-error')?.remove();
+     var err=n('p',e.message,'model-danger-error');zone.append(err);
+    }
+   },'btn danger');
+   zone.append(del);
+   box.append(zone);
+   return box;
+   }
+   grid.append(deckCard({
+    accent:deckAccent(p.id),brand:deckBrand(p.id+'b'),emblem:p.name,title:p.name,
+    rarityText:(p.enabled?'✦ ':'○ ')+(p.enabled?'启用':'停用'),
+    rarityClass:p.enabled&&p.api_key_configured?' ssr':'',
+    sub:p.base_url||'未设置服务地址',
+    sheetSub:(p.enabled?'启用中':'已停用')+' · '+(p.api_key_configured?'密钥已配':'未配密钥')+' · '+protocol,
+    tags:[liveModels.length+' 个模型',p.api_key_configured?'密钥已配':'未配密钥',protocol],
+    build:providerBody,disabled:p.enabled?false:true
+   }));
+  });
+  var addCard=n('section',null,'provider-card mdeck-card mdeck-card-add');
+  addCard.tabIndex=0;addCard.setAttribute('role','button');addCard.setAttribute('aria-label','添加模型服务');
+  addCard.style.setProperty('--accent','122 162 247');addCard.style.setProperty('--brand','186 156 255');
+  var addFace=n('div',null,'mdeck-face');
+  addFace.append(n('span',null,'mdeck-stripes'),n('span',null,'mdeck-vignette'),
+   n('span','+','mdeck-emblem mdeck-emblem-add'),n('span','添加模型服务','mdeck-name'),
+   n('span','选预设厂商，或自己填地址','mdeck-sub'),n('span','新服务','mdeck-open-hint'));
+  addCard.append(n('span',null,'mdeck-ring'),addFace);
+  function addSheet(){deckOpen(addCard,{title:'添加模型服务',sub:'预设厂商 · 只填 API Key；自定义 · 地址与高级项自己定',
+   tags:['未保存'],emblem:'+',accent:'122 162 247',brand:'186 156 255',
+   build:function(){return PanelModelEditor.build({isNew:true,revision:data.revision,close:deckClose,
+    onSaved:function(out){accept(out);render();feedback.textContent='服务已添加，待应用';}});}});}
+  addCard.addEventListener('click',addSheet);
+  addCard.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();addSheet();}});
+  grid.append(addCard);
+  if(!data.providers.length)grid.append(n('p','添加模型服务后，设置默认模型即可开始对话。','empty-state'));
+  deckPaint();
+
+  function frame(){var pr=primaryNow();return pr[1]?pr[1]:'未配置';}
   var moaBlock=n('details',null,'model-block model-advanced'),moaSum=n('summary');
   moaSum.append(n('span','高级：MOA 混合','model-fold-title'),n('span','几个模型各答一遍再合成，比回退贵得多，默认不开','model-fold-hint'));
   var moaBody=n('div',null,'model-fold-body'),moaFoot=n('div',null,'mcp-actions');
@@ -86,14 +419,23 @@
   moaFoot.append(button('配置 MOA',()=>moaDialog()));
   moaBody.append(n('p','和回退不是一回事：回退是一个模型挂了换下一个；MOA 是几个模型各答一遍，再让聚合模型挑或合成。开着时主模型显示成 moa / 预设名，属于正常现象。','pw-hint'),moaState,moaFoot);
   moaBlock.append(moaSum,moaBody);
-  routes.append(primaryBlock,moaBlock);loadMoa();
-  grid.replaceChildren();data.providers.forEach(p=>{var card=n('section',null,'provider-card'+(!p.enabled?' model-disabled':'')),head=n('div',null,'provider-card-head');head.append(n('h3',p.name),n('span',p.enabled?'配置启用':'配置停用','provider-merchant'));card.append(head,n('p',p.base_url,'mcp-detail'),n('p',p.model?'默认模型 '+p.model:'该服务还没设置默认模型','provider-model'));var routeModels=p.models.map(m=>({model:m.id,route:routeFor(p.id,m.id)})).filter(x=>x.route);if(routeModels.length){var routeLine=n('p',null,'provider-route-status');routeLine.append(n('span','当前全局路线：'));routeModels.forEach((x,i)=>{if(i)routeLine.append(n('span',' · '));routeLine.append(n('strong',x.model+' · '+x.route));});card.append(routeLine);}card.append(n('p',({'chat_completions':'Chat Completions','codex_responses':'Responses','anthropic_messages':'Anthropic Messages','bedrock_converse':'Bedrock Converse','codex_app_server':'Codex App Server'}[p.api_mode]||p.api_mode||'协议自动识别')+' · '+p.models.filter(m=>m.enabled).length+' 个可选模型','pw-hint'),n('p',p.api_key_configured?'配置密钥 · '+p.credential_source:'未设置配置密钥','pw-hint'));if(p.credential_pool?.independent_count)card.append(n('p','另有 '+p.credential_pool.independent_count+' 个独立池凭证可参与选择','pw-hint'));if(p.credential_pool?.excluded_count)card.append(n('p',p.credential_pool.excluded_count+' 个池条目因地址不符或归属不明确未参与选择','pw-hint'));if(p.note)card.append(n('p',p.note,'pw-hint'));var actions=n('div',null,'mcp-actions');actions.append(button('编辑服务',()=>edit(p)),button(p.enabled?'停用服务':'启用服务',async function(){this.disabled=true;try{await mutate({action:'toggle',id:p.id,enabled:!p.enabled});}catch(e){feedback.textContent=e.message;this.disabled=false;}}));if(p.credential_pool&&(p.credential_pool.independent_count||p.credential_pool.excluded_count))actions.append(button('查看凭证来源',()=>credentialDialog(p)));card.append(actions);grid.append(card);});if(!data.providers.length)grid.append(n('p','添加模型服务后，设置默认模型即可开始对话。','empty-state'));
+  var moaHost=document.getElementById('moaSlot');
+  if(moaHost){moaBlock.open=true;moaHost.append(moaBlock);}else routes.append(moaBlock);
+  loadMoa();
+
+  grid.onmousemove=function(ev){
+   var card=ev.target&&ev.target.closest?ev.target.closest('.mdeck-card'):null;
+   if(!card)return;
+   var rect=card.getBoundingClientRect();
+   card.style.setProperty('--mx',(((ev.clientX-rect.left)/rect.width)*100).toFixed(1)+'%');
+   card.style.setProperty('--my',(((ev.clientY-rect.top)/rect.height)*100).toFixed(1)+'%');
+  };
  }
- function dialog(title){var previous=document.activeElement,overlay=n('div',null,'modal-overlay'),box=n('section',null,'modal panel-model-modal'),body=n('div'),status=n('p','','maintenance-feedback'),actions=n('div',null,'mcp-actions');box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label',title);status.setAttribute('role','status');box.append(n('h2',title),body,status,actions);overlay.append(box);document.body.append(overlay);function close(){overlay.remove();previous?.focus();}function requestClose(){if(box.beforeClose&&!box.beforeClose())return;close();}box.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();requestClose();}if(e.key==='Tab'){var items=[...box.querySelectorAll('button,input,select,textarea')].filter(e=>!e.disabled&&!e.hidden&&e.getClientRects().length);if(e.shiftKey&&document.activeElement===items[0]){e.preventDefault();items.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===items.at(-1)){e.preventDefault();items[0]?.focus();}}});return {box,body,status,actions,close,requestClose};}
- function credentialDialog(provider){var d=dialog('凭证来源 · '+provider.name),pool=provider.credential_pool;d.body.append(n('p',provider.api_key_configured?'配置密钥已设置，来源：'+provider.credential_source:'配置密钥未设置。','pw-hint'),n('p','以下为当前应用环境保存的独立凭证记录。它们可能优先于配置密钥；清除配置密钥不会删除这些记录。','pw-hint'));var list=n('ul');pool.entries.forEach((entry,i)=>list.append(n('li',(i+1)+' · '+entry.kind+' · 记录状态：'+entry.status+' · '+(entry.endpoint_bound?'绑定当前服务地址':'唯一名称匹配'))));d.body.append(list);if(pool.excluded_count)d.body.append(n('p',pool.excluded_count+' 个条目因地址不符或归属不明确未参与当前服务选择；原记录保留。','pw-hint'));d.body.append(n('p','这里展示保存记录，未进行联网验证。实际调用还受额度、冷却及原生凭证选择策略影响。','pw-hint'));var close=button('关闭',d.close);d.actions.append(close);close.focus();}
- function field(body,title,value,type='text'){var wrapper=n('label',null,'field'),input=n(type==='textarea'?'textarea':'input');input.setAttribute('aria-label',title);if(type!=='textarea')input.type=type;input.value=value??'';wrapper.append(n('span',title),input);body.append(wrapper);return input;}
- function select(body,title,options,value,strict=false){var wrapper=n('label',null,'field'),input=n('select'),hasValue=options.some(o=>o[0]===value);input.setAttribute('aria-label',title);if(value&&!hasValue&&!strict)options=options.concat([[value,value+' · 当前值']]);if(strict&&!hasValue)options=[[ '', '请选择主模型' ],...options];options.forEach(([key,text])=>{var o=n('option',text);o.value=key;if(strict&&!key)o.disabled=true;input.append(o);});input.value=value;if(!hasValue)input.selectedIndex=0;wrapper.append(n('span',title),input);body.append(wrapper);return input;}
  function revisionCheck(d,base,set){var check=button('核对最新配置',async()=>{try{var latest=await api(),summary=n('pre',JSON.stringify({primary:latest.primary,fallbacks:latest.fallbacks,providers:latest.providers},null,2),'pmcp-compare');d.body.append(summary);var use=button('保留输入，使用此版本',()=>{base.revision=latest.revision;set?.(latest);summary.remove();use.remove();d.status.textContent='已读取最新版本，请核对差异后保存';});d.actions.append(use);}catch(e){d.status.textContent=e.message;}});d.actions.append(check);}
+ function dialog(title){var previous=document.activeElement,overlay=n('div',null,'modal-overlay'),box=n('section',null,'modal panel-model-modal'),body=n('div'),status=n('p','','maintenance-feedback'),actions=n('div',null,'mcp-actions');box.setAttribute('role','dialog');box.setAttribute('aria-modal','true');box.setAttribute('aria-label',title);status.setAttribute('role','status');box.append(n('h2',title),body,status,actions);overlay.append(box);document.body.append(overlay);window.ui.adoptOverlay(overlay,{esc:false,trap:false,backdrop:false});function close(){overlay.remove();previous?.focus();}function requestClose(){if(box.beforeClose&&!box.beforeClose())return;close();}box.addEventListener('keydown',e=>{if(e.key==='Escape'){e.preventDefault();requestClose();}if(e.key==='Tab'){var items=[...box.querySelectorAll('button,input,select,textarea')].filter(e=>!e.disabled&&!e.hidden&&e.getClientRects().length);if(e.shiftKey&&document.activeElement===items[0]){e.preventDefault();items.at(-1)?.focus();}else if(!e.shiftKey&&document.activeElement===items.at(-1)){e.preventDefault();items[0]?.focus();}}});return {box,body,status,actions,close,requestClose};}
+ function credentialDialog(provider){var d=dialog('凭证来源 · '+provider.name),pool=provider.credential_pool;d.body.append(n('p',provider.api_key_configured?'配置密钥已设置，来源：'+provider.credential_source:'配置密钥未设置。','pw-hint'),n('p','以下为当前应用环境保存的独立凭证记录。它们可能优先于配置密钥；清除配置密钥不会删除这些记录。','pw-hint'));var list=n('ul');pool.entries.forEach((entry,i)=>list.append(n('li',(i+1)+' · '+entry.kind+' · 记录状态：'+entry.status+' · '+(entry.endpoint_bound?'绑定当前服务地址':'唯一名称匹配'))));d.body.append(list);if(pool.excluded_count)d.body.append(n('p',pool.excluded_count+' 个条目因地址不符或归属不明确未参与当前服务选择；原记录保留。','pw-hint'));d.body.append(n('p','这里展示保存记录，未进行联网验证。实际调用还受额度、冷却及原生凭证选择策略影响。','pw-hint'));var close=button('关闭',d.close);d.actions.append(close);close.focus();}
+ function field(body,title,value,type='text'){var wrapper=n('label',null,'field'),input=n(type==='textarea'?'textarea':'input');input.setAttribute('aria-label',title);if(type!=='textarea')input.type=type;input.value=value??'';if(title)wrapper.append(n('span',title));wrapper.append(input);body.append(wrapper);return input;}
+ function select(body,title,options,value,strict=false,placeholder){var wrapper=n('label',null,'field'),input=n('select'),hasValue=options.some(o=>o[0]===value);input.setAttribute('aria-label',title);if(value&&!hasValue&&!strict)options=options.concat([[value,value+' · 当前值']]);if(strict&&!hasValue)options=[[ '', placeholder||'请选择主模型' ],...options];options.forEach(([key,text])=>{var o=n('option',text);o.value=key;if(strict&&!key)o.disabled=true;input.append(o);});input.value=value;if(!hasValue)input.selectedIndex=0;if(title)wrapper.append(n('span',title));wrapper.append(input);body.append(wrapper);return input;}
  function edit(provider){if(!data)return load().then(()=>{if(data)edit(provider);});var d=dialog(provider?'编辑模型服务':'添加模型服务'),base={revision:data.revision},draftKey='panel-model-draft:'+(provider?.id||'new');
   var name=field(d.body,'服务名称',provider?.name),url=field(d.body,'服务地址',provider?.base_url,'url'),mode=select(d.body,'接口协议',[['','由内核识别'],['chat_completions','Chat Completions'],['codex_responses','Responses'],['anthropic_messages','Anthropic Messages']],provider?.api_mode||''),note=field(d.body,'备注',provider?.note,'textarea');
   var credentials=n('section');d.body.append(credentials);credentials.append(n('h3','配置密钥与请求头'),n('p','已保存的凭证不回显。更换服务主机会清除旧配置密钥和请求头，请为新服务重新填写。','pw-hint'));if(provider?.credential_pool?.independent_count)credentials.append(n('p','此服务另有 '+provider.credential_pool.independent_count+' 个独立池凭证。替换或清除下面的配置密钥不会删除它们，实际调用仍可能选择独立凭证。','pw-hint'),button('查看凭证来源',()=>credentialDialog(provider)));
@@ -115,10 +457,6 @@
   d.body.addEventListener('input',e=>{if(!credentials.contains(e.target))persist();});mode.addEventListener('change',persist);renderRows();
   function credentialEditsPending(){return keyAction.value==='clear'||(keyAction.value==='replace'&&!!key.value.trim())||headers.some(function(item){return !!item.h.value.trim()&&(item.a.value==='clear'||(item.a.value==='replace'&&!!item.v.value));});}
   d.box.beforeClose=function(){var warnings=[];if(!persist())warnings.push('草稿未能保存到浏览器，关闭会丢失非凭证修改');if(credentialEditsPending())warnings.push('API 密钥或请求头有未保存输入，凭证不会储存在浏览器');if(warnings.length&&!confirm(warnings.join('；')+'。仍要关闭吗？'))return false;if(!draftDurable){try{localStorage.removeItem(draftKey);}catch(_){d.status.textContent='旧草稿无法从浏览器存储清除，弹窗保持打开；请恢复存储后再保存或丢弃。';return false;}}return true;};var save=button('保存配置',async()=>{save.disabled=true;try{var values=snapshot();if(!values.default_model||!values.models.some(m=>m.id===values.default_model&&m.enabled)){throw Error('请选择一个已启用的服务默认模型；模型发现不会替你决定默认项');}var changes={};Object.keys(values).forEach(k=>{if(!provider||JSON.stringify(values[k])!==JSON.stringify(baseline[k]))changes[k]=values[k];});changes.credential={action:keyAction.value,...(keyAction.value==='replace'?{value:key.value}:{})};changes.headers={};headers.forEach(({h,a,v})=>{if(h.value.trim())changes.headers[h.value.trim()]={action:a.value,...(a.value==='replace'?{value:v.value}:{})};});var out=await api({action:provider?'update':'create',id:provider?.id,revision:base.revision,changes});remember(out);accept(out);render();try{localStorage.removeItem(draftKey);}catch(_){}d.close();feedback.textContent='模型配置已保存，待重启应用生效';window.loadModelChecks?.();}catch(e){d.status.textContent=e.message;save.disabled=false;}});d.actions.append(save);revisionCheck(d,base);d.actions.append(button('关闭',d.requestClose));name.focus();
- }
- function routeDialog(){var saved=null;try{saved=JSON.parse(localStorage.getItem('panel-model-routes-draft')||'null');}catch(_){}var d=dialog('设置主模型与失败回退'),base={revision:data.revision},choices=data.providers.filter(p=>p.enabled).flatMap(p=>p.models.filter(m=>m.enabled).map(m=>[JSON.stringify([p.id,m.id]),p.name+' / '+m.id]));var configuredPrimary=data.primary.provider&&data.primary.model?JSON.stringify([data.primary.provider.replace(/^custom:/,''),data.primary.model]):null,primary=select(d.body,'主模型（失败时尝试下面的回退模型）',choices,configuredPrimary,true),chain=data.fallbacks.map(item=>({...item})),rows=n('ol',null,'model-route-editor'),routeDraftDurable=true;d.body.append(rows);if(saved){base.revision=saved.revision;primary.value=saved.primary;chain=saved.chain;d.status.textContent='已恢复未保存的路线';}function target(value){try{return JSON.parse(value);}catch(_){return [];}}function sameTarget(a,b){return a.provider.replace(/^custom:/,'')===b[0]&&a.model===b[1];}function persistRoutes(){try{localStorage.setItem('panel-model-routes-draft',JSON.stringify({revision:base.revision,primary:primary.value,chain}));routeDraftDurable=true;d.status.textContent='路线草稿已保存到此浏览器';}catch(_){routeDraftDurable=false;d.status.textContent='浏览器无法保存路线草稿；当前修改仅在此窗口保留，关闭前请先保存路线';}return routeDraftDurable;}d.box.beforeClose=function(){if(!persistRoutes()){if(!confirm('路线草稿未能保存到浏览器。关闭将丢弃当前窗口中的路线修改，仍要关闭吗？'))return false;try{localStorage.removeItem('panel-model-routes-draft');}catch(_){d.status.textContent='旧路线草稿无法从浏览器存储清除，弹窗保持打开；请恢复存储后再保存或丢弃。';return false;}}return true;};primary.onchange=function(){var previous=primary.dataset.lastValue||JSON.stringify([data.primary.provider.replace(/^custom:/,''),data.primary.model]),next=target(primary.value),duplicate=chain.find(item=>sameTarget(item,next));if(duplicate?.has_overrides){primary.value=previous;d.status.textContent='该模型带有独立回退参数；请先将它移出回退路线，再设为主模型。';return;}primary.dataset.lastValue=primary.value;if(duplicate){chain=chain.filter(item=>!sameTarget(item,next));d.status.textContent='相同的服务与模型已从回退路线移除；同一服务的其他模型仍可作回退。';}persistRoutes();drawChoices();draw();};primary.dataset.lastValue=primary.value;d.body.append(n('p','服务默认模型只供该服务未指定模型时使用。主模型是全局首选；回退路线按顺序尝试具体的“服务 + 模型”。同一服务可将模型 A 设为主模型、模型 B 设为回退；完全相同的服务和模型不能同时占两种位置。会话单独选择模型不修改这条全局路线。','pw-hint'));
-  function draw(){persistRoutes();rows.replaceChildren();chain.forEach((item,i)=>{var row=n('li'),actions=n('div',null,'mcp-actions'),up=button('上移',()=>{[chain[i-1],chain[i]]=[chain[i],chain[i-1]];draw();}),down=button('下移',()=>{[chain[i+1],chain[i]]=[chain[i],chain[i+1]];draw();});up.disabled=i===0;down.disabled=i===chain.length-1;actions.append(up,down,button('移出路线',()=>{chain.splice(i,1);drawChoices();draw();}));row.append(n('span',label(item.provider)+' / '+item.model),actions);rows.append(row);});}var add=select(d.body,'添加回退模型',[],null),available=[];function drawChoices(){var current=target(primary.value);available=choices.filter(choice=>{var candidate=target(choice[0]);return candidate[0]!==current[0]||candidate[1]!==current[1];}).filter(choice=>!chain.some(item=>sameTarget(item,target(choice[0]))));add.replaceChildren();var placeholder=n('option','选择要加入的回退模型');placeholder.value='';placeholder.disabled=true;placeholder.selected=true;add.append(placeholder);available.forEach(([key,text])=>{var option=n('option',text);option.value=key;add.append(option);});add.value='';add.disabled=!available.length;}drawChoices();draw();d.body.append(button('加入回退路线',()=>{if(!add.value){d.status.textContent=available.length?'请先选择要加入的回退模型':'没有可添加的回退模型；请先启用其他模型，或调整当前路线。';return;}var [provider,model]=target(add.value);if(chain.some(item=>item.provider.replace(/^custom:/,'')===provider&&item.model===model)){d.status.textContent='此模型已在回退路线中';return;}chain.push({provider,model});drawChoices();draw();}));
-  var saveRoutes=button('保存主模型与回退顺序',async()=>{saveRoutes.disabled=true;try{if(!primary.value)throw Error('请选择主模型');var [provider,model]=JSON.parse(primary.value),out=await api({action:'routes',provider,model,entries:chain,revision:base.revision});base.revision=out.revision;chain=out.fallbacks;remember(out);accept(out);render();draw();try{localStorage.removeItem('panel-model-routes-draft');}catch(_){}d.status.textContent='主模型与失败回退已一起保存，待重启应用生效';}catch(e){d.status.textContent=e.message;}finally{saveRoutes.disabled=false;}});d.actions.append(saveRoutes);revisionCheck(d,base);d.actions.append(button('关闭',d.requestClose));primary.focus();
  }
  window.addProvider=()=>edit(null);window.renderProviders=function(){load();window.loadAuxTasks?.();window.loadModelChecks?.();};
 })();

@@ -44,6 +44,7 @@ def public_provider(identifier,entry,legacy=None):
   'api_key_configured':bool(credentials['api_key'] or credentials['key_env']),
   'credential_source':'配置密钥优先，环境变量回退' if origin=='custom_providers' and credentials['api_key'] and credentials['key_env'] else '环境变量优先，配置密钥回退' if credentials['api_key'] and credentials['key_env'] else '环境变量' if credentials['key_env'] or credentials['api_key'].startswith('${') else '配置密钥' if credentials['api_key'] else '无密钥',
   'header_keys':list(item.get('extra_headers',{})) if isinstance(item.get('extra_headers',{}),dict) else [],
+  'extra':{key:item[key] for key in ('context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify') if key in item},
   'note':str(item.get('note') or '')}
 
 def catalog(data,legacy=None):
@@ -57,6 +58,94 @@ def catalog(data,legacy=None):
   'fallback_providers':[next((p['name'] for p in providers if p['id']==route_id(item['provider'])),item['provider']) for item in chain],
   'hermes_configured':bool(current['provider'] and current['model'])}
 
+MOA_NAME=re.compile(r'[A-Za-z0-9_-]{1,40}')
+
+def moa_raw(data):
+ return data.get('moa') if isinstance(data.get('moa'),dict) else {}
+
+def moa_primary(data):
+ current=data.get('model');current=current if isinstance(current,dict) else {}
+ return {'provider':str(current.get('provider') or ''),'model':str(current.get('default') or '')}
+
+def moa_revision(data):
+ # MOA 开关会改写主模型，所以指纹必须同时覆盖 moa 段与 model 段。
+ return revision({'moa':moa_raw(data),'model':moa_primary(data)})
+
+def moa_view(data):
+ raw=moa_raw(data);presets=raw.get('presets') if isinstance(raw.get('presets'),dict) else {}
+ primary=moa_primary(data);active=route_id(primary['provider'])=='moa'
+ rows=[]
+ for name,preset in presets.items():
+  if not isinstance(preset,dict):continue
+  refs=[]
+  for item in preset.get('reference_models') or []:
+   if isinstance(item,dict):refs.append({'provider':str(item.get('provider') or ''),'model':str(item.get('model') or ''),'enabled':item.get('enabled') is not False})
+  agg=preset.get('aggregator') if isinstance(preset.get('aggregator'),dict) else {}
+  rows.append({'name':str(name),'reference_models':refs,
+   'aggregator':{'provider':str(agg.get('provider') or ''),'model':str(agg.get('model') or '')},
+   'fanout':str(preset.get('fanout') or '')})
+ return {'ok':True,'moa_revision':moa_revision(data),'enabled':active,
+  'active_preset':primary['model'] if active else str(raw.get('active_preset') or ''),
+  'default_preset':str(raw.get('default_preset') or ''),'presets':rows,'current_primary':primary,
+  'previous_primary':raw.get('previous_primary') if isinstance(raw.get('previous_primary'),dict) else None,
+  'configured':bool(raw)}
+
+def moa_candidates(data,legacy):
+ rows=[]
+ for provider in catalog(data,legacy)['providers']:
+  if not provider['enabled']:continue
+  models=[{'id':m['id'],'name':m['name']} for m in provider['models'] if m.get('enabled') and m['id']!='auto']
+  if models:rows.append({'id':provider['id'],'name':provider['name'],'models':models})
+ return rows
+
+def moa_apply(data,body):
+ name=str(body.get('preset') or 'default').strip()
+ if not MOA_NAME.fullmatch(name):raise ConfigError('预设名称只能用字母、数字、下划线，最多 40 字')
+ if name.lower()=='moa':raise ConfigError('预设名称不能叫 moa')
+ refs=body.get('reference_models');agg=body.get('aggregator');on=body.get('enabled')
+ if type(on) is not bool:raise ConfigError('MOA 开关状态不正确')
+ if not isinstance(agg,dict):raise ConfigError('请选择聚合模型')
+ if not isinstance(refs,list) or not 1<=len(refs)<=8:raise ConfigError('参考模型要选 1 到 8 个')
+ validate_target(data,agg.get('provider'),agg.get('model'))
+ aggregate=(route_id(agg.get('provider')),agg.get('model'))
+ clean=[];seen=set()
+ for item in refs:
+  if not isinstance(item,dict):raise ConfigError('参考模型格式不正确')
+  validate_target(data,item.get('provider'),item.get('model'))
+  identity=(route_id(item.get('provider')),item.get('model'))
+  if identity in seen:raise ConfigError('参考模型不能重复')
+  if identity==aggregate:raise ConfigError('聚合模型不能同时作为参考模型')
+  seen.add(identity);clean.append({'provider':item['provider'],'model':item['model'],'enabled':True})
+ moa=copy.deepcopy(moa_raw(data))
+ presets=copy.deepcopy(moa.get('presets')) if isinstance(moa.get('presets'),dict) else {}
+ preset=copy.deepcopy(presets.get(name)) if isinstance(presets.get(name),dict) else {}
+ preset['reference_models']=clean
+ preset['aggregator']={'provider':agg['provider'],'model':agg['model']}
+ presets[name]=preset
+ moa['presets']=presets
+ if not moa.get('default_preset'):moa['default_preset']=name
+ primary=moa_primary(data)
+ if on:
+  if route_id(primary['provider'])!='moa' and primary['provider'] and primary['model']:
+   moa['previous_primary']={'provider':primary['provider'],'model':primary['model']}
+  moa['active_preset']=name
+  current=copy.deepcopy(data.get('model')) if isinstance(data.get('model'),dict) else {}
+  current['provider']='moa';current['default']=name
+  data['model']=current
+ else:
+  moa['active_preset']=''
+  previous=moa.get('previous_primary')
+  if route_id(primary['provider'])=='moa':
+   if not isinstance(previous,dict) or not previous.get('provider') or not previous.get('model'):
+    raise ConfigError('关掉 MOA 需要先回到主模型：请在上面的①里选好主模型再关')
+   try:validate_target(data,str(previous['provider']),str(previous['model']))
+   except ConfigError:raise ConfigError('原主模型已停用或不在列表里，请先在①里重选主模型再关 MOA')
+   current=copy.deepcopy(data.get('model')) if isinstance(data.get('model'),dict) else {}
+   current['provider']=str(previous['provider']);current['default']=str(previous['model'])
+   data['model']=current
+ data['moa']=moa
+ return data
+
 def text(value,label,limit=1000,empty=False):
  if not isinstance(value,str) or len(value)>limit or any(ord(c)<32 for c in value) or (not empty and not value.strip()):raise ConfigError(label+'格式不正确')
  return value.strip()
@@ -67,7 +156,7 @@ def destination(value):
  except ValueError:raise ConfigError('模型服务地址格式不正确')
 
 def patch(old,changes,origin='providers',legacy=None):
- if not isinstance(changes,dict) or set(changes)-{'name','base_url','api_mode','default_model','models','credential','headers','note'}:raise ConfigError('模型服务修改字段不正确')
+ if not isinstance(changes,dict) or set(changes)-{'name','base_url','api_mode','default_model','models','credential','headers','note','context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify','headers_json'}:raise ConfigError('模型服务修改字段不正确')
  new=copy.deepcopy(old)
  if 'base_url' in changes:
   url=text(changes['base_url'],'模型服务地址',2000);u=urlsplit(url)
@@ -106,6 +195,37 @@ def patch(old,changes,origin='providers',legacy=None):
   if headers:new['extra_headers']=headers
   else:new.pop('extra_headers',None)
  if not old and (not new.get('name') or not new.get('base_url')):raise ConfigError('新服务需填写名称与服务地址')
+ # Advanced per-provider knobs. Only keys the kernel recognizes are accepted; anything else
+ # would be silently dropped by the runtime, so it is rejected here instead of stored as decoration.
+ for key,low,high,isint in (('context_length',1000,4000000,True),('max_output_tokens',1,500000,True),
+                            ('request_timeout_seconds',1,3600,True),('rate_limit_delay',0,600,False)):
+  if key in changes:
+   value=changes[key]
+   if value in (None,''):
+    new.pop(key,None);continue
+   if isinstance(value,str):
+    try:value=float(value)
+    except ValueError:raise ConfigError('高级选项需填写数字')
+   if isinstance(value,bool) or not isinstance(value,(int,float)) or value!=value or value<low or value>high:
+    raise ConfigError('高级选项超出范围：'+key)
+   new[key]=int(value) if isint else float(value)
+ if 'ssl_verify' in changes:
+  value=changes['ssl_verify']
+  if value is None:new.pop('ssl_verify',None)
+  elif type(value) is not bool:raise ConfigError('SSL 校验开关不正确')
+  else:new['ssl_verify']=value
+ if 'headers_json' in changes:
+  extra=changes['headers_json']
+  if extra is None:new.pop('extra_headers',None)
+  elif not isinstance(extra,dict) or len(extra)>50:raise ConfigError('额外请求头需为对象且不超过 50 项')
+  else:
+   merged=copy.deepcopy(new.get('extra_headers',{}))
+   if not isinstance(merged,dict):raise ConfigError('原请求头结构无法识别，原配置已保留',503)
+   for key,value in extra.items():
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',str(key)):raise ConfigError('请求头名称不正确')
+    if not isinstance(value,str) or len(value)>16000:raise ConfigError('请求头值需为文本')
+    merged[str(key)]=value
+   new['extra_headers']=merged
  if 'models' in changes:
   models=changes['models']
   if not isinstance(models,list) or len(models)>2000:raise ConfigError('模型列表最多2000项')
@@ -159,6 +279,16 @@ def execute(body,path,state,var_root=None):
    return output
   action=body.get('action')
   if action=='read':return view(data)
+  if action=='moa_read':return {**moa_view(data),'candidates':moa_candidates(data,legacy)}
+  if action=='moa_save':
+   if body.get('revision')!=moa_revision(data):raise ConfigError('MOA 配置已被其他页面修改，请重新核对',409)
+   updated=moa_apply(copy.deepcopy(data),body)
+   if semantic(updated)==semantic(data):
+    return {**moa_view(updated),'candidates':moa_candidates(updated,legacy),'changed':False}
+   output=io.StringIO();yaml.dump(updated,output);encoded=output.getvalue().encode();_,verified=load_yaml(encoded)
+   if semantic(verified)!=semantic(updated):raise ConfigError('MOA 配置序列化不一致，原文件已保留',503)
+   result=commit(path,state,raw,encoded,'moa:'+str(body.get('preset') or 'default'),{'models_after':revision(subset(updated)),'moa_after':moa_revision(updated)})
+   return {**result,**moa_view(updated),'candidates':moa_candidates(updated,legacy),'changed':True,'reload_required':True}
   # Whole model-subtree revision: routes/credentials/list edits cannot race each other;
   # unrelated memory/channel/MCP saves do not cause model conflicts.
   if body.get('revision')!=revision(subset(data)):raise ConfigError('模型配置已被其他页面修改，当前表单已保留，请重新核对',409)
@@ -205,6 +335,18 @@ def execute(body,path,state,var_root=None):
      if identity in seen:raise ConfigError('回退路线不能重复')
      seen.add(identity);chain.append(value)
     updated['fallback_providers']=chain;updated.pop('fallback_model',None)
+  elif action=='delete':
+   # 2026-11-13：面板卡片只能加不能删，用户只能去改 config.yaml。这里补上删除动作：
+   # 只删这条服务本身；仍被主模型/回退引用时拒绝，避免删出一条断掉的路线。
+   if not entry:raise ConfigError('模型服务不存在，请刷新',404)
+   for route in [data.get('model',{})]+[item for _,_,item in effective_chain(data)]:
+    if isinstance(route,dict) and route_id(route.get('provider'))==identifier:
+     raise ConfigError('此服务仍用于默认或回退路线，请先在卡片里改路线再删除',409)
+   origin,key,_=entry
+   container=copy.deepcopy(data.get(origin))
+   if isinstance(container,dict):container.pop(key,None)
+   elif isinstance(container,list):container.pop(key)
+   updated[origin]=container
   elif action=='restore':
    change_id=body.get('change_id','')
    if not re.fullmatch(r'[0-9]+-[a-f0-9]{12}',change_id):raise ConfigError('恢复记录不正确')

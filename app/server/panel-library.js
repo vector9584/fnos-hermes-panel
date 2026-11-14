@@ -99,7 +99,7 @@ export function createLibraryHandler({store,checkToken}){
  const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
  return async(req,path)=>{if(path!=='/api/panel-library'&&!path.startsWith('/api/panel-library/'))return null;if(!checkToken(req))return reply({error:'请重新登录后查看资料'},401);
   try{const url=new URL(req.url),source=url.searchParams.get('source'),file=url.searchParams.get('path');
-   if(path==='/api/panel-library'&&req.method==='GET')return reply({ok:true,...store.catalog({source,query:url.searchParams.get('q')||'',folder:url.searchParams.get('folder')||'',offset:Math.max(0,Number(url.searchParams.get('offset'))||0)})});
+   if(path==='/api/panel-library'&&req.method==='GET')return reply({ok:true,...store.catalog({source,query:url.searchParams.get('q')||'',folder:url.searchParams.get('folder')||'',offset:Math.max(0,Number(url.searchParams.get('offset'))||0),limit:Math.min(5000,Math.max(1,Number(url.searchParams.get('limit'))||40))})});
    if(path==='/api/panel-library/graph'&&req.method==='GET')return reply({ok:true,...store.graph(source||'knowledge')});
    if(path==='/api/panel-library/document'){
     if(req.method==='GET')return reply({ok:true,document:store.read(source,file,{allowMissing:url.searchParams.get('new')==='1'}),history:store.history(source,file)});

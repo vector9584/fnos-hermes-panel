@@ -10,6 +10,10 @@ from panel_drain_store import locked_record,write_record,DrainStoreError
 
 class LifecycleError(Exception):pass
 
+def _samefile(a,b):
+ try:return os.path.samefile(a,b)
+ except OSError:return False
+
 class Lifecycle:
  def __init__(self,app,home,var,node):
   self.app=Path(app).resolve();self.home=Path(home).resolve();self.var=Path(var).resolve();self.node=str(Path(node).resolve());self.script=str(self.app/'server/monitor.js');self.pidfile=self.var/'app.pid';self.sock=self.app/'hermes-agent.sock'
@@ -18,7 +22,17 @@ class Lifecycle:
    if not isinstance(pid,int) or pid<=0:return None
    base=Path('/proc')/str(pid);argv=(base/'cmdline').read_bytes().decode().rstrip('\0').split('\0');raw=(base/'stat').read_text();fields=raw[raw.rfind(')')+2:].split()
    if fields[0] in ('Z','X'):return None
-   if kind=='monitor':owned=len(argv)>1 and argv[1]==self.script and str(Path(argv[0]).resolve())==self.node
+   # argv[0] 可能是裸 'node'（老入口用 cd+node 启动），Path('node').resolve() 会指向
+   # 当前工作目录而不是真实解释器，永远和 self.node 不等 —— 于是 status 恒为 3、
+   # 服务端拿不到「运行中」的结论。以 /proc/<pid>/exe 的真实路径为准，argv 仅作兜底。
+   try:exe=str(Path(os.readlink(base/'exe')).resolve())
+   except OSError:exe=''
+   if kind=='monitor':
+    # 判定「同一个 node 解释器」有三种合法形态：路径相同、同一文件（硬链/软链）、
+    # 或直接就是裸 node。脚本路径才是这个应用独有的标识，解释器只做粗校验。
+    node_ok=bool(exe) and (exe==self.node or _samefile(exe,self.node))
+    if not node_ok:node_ok=Path(exe or argv[0]).name in ('node','nodejs')
+    owned=len(argv)>1 and argv[1]==self.script and node_ok
    else:
     binary=str(self.home/'venv/bin/hermes');python=[str(self.home/'venv/bin/python'),str(self.home/'venv/bin/python3')];args=argv[1:] if argv[0] in python else argv
     owned=(len(args)>1 and args[0]==binary and (args[1]=='dashboard' or args[1:3]==['gateway','run'])) or (argv[0] in python and argv[1:3]==['-m','hermes_cli.main'] and (argv[3:4]==['dashboard'] or argv[3:5]==['gateway','run']))
@@ -59,6 +73,25 @@ class Lifecycle:
   except ConnectionRefusedError:return False
   except OSError:raise LifecycleError('套接字归属暂不可核实，已停止启动')
   finally:probe.close()
+ def peer_pid(self):
+  # Who really owns the listening socket; SO_PEERCRED on a fresh connect.
+  probe=socket.socket(socket.AF_UNIX,socket.SOCK_STREAM);probe.settimeout(1)
+  try:probe.connect(str(self.sock));return struct.unpack('3i',probe.getsockopt(socket.SOL_SOCKET,socket.SO_PEERCRED,12))[0]
+  except OSError:return None
+  finally:probe.close()
+ def adopt(self):
+  """Trust a healthy Monitor that owns the socket even if /proc discovery missed it.
+
+  连续 4 次 start 返回 {"ok": false, "error": "应用套接字已被其他进程占用，未接管"}
+  就是这条路走进来的：Monitor 明明活着、/api/health 也回 ok，但 discover() 没能从
+  /proc 认出来（解释器路径、argv 形态、启动入口不同都可能），于是既不起新实例也不认
+  旧实例，只能报错退出 —— fnOS 收到 exit 1，记 START_FAILED_LOCAL_APP_RUN_EXCEPTION，
+  卡片翻成「启用」。健康套接字就是唯一裁判：认它，把 pid 同步进 app.pid，返回成功。
+  """
+  pid=self.peer_pid()
+  if not pid or not self.health(pid):return None
+  self.write_pid(pid)
+  return {'ok':True,'already_running':True,'adopted':True,'pid':pid,'healthy':True}
  def terminate(self,record,timeout=15):
   # pidfd pins the process incarnation across the final identity/signal window.
   if not self.same(record):return
@@ -83,6 +116,8 @@ class Lifecycle:
   if existing:
    if not self.health(existing[0][0]):raise LifecycleError('Monitor存在但尚未恢复健康，未启动第二实例')
    self.write_pid(existing[0][0]);return {'ok':True,'already_running':True,'pid':existing[0][0]}
+  adopted=self.adopt()
+  if adopted:return adopted
   if self.connected_socket():raise LifecycleError('应用套接字已被其他进程占用，未接管')
   if self.sock.exists():self.sock.unlink()
   env={**os.environ,'HOME':str(self.home),'HERMES_HOME':str(self.home),'APP_DIR':str(self.app),'DATA_DIR':str(self.home),'VAR_DIR':str(self.var),'MONITOR_SOCKET_PATH':str(self.sock),'BASE_PATH':'/app/hermes-agent','PATH':str(self.home/'venv/bin')+':'+os.environ.get('PATH','')}
@@ -143,11 +178,18 @@ class Lifecycle:
   for record in expected['services']:self.terminate(record,5)
   # A service respawned after the snapshot is not an authorized signal target.
   if self.discover() or self.discover('service'):raise LifecycleError('应用进程仍在运行，停止未完成；未停止新出现的进程')
+  # 反向的假停止：discover 认不出 Monitor 时一个信号都没发，却敢回 stopped:true，
+  # fnOS 记"已停止"而应用还在跑。套接字还有健康响应就说明没停成，如实报错。
+  if self.connected_socket() and self.health():raise LifecycleError('套接字仍有Monitor响应，停止未完成；未改动其他进程')
   if self.pidfile.exists() and not self.pidfile.is_symlink():self.pidfile.unlink()
   if self.sock.exists() and not self.sock.is_symlink() and self.sock.lstat().st_ino==socket_inode and not self.connected_socket():self.sock.unlink()
   return {'ok':True,'stopped':True}
  def status(self):
-  record=self.stored();return bool(record and self.health(record[0]))
+  record=self.stored()
+  if record and self.health(record[0]):return True
+  # app.pid 落后于真身（内部重启、旧 pid 残留）时，健康套接字说了算并顺手纠正 pid 文件，
+  # 否则 status 恒为 3 → fnOS 5 秒轮询判崩溃 → 卡片翻「启用」。
+  return bool(self.adopt())
 
 if __name__=='__main__':
  try:

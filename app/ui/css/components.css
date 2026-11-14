@@ -1,0 +1,111 @@
+/* ═══════════════════════════════════════════════════════════════════
+   components.css — 组件契约（唯一真源）
+
+   改页面前先读 app/ui/ARCHITECTURE.md 的三层：业务域 / 样式 / 功能。
+   本文件是「样式架构」的组件层：token → 组件 → 页面。新写页面只许用这里
+   的组件，不许在页面 css 里重新发明 padding/radius/background。
+
+   规矩（arch_lint.py 的 R4/R5/R6 会检查）：
+     · 按钮 → <button class="btn"> ＋ .primary/.danger/.secondary/.ghost、
+              尺寸 .sm/.xs、通栏 .block
+              禁止新造 *-btn / *btn 类名，存量已登记在 arch_lint_baseline.json
+     · 卡片 → <div class="card"> ＋ .card-head/.card-title/.card-body/.card-foot
+              修饰符 .card--pad/.card--flat/.card--deck/.card--click
+              禁止新造 xxx-card，存量只减不增
+     · 面板 → <section class="panel"> ＋ .panel-head/.panel-body
+     · 徽标 → <span class="badge">，状态用 data-tone="ok|warn|danger|muted"
+     · 空态 → <div class="empty">，文案一句话，可选 .empty-title/.empty-hint
+     · 字段 → <label class="field"><span class="field-label">…</span>
+              <input class="field-input"><span class="field-hint">…</span></label>
+
+   圆角只用四级（base.css 的 token）：
+     --radius-sm  6px  chip / badge / 极小控件
+     --radius-md  8px  控件（按钮、输入框）
+     --radius-xl 12px  卡片 / 面板（默认）
+     --radius-2xl 16px 大容器 / 特殊卡（mdeck）
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── 按钮变体（基础 .btn 在 base.css，这里只补缺失的变体）─────────── */
+.btn.danger{color:var(--danger);border-color:var(--danger)}
+.btn.danger:hover{background:var(--danger);color:var(--white);border-color:var(--danger)}
+.btn.secondary{background:transparent}
+.btn.ghost{background:transparent;border-color:transparent;color:var(--text2)}
+.btn.ghost:hover{background:var(--accent-bg);border-color:transparent;color:var(--accent)}
+.btn.block{display:block;width:100%}
+.btn:disabled,.btn.disabled{opacity:.55;cursor:not-allowed;pointer-events:none}
+/* 尺寸档：.sm 表格/卡片内，.xs 行内小动作 */
+.btn.sm{padding:4px 10px;font-size:var(--fs-sm)}
+.btn.xs{padding:2px 8px;font-size:var(--fs-xs);border-radius:var(--radius-sm)}
+
+/* ── 卡片 ─────────────────────────────────────────────────────────── */
+.card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-xl);overflow:hidden}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border)}
+.card-title{font-size:var(--fs-md);font-weight:600;color:var(--text);margin:0;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-body{padding:14px}
+.card-foot{display:flex;align-items:center;justify-content:flex-end;gap:8px;padding:10px 14px;border-top:1px solid var(--border)}
+/* 修饰符：无 head/body 结构时用 .card--pad 一次性给内距 */
+.card--pad{padding:var(--sp-4)}
+.card--flat{border-color:transparent}
+.card--click{cursor:pointer;transition:border-color .15s,transform .15s}
+.card--click:hover{border-color:var(--accent)}
+.card--deck{background:var(--bg0);border-radius:var(--radius-2xl)}
+
+/* ── 设置页区块容器 ──────────────────────────────────────────────────
+   .settings-card 原来只在 JS 里出现（panel-devices / panel-typing / panel-echo），
+   CSS 里一条定义都没有：视觉全靠搭配的第二个类，其中 panel-echo 单用一个类，
+   那块实际是裸的；panel-devices 14px、panel-typing 12px，同页两个圆角。
+   现在它自己是真组件，第二个类只写差异。 */
+.settings-card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-xl);padding:22px;min-width:0}
+.settings-card h2{font-size:19px;margin:0 0 12px}
+@media(max-width:600px){.settings-card{padding:16px}}
+
+/* ── 面板 ─────────────────────────────────────────────────────────── */
+.panel{background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-md);display:flex;flex-direction:column;min-width:0}
+.panel-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:10px 12px;border-bottom:1px solid var(--border);font-size:var(--fs-md);font-weight:600}
+.panel-body{padding:12px;min-width:0;flex:1}
+
+/* ── 徽标 ─────────────────────────────────────────────────────────── */
+.badge{display:inline-flex;align-items:center;gap:4px;padding:1px 7px;border-radius:var(--radius-pill);border:1px solid var(--border);background:var(--bg2);color:var(--text2);font-size:var(--fs-sm);line-height:1.6;white-space:nowrap}
+.badge[data-tone="ok"]{color:var(--success);border-color:var(--success)}
+.badge[data-tone="warn"]{color:var(--warning);border-color:var(--warning)}
+.badge[data-tone="danger"]{color:var(--danger);border-color:var(--danger)}
+.badge[data-tone="muted"]{color:var(--text3)}
+
+/* ── 空态 ──────────────────────────────────────────────────────────
+   .empty 是规范名；.empty-state 是 39 处存量写法，保留为等价别名，
+   新代码统一用 .empty。 */
+.empty,.empty-state{padding:30px 20px;text-align:center;color:var(--text3);font-size:13px}
+.empty-title{display:block;font-size:var(--fs-lg);color:var(--text2);margin-bottom:6px;font-weight:600}
+.empty-hint{display:block;font-size:var(--fs-sm);color:var(--text3)}
+
+/* ── 表单字段 ──────────────────────────────────────────────────────
+   以前每个弹窗自己拼 label+input 的间距，行高各不相同。 */
+.field{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--sp-3);min-width:0}
+.field-label{font-size:var(--fs-sm);color:var(--text2);font-weight:500}
+.field-input{font:inherit;font-size:var(--fs-md);padding:7px 10px;border-radius:var(--radius-md);border:1px solid var(--border);background:var(--bg2);color:var(--text);width:100%;box-sizing:border-box}
+.field-input:focus{outline:none;border-color:var(--accent)}
+.field-hint{font-size:var(--fs-xs);color:var(--text3)}
+
+/* ── 全局按钮字体重置 ───────────────────────────────────────────
+   实测 1349 个可见按钮里有 798 个 fontFamily 是 Arial：button 默认不继承字体，
+   而 .nav-btn 这类自有按钮类没写 font。一条重置让它们跟随上下文，
+   比逐个类补 font 靠谱。只重置字体，不动尺寸（尺寸由 .btn / 变体决定）。 */
+button, [role="button"] { font: inherit; }
+
+/* ── 2026-11-13 气泡持久状态条 + 上下文超窗标记 ──
+   .sb-done：这一轮已经结束，状态条留在气泡顶部（刷新后也在），颜色压暗不抢注意力。
+   .sb-alert 仍由 base.css 负责，中断/超时用它。 */
+.msg-statusbar.sb-done{border-color:var(--border);background:var(--bg2);color:var(--text2);opacity:.85}
+.msg-statusbar.sb-done .sb-text{color:var(--text2);font-weight:500}
+.msg-statusbar.sb-done .sb-time{color:var(--text3)}
+.msg-statusbar.sb-done.sb-alert{background:rgba(245,158,11,.10);border-color:rgba(245,158,11,.45);opacity:1}
+.sub-over{margin-left:4px;padding:0 5px;border-radius:6px;background:rgba(239,68,68,.14);color:#ef4444;font-size:10px;font-weight:600;letter-spacing:.02em;vertical-align:1px}
+/* ── 2026-11-13 模型卡片：危险区（删除服务） ── */
+.model-danger-zone{margin-top:18px;padding:14px 16px;border:1px solid rgba(239,68,68,.28);border-radius:var(--radius-lg);background:rgba(239,68,68,.05)}
+.model-danger-zone h3{margin:0 0 4px;font-size:13px;font-weight:600;color:#ef4444}
+.model-danger-zone p{margin:0 0 10px;font-size:12px;color:var(--text3);line-height:1.5}
+.btn.danger{background:rgba(239,68,68,.12);border:1px solid rgba(239,68,68,.45);color:#ef4444;font-weight:600}
+.btn.danger:hover{background:rgba(239,68,68,.2)}
+.btn.danger[disabled]{opacity:.6;cursor:default}
+.model-danger-error{margin:8px 0 0;font-size:12px;color:#ef4444}
+.msg-q-note{margin-top:6px;font-size:11px;opacity:.85}

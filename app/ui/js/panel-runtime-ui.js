@@ -1,7 +1,7 @@
 (function(){
  'use strict';
  var fails=0;   // 连续失败计数：单次失败不打扰用户
- var bar=document.createElement('section');bar.className='panel-runtime-bar';bar.hidden=true;bar.setAttribute('role','status');var label=document.createElement('span'),button=document.createElement('button');button.className='action';button.textContent='重启应用并生效';bar.append(label,button);document.body.append(bar);new ResizeObserver(()=>document.documentElement.style.setProperty('--runtime-banner-space',bar.hidden?'0px':(bar.getBoundingClientRect().height+20)+'px')).observe(bar);var latest,polling=false;
+ var bar=document.createElement('section');bar.className='panel-runtime-bar';bar.hidden=true;bar.setAttribute('role','status');var label=document.createElement('span'),button=document.createElement('button');button.className='btn';button.textContent='重启应用并生效';bar.append(label,button);document.body.append(bar);new ResizeObserver(()=>document.documentElement.style.setProperty('--runtime-banner-space',bar.hidden?'0px':(bar.getBoundingClientRect().height+20)+'px')).observe(bar);var latest,polling=false;
  // WebKit(Safari/iOS) 对空响应体调 response.json() 会抛 "The string did not match the expected pattern."，
  // 304、网关空回包、被中间层吞掉响应都会命中，桌面 Chrome 只是报 "Unexpected end of JSON input" 所以看不出来。
  // 这里改成：先按 document.baseURI 算绝对地址（脚本在 DOMContentLoaded 之前就跑，apiUrl 的 BASE 那时还是空串），
@@ -50,7 +50,7 @@
   }
   else if(window.console)console.warn('[panel-runtime] 读取失败，静默重试：',(error&&error.message)||error);
  }finally{polling=false;}}
- button.onclick=async function(){if(button.dataset.mode==='reload'){location.reload();return;}if(latest?.restart_blocked){button.disabled=true;await load();button.disabled=false;return;}if(latest?.config_recovery&&(!latest.config_recovery.ok||latest.config_recovery.pending)){switchPage('updates');window.renderConfigRecovery?.();document.getElementById('configRecovery')?.scrollIntoView({block:'start'});return;}await load();var detail=latest?.busy?'当前仍有任务在执行。':latest?.observation?.gateway?.work_known===false?'暂时无法核实外部渠道和定时任务状态。':'';if(!confirm(detail+'重启整个Hermes应用以应用配置？正在运行的回复和任务会中断，草稿与已保存的执行记录会保留。'))return;button.disabled=true;try{var data=await request('restart',{interrupt:true});latest={...latest,restart_pending:true};label.textContent='已请求应用重启，正在等待重新连接…';button.hidden=true;load();}catch(e){label.textContent=e.message;button.disabled=false;}};
+ button.onclick=async function(){if(button.dataset.mode==='reload'){location.reload();return;}if(latest?.restart_blocked){button.disabled=true;await load();button.disabled=false;return;}if(latest?.config_recovery&&(!latest.config_recovery.ok||latest.config_recovery.pending)){switchPage('updates');window.renderConfigRecovery?.();document.getElementById('configRecovery')?.scrollIntoView({block:'start'});return;}await load();var detail=latest?.busy?'当前仍有任务在执行。':latest?.observation?.gateway?.work_known===false?'暂时无法核实外部渠道和定时任务状态。':'';if(!(await ui.confirm(detail+'重启整个Hermes应用以应用配置？正在运行的回复和任务会中断，草稿与已保存的执行记录会保留。')))return;button.disabled=true;try{var data=await request('restart',{interrupt:true});latest={...latest,restart_pending:true};label.textContent='已请求应用重启，正在等待重新连接…';button.hidden=true;load();}catch(e){label.textContent=e.message;button.disabled=false;}};
  window.panelRuntimeRefresh=load;
  setInterval(function(){if(!document.hidden)load();},5000);
  document.addEventListener('visibilitychange',function(){if(document.visibilityState==='visible')setTimeout(load,800);});

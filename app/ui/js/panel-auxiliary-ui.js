@@ -15,7 +15,7 @@
     var node=element('article',undefined,'provider-card auxiliary-card');node.dataset.task=task.key;node.append(element('h3',task.label));
     node.append(element('p',providerName(task.provider)+' / '+(task.model||'服务默认模型')));
     if(task.key==='vision')node.append(element('p',task.fallback_chain.length?'回退顺序：'+task.fallback_chain.map(function(item){return providerName(item.provider)+' / '+(item.model||'服务默认模型');}).join(' → '):'未指定额外回退模型'));
-    var more=element('button','编辑配置','action');more.onclick=function(){open(task);};node.append(more);
+    var more=element('button','编辑配置','btn');more.onclick=function(){open(task);};node.append(more);
     return node;
   }
   /* 2026-11-12 重组：原来 11 个任务各占一张卡，10 张写「自动选择」，
@@ -101,10 +101,10 @@
   }
   function fallback(value){
     var row=element('fieldset',undefined,'auxiliary-fallback');row.dataset.source=value.source_index??'';row.append(element('legend','回退模型'));entryFields(row,value,'fb-');
-    var remove=element('button','移除此回退','action');remove.type='button';
+    var remove=element('button','移除此回退','btn');remove.type='button';
     remove.onclick=function(){
       var next=row.nextSibling;row.remove();saveDraft();var status=dialog.querySelector('.auxiliary-feedback');status.replaceChildren(element('span','已移除回退项。'));
-      var undo=element('button','撤销','action');undo.type='button';undo.onclick=function(){dialog.querySelector('.auxiliary-chain').insertBefore(row,next?.isConnected?next:null);saveDraft();status.textContent='已恢复回退项';};status.append(undo);
+      var undo=element('button','撤销','btn');undo.type='button';undo.onclick=function(){dialog.querySelector('.auxiliary-chain').insertBefore(row,next?.isConnected?next:null);saveDraft();status.textContent='已恢复回退项';};status.append(undo);
     };
     row.append(remove);return row;
   }
@@ -123,12 +123,12 @@
     if(task.key==='vision'){
       body.append(input('图片下载超时（秒）','download_timeout',initial.download_timeout,'number'),element('h4','回退顺序'));
       var chain=element('div',undefined,'auxiliary-chain');(initial.fallback_chain||[]).forEach(function(value){chain.append(fallback(value));});body.append(chain);
-      var add=element('button','添加回退模型','action');add.type='button';add.onclick=function(){chain.append(fallback({provider:'custom'}));saveDraft();};body.append(add);
+      var add=element('button','添加回退模型','btn');add.type='button';add.onclick=function(){chain.append(fallback({provider:'custom'}));saveDraft();};body.append(add);
     }
     var feedback=element('div',stored?'已恢复未保存的草稿':'','auxiliary-feedback');feedback.setAttribute('role','status');body.append(feedback);
-    var foot=element('div',undefined,'modal-foot'),reset=element('button','丢弃草稿并读取最新','action'),save=element('button','保存配置','action primary');reset.type='button';
+    var foot=element('div',undefined,'modal-foot'),reset=element('button','丢弃草稿并读取最新','btn'),save=element('button','保存配置','btn primary');reset.type='button';
     reset.onclick=async function(){
-      if(!confirm('丢弃本次未保存输入，读取最新配置？'))return;setBusy(true);
+      if(!(await ui.confirm('丢弃本次未保存输入，读取最新配置？')))return;setBusy(true);
       try{accept(await request());var selected=tasks.find(function(item){return item.key===task.key;});setBusy(false);close();open(selected,true);draw();}
       catch(error){feedback.textContent=error.message;setBusy(false);}
     };

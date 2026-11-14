@@ -14,15 +14,22 @@ STAMP=$(date +%Y%m%d-%H%M%S)
 BACKUP=${BACKUP:-$DATA_DIR/backups/workspace-$STAMP}
 
 usage() {
-  printf '%s\n' "用法: $0 [--no-restart]" >&2
-  printf '%s\n' '完整铺设 app/server、app/ui 和 app/python → hermes-src；默认部署后执行 dev/hermes-dev.sh restart。' >&2
+  printf '%s\n' "用法: $0 [--restart|--no-restart]" >&2
+  printf '%s\n' '完整铺设 app/server、app/ui 和 app/python → hermes-src。' >&2
+  printf '%s\n' '默认只在 server/python 有实际变更时重启；ui 改动刷新浏览器即可，重启会掐断全部活跃会话。' >&2
+  printf '%s\n' '  --restart     无论改了哪层都重启' >&2
+  printf '%s\n' '  --no-restart  一律不重启' >&2
 }
 
 [[ $# -le 1 ]] || { usage; exit 2; }
 NO_RESTART=0
-if [[ ${1:-} == --no-restart ]]; then NO_RESTART=1
-elif [[ $# -eq 1 ]]; then usage; exit 2
-fi
+FORCE_RESTART=0
+case ${1:-} in
+  --no-restart) NO_RESTART=1 ;;
+  --restart)    FORCE_RESTART=1 ;;
+  '')           ;;
+  *)            usage; exit 2 ;;
+esac
 
 as_agent() {
   if [[ $(id -un) == hermes-agent ]]; then
@@ -104,6 +111,7 @@ manifest_line() {
 changed=0
 created=0
 kept=0
+backend_changed=0   # server/ 或 python/ 的实际变更数，决定是否需要重启
 
 for source_entry in "${SOURCE_FILES[@]}"; do
   source="$SRC_REPO/$source_entry"
@@ -135,17 +143,42 @@ for source_entry in "${SOURCE_FILES[@]}"; do
   [[ $actual_hash == "$candidate_hash" ]] || die "目标校验失败: $dest_rel"
   action=create
   if [[ -n $backup_hash ]]; then action=replace; changed=$((changed + 1)); else created=$((created + 1)); fi
+  case $rel in
+    ui/*) ;;
+    *) backend_changed=$((backend_changed + 1)) ;;
+  esac
   manifest_line "$rel\t$dest_rel\t$action\t$candidate_hash\t$backup_hash"
 done
+
+# 发布后清理：候选清单只会覆盖/新增，从不删除目标端旧文件。
+# 结果就是历次手工备份（*.bak-* / *.bak.* / *.bak2-*）永久堆在生产目录里，
+# 而且被静态服务直接取到（2026-11-13 实测 /app/hermes-agent/js/panel-durable.js.bak-* 回 200/48276B）。
+# 这里只按备份命名模式清理，不碰 git 未跟踪的 images/ scripts/ 等资产。
+pruned=0
+while IFS= read -r stale; do
+  [[ -n $stale ]] || continue
+  as_agent rm -f "$stale"
+  pruned=$((pruned + 1))
+done < <(find "$APP_DIR/ui" -type f \( -name '*.bak-*' -o -name '*.bak.*' -o -name '*.bak2-*' \) -print 2>/dev/null || true)
+(( pruned == 0 )) || printf '🧹 已清理生产目录残留备份: %d 个\n' "$pruned"
 
 printf 'Workspace backup: %s\n' "$BACKUP"
 printf 'Candidate files: %d (kept=%d replaced=%d created=%d)\n' \
   "${#SOURCE_FILES[@]}" "$kept" "$changed" "$created"
 printf 'Manifest: %s\n' "$BACKUP/MANIFEST.tsv"
 
+printf 'Backend files changed (server/python): %d\n' "$backend_changed"
+
 if (( NO_RESTART )); then
-  printf '%s\n' '⚠️  已跳过重启；包含 server/Python 变更时必须随后执行: dev/hermes-dev.sh restart'
+  printf '%s\n' '⚠️  已按 --no-restart 跳过重启；含 server/Python 变更时必须随后执行: dev/hermes-dev.sh restart'
+elif (( FORCE_RESTART )); then
+  printf '%s\n' '↻ 按 --restart 强制重启...'
+  cd "$SRC_REPO"
+  dev/hermes-dev.sh restart
+elif (( backend_changed == 0 )); then
+  printf '%s\n' '✅ 仅 ui 变更，已跳过重启 —— 刷新浏览器即生效。重启会掐断全部活跃会话，不是刷新手段。'
 else
+  printf '%s\n' '↻ server/python 有变更，执行重启...'
   cd "$SRC_REPO"
   dev/hermes-dev.sh restart
 fi

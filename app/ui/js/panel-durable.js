@@ -59,7 +59,9 @@
       // 只在没结束的状态下补，已完结的执行记录里那张卡已经作废。
       if(!terminal.has(j.status)&&j.pending_clarify){try{window.pwClarifyAsk?.(j.pending_clarify);}catch(e){}}
       if(terminal.has(j.status)){finish(state,j.status,r.error);return;}
-      state.cb.onInfo?.(j.status==='pending'?'消息已保存，轮到时会自动执行。':r.info||'已恢复执行进度');
+      /* 排队那句不写正文（2026-11-13 用户第 44 条）：状态条已经写着「⏳排队中，轮到它会自动开始」，
+         底下再挂一行「消息已保存，轮到时会自动执行」就是同一句话说两遍。 */
+      if(j.status!=='pending') state.cb.onInfo?.(r.info||'已恢复执行进度');
       updateSend();return;
     }
     if(packet.status)state.status=packet.status;
@@ -145,7 +147,7 @@
   window.streamChat=function(payload,cb){
     payload={...payload,request_id:payload.request_id||uuid()};
     try{remember(payload);}catch(e){restoreUnsent(payload);cb.onError?.('浏览器存储已满，消息未发送。请保留输入后清理空间。');cb.onDone?.(false);return;}
-    clearSentDraft(payload.session_id);
+    clearSentDraft(payload.session_id,typeof payload.message==='string'?payload.message:(payload.message&&payload.message.text)||'');
     submit(payload,cb);
   };
   // Legacy fallback functions used by older integrations now enter the same queue.
@@ -170,6 +172,177 @@
     }catch(e){toast('取消失败：'+e.message);}
   };
   function messageText(j){const m=j.message;return typeof m==='string'?m:m?.text||'含附件的消息';}
+  /* 2026-11-13（用户第 5 条后半）：刷新后只看得见「一条在跑 + 一条排队」。
+     不是队列丢数据——服务端 jobs 是全的——而是还没执行的消息只存在队列里，
+     会话消息文件里根本没有它，重绘历史时自然画不出来。
+     这里按队列给还没执行的每条补一个占位气泡（data-request-id = job.id），
+     真消息落盘后由 renderTurn/重绘接管，占位自己退出。 */
+  function syncPendingBubbles(live){
+    const body=document.getElementById('chatBody');if(!body)return;
+    const alive={};(live||[]).forEach(j=>{alive[j.id]=j.status==='running'?'running':'queued';});
+    [...body.querySelectorAll('.msg.user.pw-queue-ph')].forEach(el=>{
+      const id=el.getAttribute('data-request-id');
+      const dup=id?body.querySelectorAll('.msg.user[data-request-id="'+id+'"]').length:0;
+      if(!alive[id]||dup>1)el.remove();
+    });
+    (live||[]).forEach((j,i)=>{
+      if(body.querySelector('.msg.user[data-request-id="'+j.id+'"]'))return;
+      const running=j.status==='running';
+      const el=document.createElement('div');
+      /* 正在跑那条也可能只剩助手侧（历史里还没写用户消息）：占位要跟着换成"正在处理"，
+         不能再挂"排队中"，否则明明是它在跑，文案却说还在等（2026-11-13 第 44 条）。 */
+      el.className='msg user pw-queue-ph '+(running?'running':'queued');
+      el.setAttribute('data-request-id',j.id);
+      /* 2026-11-13（用户第 52 条）：占位气泡以前只有一个「取消」，正常气泡是「复制 / 引用」两个，
+         用户看到的就是「队列消息框只剩一个按钮」。这里把复制/引用补齐，取消由 _markRunningMsg
+         追加到同一个 .msg-actions 里，最终三个。
+         data-content 必须写：copyMsg/quoteMsg 优先读它，读不到会退 textContent，
+         那样「排队中，前面还有 N 条」会被一起复制进去。 */
+      const _txt=messageText(j);
+      el.setAttribute('data-content',escapeHtml(_txt).replace(/"/g,'&quot;').replace(/\n/g,'&#10;'));
+      el.innerHTML='<div class="chat-sender">你</div><div class="msg-bubble">'+escapeHtml(_txt).replace(/\n/g,'<br>')+
+        '<div class="msg-q-note">'+(running?'正在处理':('排队中'+(i>0?('，前面还有 '+i+' 条'):'')))+'</div></div>'+
+        '<div class="msg-actions">'+
+          '<button class="msg-act-btn" onclick="copyMsg(this)" title="复制"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 0-2-2V4a2 2 0 0 0 2-2h9a2 2 0 0 0 2 2v1"/></svg>复制</button>'+
+          '<button class="msg-act-btn" onclick="quoteMsg(this)" title="引用回复"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>引用</button>'+
+        '</div>'+
+        '<div class="msg-meta">你 · '+fmtDateTime(Date.now())+'</div>';
+      /* 助手侧已经在场就贴在它前面插（2026-11-13 用户第 56 条）：append 到末尾再靠
+         orderQueuePairs 搬回来是两次「移除+插入」，动画重播、看上去一抽。 */
+      const _aSame=body.querySelector('.msg.assistant[data-request-id="'+j.id+'"]');
+      if(_aSame && _aSame.parentNode===body) body.insertBefore(el,_aSame); else body.appendChild(el);
+      try{window.hpDrawTail&&window.hpDrawTail(el);}catch(e){}
+    });
+    /* 建完立刻成对重排（2026-11-13 第 54 条）：以前只靠 refreshQueue 每 4s 调一次
+       resyncQueueFx 才排，用户连发五条会先看到「我的五条一堆、助手卡一堆」，约 7 秒后才恢复。 */
+    try{orderQueuePairs((live||[]).map(j=>j.id));}catch(e){}
+  }
+  window.pwSyncPendingBubbles=syncPendingBubbles;
+  /* 一次把「排队/运行」这一层效果补全（2026-11-13 用户第 44 条）。
+     为什么要单独抽一个：refreshQueue 每 4s 才跑一次，而 chatBody 会被整片重绘
+     （本轮结束前 100ms 的 loadSessionMessages、切会话、pollSessionSync 都会）。
+     重绘后排队气泡、呼吸灯、取消按钮、正在跑那条的状态栏一起消失，用户看到的就是
+     「先一个气泡在处理，过几秒又闪出两条排队」。所以重绘完必须同一帧补回来。
+     另外一个用途：刚 POST 出去那几条还没进服务端快照，靠本地 views 先标成排队，
+     否则「连发三条」的头几秒后两条既没呼吸灯也没取消按钮。 */
+  /* 抽搐的源头（2026-11-13 用户第 56 条）：这个函数在「切会话 / 历史重绘 / 每 4s 轮询 /
+     每条 accepted 事件」里都会被调，切一次会话能在一个 tick 里连调好几次，
+     每次都把排队气泡重画、把成对节点重新 append 到尾部 —— 实测 147 次 childList 抖动。
+     对策：同一帧只跑一次（rAF 合并）；历史整片重绘期间直接让位，等画完再来。 */
+  let _resyncPending=false,_resyncBusy=false;
+  function resyncQueueFx(){
+    if(!currentSession) return;
+    if(window._pwHistoryRendering) return;
+    if(_resyncPending||_resyncBusy) return;
+    _resyncPending=true;
+    const run=function(){
+      _resyncPending=false;
+      if(_resyncBusy) return;
+      _resyncBusy=true;
+      try{_resyncApply();}catch(e){}finally{_resyncBusy=false;}
+    };
+    if(window.requestAnimationFrame) requestAnimationFrame(run); else setTimeout(run,0);
+  }
+  function _resyncApply(){
+    const body=document.getElementById('chatBody'); if(!body) return;
+    /* 服务端 /api/chat/queue 的 list() 按 created_at 倒序返回（panel-queue.js:66），
+       直接用就是「最新那条排最前」，用户连发 1~5 看到的是 1 5 4 3 2（2026-11-13 第 54 条）。
+       队列顺序在这里统一升序：先按入队序号 order，再退回 created_at。 */
+    const mine=jobs.filter(j=>j.session_id===currentSession)
+      .sort((a,b)=>((a.order||a.created_at||0)-(b.order||b.created_at||0)));
+    const runJob=mine.find(j=>j.status==='running');
+    const pend=mine.filter(j=>j.status==='pending');
+    const known=new Set(jobs.map(j=>j.id));
+    const _locals=[...views.values()].filter(v=>v.sid===currentSession&&!terminal.has(v.status)&&!known.has(v.id));
+    const localRun=_locals.find(v=>v.status==='running');
+    const localPend=_locals.filter(v=>v.status!=='running');
+    const runId=runJob?runJob.id:(localRun?localRun.id:null);
+    const allPend=pend.concat(localPend.map(v=>({id:v.id,session_id:v.sid,message:v.message,status:'pending'})));
+    if(!runId&&!allPend.length){
+      /* 队列真空 = 这一批全跑完了：把环和「取消」收干净。历史重绘保住的是旧节点，
+         .running/.queued 类不会自己掉，留着就是完成态还挂着跑马灯（第 44 条）。 */
+      try{window._markRunningMsg&&window._markRunningMsg(false);}catch(e){}
+      return;
+    }
+    const runObj=runJob||(localRun?{id:localRun.id,session_id:localRun.sid,message:localRun.message,status:'running'}:null);
+    /* 先补订阅气泡，再补占位：顺序反了 renderTurn 只补助手侧，用户侧会停在占位壳上 */
+    for(const st of subscriptions.values()){
+      if(st.finished||st.sid!==currentSession)continue;
+      const v=views.get(st.id);if(!v)continue;
+      const node=document.querySelector('.msg.assistant[data-request-id="'+v.id+'"]');
+      const unode=document.querySelector('.msg.user[data-request-id="'+v.id+'"]');
+      /* 两侧都要在：只剩助手侧的时候，用户那条会在历史重绘后整段消失几秒，
+         看上去就是「排队消息闪一下不见了」（2026-11-13 用户第 44 条）。 */
+      if(!node||!unode){try{renderTurn(v);}catch(e){}}
+    }
+    try{syncPendingBubbles(runObj?[runObj].concat(allPend):allPend);}catch(e){}
+    /* 状态以服务端队列为真源回填（2026-11-13 用户第 44 条）：那条已经开始跑了，
+       气泡上还挂着「⏳排队中」——因为订阅是接手之后才建的，onSnapshot 的翻转没人收。
+       这里按 jobs 把 status/live 对齐，再让 renderTurn 重画一次。 */
+    for(const j of mine){
+      const v=views.get(j.id);if(!v)continue;
+      if(j.status==='running'){
+        v.status='running';
+        if(!v.live||v.live.mode==='queued')v.live={mode:v.text?'generating':'thinking',text:v.text?'正在回复':'正在思考',icon:v.text?'💬':'🤔'};
+      }else if(j.status==='pending'){
+        v.status='pending';
+        if(!v.live||v.live.mode!=='queued')v.live={mode:'queued',text:'排队中，轮到它会自动开始',icon:'⏳'};
+      }else continue;
+      /* 状态和文案都没变就别重画：resync 每轮都走一遍，无条件 renderTurn 等于把每张卡
+         重建一次（innerHTML 重写、动画重播），4s 一次的闪烁/重排就是这么来的。 */
+      const _a=document.querySelector('.msg.assistant[data-request-id="'+j.id+'"]');
+      const _u=document.querySelector('.msg.user[data-request-id="'+j.id+'"]');
+      const _sig=j.status+'|'+(v.live?(v.live.mode+'|'+(v.live.text||'')):'');
+      if(_a&&_u&&v._rsSig===_sig) continue;
+      v._rsSig=_sig;
+      try{renderTurn(v);}catch(e){}
+    }
+    try{window._markRunningMsg&&window._markRunningMsg(true,runId?'running':'queued',runId,allPend.map(j=>j.id));}catch(e){}
+    /* 2026-11-13（用户第 52 条）：连发三条刷新后是「我的三条在最上、助手三张排队卡在最下」。
+       原因是占位气泡和助手卡各自 append 到尾部，谁先谁后取决于哪条路径先跑，
+       于是两组各自成块。这里按队列顺序把成对的节点重排一遍：u1,a1,u2,a2,u3,a3。
+       只搬 id 在活队列里的节点，历史已完成的消息不动。 */
+    try{orderQueuePairs([runId].concat(allPend.map(j=>j.id)));}catch(e){}
+  }
+  /* 按队列顺序把「用户气泡 + 对应助手气泡」成对搬到尾部；缺一侧就只搬有的那一侧，
+     后补出来的另一侧自然接在后面（appendChild 不会把已有节点留在旧位置）。 */
+  window.pwOrderQueuePairs=orderQueuePairs;   /* 供自检/回归用：输入 id 序列，把成对节点重排 */
+  function orderQueuePairs(ids){
+    const body=document.getElementById('chatBody'); if(!body||!ids||!ids.length) return;
+    const seq=[];
+    ids.forEach(id=>{
+      if(!id) return;
+      const u=body.querySelector('.msg.user[data-request-id="'+id+'"]'); if(u) seq.push(u);
+      const a=body.querySelector('.msg.assistant[data-request-id="'+id+'"]'); if(a) seq.push(a);
+    });
+    if(seq.length<2) return;
+    /* 顺序已经对了就一个节点都别动：appendChild 即便位置不变也是一次「移除+插入」，
+       节点的 CSS 动画会从头播、秒表跟着跳 —— 每 4s 一次的抽搐就是这么来的。 */
+    const kids=[...body.children];
+    let prev=-1, ordered=true;
+    for(const n of seq){ const i=kids.indexOf(n); if(i<0) continue; if(i<prev){ordered=false;break;} prev=i; }
+    if(ordered) return;
+    seq.forEach(n=>body.appendChild(n));
+  }
+  window.pwResyncQueueFx=resyncQueueFx;
+  /* 自检出口：刷新后状态栏没画出来时，先看数据层到底有没有这条、status/live 是什么。
+     只读，不改任何状态。 */
+  window.pwQueueDebug=function(){
+    return {
+      session: currentSession,
+      jobs: jobs.filter(j=>j.session_id===currentSession).map(j=>({id:j.id,status:j.status,order:j.order,created_at:j.created_at})),
+      views: [...views.values()].map(v=>({id:v.id,sid:v.sid,status:v.status,live:v.live||null,textLen:(v.text||'').length})),
+      subs: [...subscriptions.keys()],
+      channel: !!_channelViewActive
+    };
+  };
+  /* 历史重绘前要知道「哪些气泡正活着」，好把它们连 DOM 搬过去（见 tabs.js loadSessionMessages） */
+  window.pwLiveQueueIds=function(){
+    const out=new Set();
+    jobs.forEach(j=>{if(j.session_id===currentSession&&(j.status==='pending'||j.status==='running'))out.add(j.id);});
+    views.forEach(v=>{if(v.sid===currentSession&&!terminal.has(v.status))out.add(v.id);});
+    return [...out];
+  };
   function renderQueue(){
     const composer=document.getElementById('chatComposer');if(!composer)return;
     let panel=document.getElementById('durableQueue');
@@ -236,9 +409,24 @@
          *   正在执行那条 → 彩色跑马灯；还没执行的每一条 → 呼吸灯 + 「取消」按钮。
          * 不能塞进上面 `!driven` 里：有活跃订阅时也要把排队那几条标出来，
          * 否则「连发三条」只能看见第一条在转，后两条排队完全没提示。 */
-        if(runJob||pendJobs.length){
-          try{window._markRunningMsg&&window._markRunningMsg(true,runJob?'running':'queued',runJob?runJob.id:null,qids);}catch{}
+        /* 2026-11-13（用户第 41 条）：先把订阅建起来再补占位。顺序反了会先画一个
+           没有操作栏的裸气泡，等 renderTurn 再画一个真的，中间这几秒能看见两条。 */
+        for(const j of jobs)if(j.session_id===currentSession&&!subscriptions.has(j.id)&&j.status!=='interrupted')watchJob(j);
+        /* 刷新后「只剩我的气泡 + 一颗按钮」的真凶在这里：历史重绘（loadSessionMessages
+           或切会话）整片换掉 chatBody，队列气泡跟着消失；而订阅还在 subscriptions 里，
+           下一轮 refreshQueue 判定「已订阅」直接跳过 watchJob，于是助手侧的「回答窗口」
+           再也不会被画回来，占位气泡又只有用户一侧。
+           顺序必须是「先补画、再补占位」：反过来的话 renderTurn 看见占位气泡已经占了
+           user 这一侧，就只补助手气泡，用户侧永远停在没有复制/引用按钮的占位壳上。 */
+        for(const st of subscriptions.values()){
+          if(st.finished||st.sid!==currentSession)continue;
+          const v=views.get(st.id);if(!v)continue;
+          const node=document.querySelector('.msg.assistant[data-request-id="'+v.id+'"]');
+          const sb=node&&node.querySelector('.msg-statusbar');
+          /* DOM 没了 → 整对重建；DOM 在但状态栏被历史重绘抹平了 → 重画一次状态栏 */
+          if(!node||(!terminal.has(v.status)&&(!sb||sb.hidden))){try{renderTurn(v);}catch(e){}}
         }
+        try{resyncQueueFx();}catch(e){}
       }
       /* 同会话有未处理的 interrupted 会把后面所有 pending 一直挡在队列里（panel-queue.js:132），
        * 这时显示「正在思考」就是骗人，直接说清楚。 */
@@ -264,7 +452,12 @@
       }
       if(typeof window.genBarReconcile==='function') window.genBarReconcile([...live]);
       else for(const sid of Object.keys(window._tabGenState||{})) if(!live.has(sid)) { try{window.genBarReset?.(sid);}catch{} }
-      if(!live.has(currentSession)) { try{window._markRunningMsg&&window._markRunningMsg(false);}catch{} }
+      /* 队列空了就把环收干净：历史重绘保住的是旧节点，.running/.queued 类不会自己掉。
+         只看 jobs+views 的真实活跃 id，不拿订阅 12s 窗口当活——那会让完成态一直带跑马灯。 */
+      const _aliveIds=new Set();
+      for(const j of jobs) if(j.status==='pending'||j.status==='running') _aliveIds.add(j.id);
+      for(const v of views.values()) if(!terminal.has(v.status)) _aliveIds.add(v.id);
+      if(!live.has(currentSession) || !_aliveIds.size) { try{window._markRunningMsg&&window._markRunningMsg(false);}catch{} }
     }
     catch{ /* The connection banner owns the offline state. Keep the last durable view. */ }
     finally{refreshing=false;}
@@ -337,20 +530,47 @@
         // 对方那份是空的，或两边内容其实一样 → 不是冲突，只是版本号过期（另一台设备打开过会话、
         // 发过一条空内容，就把 revision 顶上去了）。认领新版本静默重推，不要把空内容摆成"冲突"。
         if(remoteEmpty||remoteText===latest.text){
-          latest.revision=remote.revision;latest.conflicts=remote.conflicts||latest.conflicts;
-          latest.conflict_remote=null;latest.dirty=!(remoteText===latest.text)?latest.dirty:false;
+          /* 2026-11-13 第39条「幽灵草稿」：服务端这份是空的、且版本号比本机高，
+             说明这个会话已经发完了。以前这里保留 dirty → 本机那份老字（测试留下的
+             CTRL-V / PROBE唯一标记）被反复重推回服务端，清一次回来一次。
+             现在以服务端为准：本机残留直接丢掉，不清服务端就是真清。 */
+          latest.revision=remote.revision;latest.conflicts=[];
+          latest.conflict_remote=null;latest.dirty=false;
+          latest.text=remoteText;latest.attachments=remote.attachments||[];
           saveLocal(sid,latest);setDraftDurability(sid,'server',true);
-          if(latest.dirty)setTimeout(()=>syncDraft(sid),0);
+          const ta=document.getElementById('chatInput');
+          if(currentDraft===sid&&ta&&!ta.value.trim())applyDraft(sid);
         }else{
-          setDraftDurability(sid,'server',true);latest.revision=remote.revision;latest.conflicts=remote.conflicts;
-          latest.conflict_remote=remote;latest.dirty=false;saveLocal(sid,latest);renderDraftConflict(sid);
+          /* 2026-11-13 第39条：草稿不再做「两份对比、你挑一份」——那是在拿用户的时间
+             替程序擦屁股。谁正在打字谁赢：认领服务端版本号，把本机内容重新推上去。 */
+          setDraftDurability(sid,'server',true);latest.revision=remote.revision;latest.conflicts=[];
+          latest.conflict_remote=null;latest.dirty=true;
+          saveLocal(sid,latest);setTimeout(()=>syncDraft(sid),0);
         }
       }
       else if(d.dirty)scheduleDraftRetry(sid);
     }finally{setDraftDurability(sid,'pending',false);const latest=getDraft(sid);latest.saving=false;renderDraftDurability(sid);if(latest.dirty&&latest.local_updated_at!==stamp)setTimeout(()=>syncDraft(sid),0);}
   }
+  /* 刚发送出去的文本：草稿同步读回「服务端还没清干净」的旧稿时，
+     不许把它再塞回输入框。2026-11-13 实测：发送后 600ms 那次 syncDraft
+     走 GET 分支，服务端旧稿还在 → applyDraft 回填 → 输入框又出现刚发出去的字。 */
+  const _sentGuard = new Map();
   function applyDraft(sid){
     const d=getDraft(sid),ta=document.getElementById('chatInput');if(!ta)return;
+    /* 用户正在这个框里打字（有焦点 + 120 秒内敲过键 + 内容和服务端草稿不一样）：
+       服务端那份草稿（尤其是「刚发出去所以是空」的那份）不许覆盖他正在写的东西。
+       以前只靠 dirty 标记拦，队列一跑、草稿一同步，标记就归零，字照样没。 */
+    const _editAt=_composerEditAt[sid]||0;
+    const _typingNow=(currentDraft===sid)&&(document.activeElement===ta)&&!!(ta.value||'').trim()&&ta.value!==(d.text||'')&&(Date.now()-_editAt<120000);
+    if(_typingNow){
+      const keep=getDraft(sid);keep.text=ta.value;keep.dirty=true;keep.local_updated_at=Date.now();saveLocal(sid,keep);
+      renderDraftDurability(sid);return;
+    }
+    /* 发送后的 8 秒窗口：输入框已经空了，任何非空草稿都不许塞回来。
+       服务端那份可能是「刚发出去还没清干净」的字，也可能是别的设备留下的旧稿，
+       对用户来说都是「我发完了，字又冒出来了」。 */
+    const _g=_sentGuard.get(sid);
+    if(_g&&Date.now()-_g.at<8000&&!ta.value.trim()&&String(d.text||'').trim()){_sentGuard.delete(sid);return;}
     applyingDraft=true;
     ta.value=d.text||'';_pendingAttachments=d.attachments||[];renderAttachChips();
     if(d.options&&'model'in d.options&&sid!=='new'){_setSessionModel(sid,d.options.model||'');if(typeof _syncModelBtn==='function')_syncModelBtn();}
@@ -360,27 +580,16 @@
     autoResize(ta);renderDraftConflict(sid);renderDraftDurability(sid);applyingDraft=false;
   }
   function renderDraftConflict(sid){
-    let box=document.getElementById('draftConflict');
-    if(!box){box=document.createElement('div');box.id='draftConflict';box.className='draft-conflict';document.getElementById('chatComposer')?.prepend(box);}
-    const d=getDraft(sid);const cr=d.conflict_remote;
-    const meaningful=!!cr&&((cr.text||'').trim()!==''||(cr.attachments||[]).length>0);
-    if(!meaningful&&cr){d.conflict_remote=null;saveLocal(sid,d);}
-    box.hidden=!meaningful;
-    if(meaningful)box.innerHTML='<span>其他设备也修改了草稿，两份内容都已保存。</span><button id="draftCompare">查看两份草稿</button>';
-    const button=document.getElementById('draftCompare');if(button)button.onclick=()=>{
-      const dialog=document.createElement('dialog');dialog.className='durable-draft-dialog';
-      dialog.innerHTML='<h3>选择要继续编辑的草稿</h3><label>本机草稿<textarea readonly></textarea></label><label>另一份草稿<textarea readonly></textarea></label><div><button data-keep="local">继续本机草稿</button><button data-keep="remote">继续另一份</button><button data-close>稍后处理</button></div>';
-      const fields=dialog.querySelectorAll('textarea');fields[0].value=d.text;fields[1].value=d.conflict_remote.text;
-      dialog.onclick=async ev=>{if(ev.target.closest('[data-close]')){dialog.close();dialog.remove();return;}const pick=ev.target.closest('[data-keep]');if(!pick)return;
-        const chosen=pick.dataset.keep==='local'?d:d.conflict_remote,other=pick.dataset.keep==='local'?d.conflict_remote:d;
-        // Keep an explicit local recovery copy even after selecting a version.
-        write('panel-draft-recovery:'+sid+':'+Date.now(),other);
-        const next={...chosen,revision:d.revision,conflict_remote:null,dirty:true,local_updated_at:Date.now()};saveLocal(sid,next);applyDraft(sid);await syncDraft(sid);dialog.close();dialog.remove();};
-      document.body.append(dialog);dialog.showModal();
-    };
+    /* 2026-11-13 第39条：草稿箱改「简洁无感」——没有比对弹窗、没有「查看两份草稿」、
+       没有「稍后处理」。旧版本残留在 localStorage 的 conflict_remote 顺手清掉，
+       输入框上方那条提示条永久隐藏。 */
+    const d=getDraft(sid);
+    if(d&&d.conflict_remote){d.conflict_remote=null;saveLocal(sid,d);}
+    const box=document.getElementById('draftConflict');
+    if(box){box.hidden=true;box.innerHTML='';}
   }
-  function clearSentDraft(sid){
-    const d=getDraft(sid);saveLocal(sid,{...d,text:'',attachments:[],dirty:true,local_updated_at:Date.now()});syncDraft(sid);
+  function clearSentDraft(sid,sentText){
+    const d=getDraft(sid);_sentGuard.set(sid,{text:String(sentText||d.text||''),at:Date.now()});saveLocal(sid,{...d,text:'',attachments:[],dirty:true,local_updated_at:Date.now()});syncDraft(sid);
   }
   window.saveDraft=function(sid){captureDraft(sid);};
   window.restoreDraft=function(sid){currentDraft=sid||'new';applyDraft(currentDraft);syncDraft(currentDraft);renderQueue();updateSend();};
@@ -406,21 +615,23 @@
   window._setSessionModel=function(sid,model){const result=previousSetModel(sid,model);if(!applyingDraft&&sid===currentSession)setTimeout(()=>captureDraft(sid),0);return result;};
   // Render by stable request ID, never through a closure that holds another tab's DOM.
   const views=new Map();
-  // ── 工具看板：增量渲染 + 折叠状态记忆（2026-11-11 用户第 8 条）
-  // 旧实现每次工具进度都 innerHTML 整块重建：正在看的内容被整块换掉，观感就是"又折叠了"，
-  // 整块替换还会闪一下。现在只补新增卡片、只替换内容真变了的那张卡；
-  // 面板折叠态和已展开的卡片按 toolCallId 记住，重建（历史刷新 / 切 tab）后原样还原。
-  const toolUI=new Map();
-  function toolState(id){let st=toolUI.get(id);if(!st){st={collapsed:null,open:new Set()};toolUI.set(id,st);}return st;}
-  function toolKey(el,i){return el.getAttribute('data-tid')||('#'+i);}
+  // ── 工具看板：增量渲染（2026-11-13 重写）
+  // 折叠状态不再在这里存第二份：ToolUI 把意愿挂在 .tool-calls 盒子自己身上，
+  // 本函数只负责把内容增量补进去，然后调一次 ToolUI.paint 上色。
+  // 以前这里存 {collapsed, open:Set}，按 data-tid 或 #索引 还原 —— 索引在卡片增删后
+  // 会错位；盒子的折叠态还只写 aria-expanded，而 CSS 根本不看这个属性。
   function patchToolBox(area,tools,viewId){
     if(!area)return;
-    const st=toolState(viewId);
     const tpl=document.createElement('div');tpl.innerHTML=toolCallsHTML(tools);
     const fresh=tpl.firstElementChild;
     if(!fresh){area.replaceChildren();return;}
     let box=area.firstElementChild;
-    if(!box||!box.classList.contains('tool-calls')){area.replaceChildren(fresh);box=fresh;}
+    if(!box||!box.classList.contains('tool-calls')){
+      /* 重建盒体：把原来的 data-box 键带过去，否则 ToolCard 认不出「这个盒子用户开过」 */
+      const oldBox=box&&box.getAttribute('data-box');
+      if(oldBox)fresh.setAttribute('data-box',oldBox);
+      area.replaceChildren(fresh);box=fresh;
+    }
     else{
       const freshCount=fresh.querySelector('.tc-text'),countEl=box.querySelector('.tc-text');
       if(freshCount&&countEl&&countEl.textContent!==freshCount.textContent)countEl.textContent=freshCount.textContent;
@@ -429,24 +640,13 @@
         const cur=[...box.querySelectorAll('.tool-call')][i];
         if(!cur){list&&list.appendChild(el);return;}
         if(cur.className===el.className&&cur.innerHTML===el.innerHTML)return;
-        if(cur.classList.contains('open'))el.classList.add('open');
-        cur.replaceWith(el);
+        cur.replaceWith(el);   /* 开合状态由 ToolCard.paint 按 data-tk 还原 */
       });
     }
-    if(st.collapsed!=null)box.setAttribute('data-collapsed',st.collapsed?'true':'false');
-    if(st.open.size)box.querySelectorAll('.tool-call').forEach((el,i)=>{if(st.open.has(toolKey(el,i)))el.classList.add('open');});
-    const tog=box.querySelector('.tc-toggle');
-    if(tog)tog.textContent=box.getAttribute('data-collapsed')==='true'?'展开 ▾':'收起 ▴';
-    if(st.collapsed!=null){const sum=box.querySelector('.tool-summary');if(sum)sum.setAttribute('aria-expanded',st.collapsed?'false':'true');}
+    if(window.ToolUI)window.ToolUI.paint(box);   // 折叠态唯一出口
   }
-  window.__durableToolState={save(box){
-    if(!box)return;const msg=box.closest('.msg');const id=msg&&msg.getAttribute('data-request-id');if(!id)return;
-    const st=toolState(id);st.collapsed=box.getAttribute('data-collapsed')==='true';st.open=new Set();
-    box.querySelectorAll('.tool-call').forEach((el,i)=>{if(el.classList.contains('open'))st.open.add(toolKey(el,i));});
-  }};
-  // 单张卡片展开/收起也记一下（卡片点击由渲染器自己的 onclick 处理，这里只旁听）
-  document.addEventListener('click',e=>{const card=e.target.closest&&e.target.closest('.tool-call');if(!card)return;
-    const box=card.closest('.tool-calls');if(box)setTimeout(()=>window.__durableToolState.save(box),0);},true);
+  // 兼容旧调用点：折叠状态已由 ToolUI 自己维护，这里不再收集第二份。
+  window.__durableToolState={save(){}};
   function renderTurn(view){
     if(view.sid!==currentSession||_channelViewActive)return;
     const body=document.getElementById('chatBody');if(!body)return;
@@ -469,14 +669,69 @@
     const bubble=node.querySelector('.msg-bubble');let text=bubble.querySelector('.durable-reply');
     // History reloads replace the DOM without changing the tool data.
     // A new tool container must always be painted at least once.
-    if(!text){view.toolSignature=null;bubble.innerHTML='<div class="durable-reply md-text"></div><div class="durable-reasoning"></div><div class="durable-tools"></div><div class="chat-info"></div>';text=bubble.querySelector('.durable-reply');}
-    text.innerHTML=renderMarkdown(view.text||'',!terminal.has(view.status));
+    /* 三层信息带（2026-11-12 用户第 32 条）：
+       ① .msg-statusbar 在正文之下、工具调用之上 = 现在进行时（2026-11-13 第 40 条从顶部移下来）；② .msg-flags 在底部 = 已发生的事实。
+       历史气泡由 msgHTML 渲染、本来就带这两个容器；这里只补缺，不重建。 */
+    if(!bubble.querySelector('.msg-statusbar')){
+      var _sb=document.createElement('div');_sb.className='msg-statusbar';_sb.hidden=true;
+      var _tbox=bubble.querySelector('.durable-tools')||bubble.querySelector('.chat-info');
+      if(_tbox)bubble.insertBefore(_sb,_tbox);else bubble.append(_sb);
+    }
+    if(!bubble.querySelector('.msg-flags'))bubble.insertAdjacentHTML('beforeend','<div class="msg-flags" hidden></div>');
+    /* 2026-11-13：重建骨架前先把装饰节点摘下来。以前直接 innerHTML=骨架 会把
+       .msg-actions / .msg-meta 一起删掉，下面 535 行再给它们设 hidden 就是
+       「给 null 设属性」→ 抛错 → 整轮发送在 renderTurn 里中断、submit 根本没跑，
+       用户看到的是：气泡出来了、字回到输入框、弹一句「消息未发送」。 */
+    /* 2026-11-13 修正：.msg-actions / .msg-meta 已回到 .msg 直接子节点（与 user 分支、CSS grid 一致），
+       重建 bubble.innerHTML 只动气泡自己的子节点，天然碰不到 footer，不再需要「先摘下来再塞回去」。
+       以前那段摘挂逻辑基于「footer 在气泡内」的错误结构，现在保留只会把 footer 又拖回气泡里。 */
+    if(!text){view.toolSignature=null;bubble.innerHTML='<div class="durable-reply md-text"></div><div class="durable-reasoning"></div><div class="msg-statusbar" hidden></div><div class="durable-tools"></div><div class="chat-info"></div><div class="msg-flags" hidden></div>';text=bubble.querySelector('.durable-reply');}
+    /* 服务端拼进正文的「（执行已中断）」「📦 已自动压缩」渲染前抽成 chip：不改后端、不用重启 monitor */
+    const _mk=(typeof splitSysMarkers==='function')?splitSysMarkers(view.text||''):{text:view.text||'',flags:[]};
+    /* 流式这条路径也要去重：否则同一张图在生成过程中先闪两次，跑完重渲染才变成一次。 */
+    const _mkBody=(typeof dedupeMarkdownImages==='function')?dedupeMarkdownImages(_mk.text):_mk.text;
+    text.innerHTML=renderMarkdown(_mkBody,!terminal.has(view.status));
     if(view.reasoning){const reasoning=bubble.querySelector('.durable-reasoning');let details=reasoning.querySelector('details');if(!details){reasoning.innerHTML='<details><summary>思考过程</summary><div></div></details>';details=reasoning.querySelector('details');}details.querySelector('div').textContent=view.reasoning;}
     const signature=JSON.stringify(view.tools||[]);
     if(signature!==view.toolSignature){patchToolBox(bubble.querySelector('.durable-tools'),view.tools||[],view.id);view.toolSignature=signature;}
-    const info=bubble.querySelector('.chat-info');info.textContent=view.error||(!terminal.has(view.status)?view.info||labels[view.status]:'');info.style.display=info.textContent?'flex':'none';
-    node.dataset.content=view.text||'';node.querySelector('.msg-actions').hidden=!terminal.has(view.status);
-    if(view.usage){const meta=node.querySelector('.msg-meta');meta.textContent=(view.identity?.sender||'Hermes')+' · '+fmtDateTime(view.created_at)+' · '+(view.usage.total_tokens??(view.usage.prompt_tokens||0)+(view.usage.completion_tokens||0))+' tokens';}
+    /* 2026-11-12（用户第 31 条）：服务端流头那句「正在思考…」写进 view.info 后没人清，
+       整轮回复里（工具在跑、正文都在写了）气泡底下还一直挂着它。
+       现在：纯进度类文案在已经有正文或工具卡时退场；「连接中断，正在恢复进度」
+       这类真提示照旧显示，不跟着一起吞掉。 */
+    const info=bubble.querySelector('.chat-info');
+    const hasBody=!!((view.text||'').trim())||!!((view.tools||[]).length);
+    /* labels 兜底一并去掉（2026-11-13 用户第 44 条）：排队态会兜出「等待执行」、
+       运行态兜出「正在执行」，而气泡顶上的状态条正在写同一件事。底部只留真提示和报错。 */
+    const _info=view.error||(!terminal.has(view.status)?(view.info||''):'');
+    const _transient=/^(正在思考|正在执行|正在调用|正在等待|正在生成|正在回复|正在加载)/.test(_info);
+    /* 状态栏 alert 档已经把这句放在气泡顶部，底部 .chat-info 不再复读 */
+    const _liveAlert=!!(view.live&&view.live.mode==='alert');
+    /* 2026-11-13：进度类文案一律不进底部 —— 气泡顶部状态栏（🤔 正在思考 · 6s）已经在写同一件事，
+       以前只在「有正文/工具后才藏」，所以在流头那几秒会出现上下两个「正在思考」。 */
+    info.textContent=(_transient||_liveAlert)?'':_info;info.style.display=info.textContent?'flex':'none';
+    /* 状态栏只活在本轮里，本轮一结束（done/interrupted/failed）就淡出；chip 相反，跟消息留着 */
+    const flagsBox=bubble.querySelector('.msg-flags');
+    if(flagsBox){
+      /* 结束类标记不进 chip 层：历史渲染由 turnEndState 收进状态条，流式这条路径也不能
+         先闪一个「⚠ 执行已中断」再被重载换掉（同一句话上下两处，用户第 43 条）。 */
+      const _fl=(typeof TURN_END_LABELS!=='undefined')?_mk.flags.filter(f=>!TURN_END_LABELS[f.label]):_mk.flags;
+      const fh=(typeof flagsHTML==='function')?flagsHTML(_fl):'';
+      if(flagsBox.innerHTML!==fh)flagsBox.innerHTML=fh;
+      flagsBox.hidden=!fh;
+    }
+    /* 刷新回来时 view.live 是空的：onAccepted/onSnapshot 只在状态翻转时写它。
+       于是排队中的那条连「排队中」都画不出来，助手气泡就是纯空壳（用户第 41 条）。 */
+    if(!terminal.has(view.status)&&!view.live){
+      if(view.status==='pending')view.live={mode:'queued',text:'排队中，轮到它会自动开始',icon:'⏳'};
+      else if(view.status==='running')view.live={mode:view.text?'generating':'thinking',text:view.text?'正在回复':'正在思考',icon:'💬'};
+    }
+    if(!terminal.has(view.status)&&view.live&&typeof setBubbleStatus==='function'){
+      setBubbleStatus(node,view.live.mode||'',view.live.text||'',view.live.icon||'');
+    } else if(typeof clearBubbleStatus==='function'){
+      clearBubbleStatus(node,0);
+    }
+    node.dataset.content=view.text||'';const _actBar=node.querySelector('.msg-actions');if(_actBar)_actBar.hidden=!terminal.has(view.status);
+    if(view.usage){const meta=node.querySelector('.msg-meta');if(meta)meta.textContent=(view.identity?.sender||'Hermes')+' · '+fmtDateTime(view.created_at)+' · '+(view.usage.total_tokens??(view.usage.prompt_tokens||0)+(view.usage.completion_tokens||0))+' tokens';}
     if(autoScrollActive())followChatBottom();_chatHTML[view.sid]=body.innerHTML;
   }
   document.addEventListener('hermes:display',function(){views.forEach(view=>{view.toolSignature=null;var node=document.querySelector('.msg.assistant[data-request-id="'+view.id+'"] .durable-tools');if(node)node.replaceChildren();renderTurn(view);});});
@@ -489,19 +744,36 @@
     const seenTools=new Map();
     // 状态源：genBar 一套（按会话记 mode/text/start）→ 会话标题旁徽标 + 左侧列表同步。
     // 队列这条路以前完全没有接 genBar，只有 .dq-item 的「正在执行」，所以状态提示像是消失了。
-    const say=(mode,text,icon)=>{try{genBarShow(mode,text,view.sid,icon);}catch{}};
-    const finishBar=(mode,text)=>{try{genBarDone(mode,text,2200,view.sid);}catch{}};
+    const say=(mode,text,icon)=>{try{genBarShow(mode,text,view.sid,icon);}catch{}
+      /* 同一条状态同时写进气泡状态栏：标题旁是会话级，气泡里是「这一轮回复」级 */
+      view.live={mode,text,icon:icon||''};};
+    /* 本轮一结束立刻同步队列：气泡环只认队列真源，不能等 4s 轮询（2026-11-13 用户第 39 条）。
+       以前 genBarDone 里直接 _markRunningMsg(false) 清环，会把同会话还排在队里的
+       pending 呼吸灯一起抹掉——所以清环的权限收到这里，按服务端 jobs 说话。 */
+    const finishBar=(mode,text)=>{try{genBarDone(mode,text,2200,view.sid);}catch{}try{refreshQueue();}catch{}};
     _tabStreaming[view.sid]=true;try{renderSessionTabs();}catch{}
     return {
-    onAccepted:j=>{Object.assign(view,{identity:j.identity,user_identity:j.user_identity,status:j.status});say(j.status==='pending'?'queued':'thinking',j.status==='pending'?'排队中，轮到会自动执行':'正在思考');paint();},
+    onAccepted:j=>{Object.assign(view,{identity:j.identity,user_identity:j.user_identity,status:j.status});say(j.status==='pending'?'queued':'thinking',j.status==='pending'?'排队中，轮到会自动执行':'正在思考');paint();try{resyncQueueFx();}catch(e){}},
     onSnapshot:j=>{const was=view.status;Object.assign(view,{identity:j.identity,user_identity:j.user_identity,status:j.status});
       /* 快照就是「服务端现在到底在干嘛」：状态从 pending 翻到 running 时顶栏必须跟着翻。
          以前只 Object.assign 不 say()，于是 POST 那一刻写的「排队中，轮到会自动执行」再没人改，
          任务早跑起来了顶栏还在排队（2026-11-12 用户手机实测：排队中一直挂到 clarify 卡刷出来）。 */
-      if(j.status!==was&&j.status==='running')say('thinking','正在思考');paint();},
-    onDelta:d=>{view.text+=d;view.status='running';if(!view._sawText){view._sawText=true;}say('generating','撰写回复');paint();},onReplace:t=>{view.text=t;paint();},
-    onReasoning:d=>{view.reasoning+=d;say('reasoning','正在思考');paint();},
-    onTool:t=>{const key=t.toolCallId||t.tool,index=view.tools.findIndex(x=>(x.toolCallId||x.tool)===key);if(index<0)view.tools.push(t);else view.tools[index]={...view.tools[index],...t};
+      if(j.status!==was&&j.status==='running')say('thinking','正在思考');
+      /* 刷新回来接着看：快照说还在跑就把状态栏点起来；说已经完了就清掉 */
+      if(terminal.has(j.status))view.live=null;else if(!view.live&&j.status==='running')say('thinking','正在思考');
+      paint();
+      /* 状态翻转就是环该换位置的时候：排队呼吸灯 → 彩色跑马灯，别等 4s 轮询 */
+      if(j.status!==was){try{resyncQueueFx();}catch(e){}}},
+    onDelta:d=>{view.text+=d;view.status='running';view.info='';if(!view._sawText){view._sawText=true;}say('generating','撰写回复');paint();},onReplace:t=>{view.text=t;paint();},
+    onReasoning:d=>{view.reasoning+=d;view.info='';say('reasoning','正在思考');paint();},
+    onTool:t=>{const key=t.toolCallId||t.tool,index=view.tools.findIndex(x=>(x.toolCallId||x.tool)===key);const now=Date.now();
+      if(index<0){t._t0=now;t._ms=0;view.tools.push(t);}
+      else{const prev=view.tools[index],merged={...prev,...t};
+        if(prev._t0)merged._t0=prev._t0;
+        /* 记一次耗时：工具再快也留得下「已完成 · 0.4s」，不会只剩「一闪而过」 */
+        if(!merged._ms&&merged._t0&&/^(done|completed|finished|ok|error|failed|cancelled|interrupted)$/i.test(merged.status||''))merged._ms=now-merged._t0;
+        view.tools[index]=merged;}
+      view.info='';
       // 「图标 + 动作 + 目标 ×N」：图标用工具自己的 emoji（🐍/📖/🔧/💻/✍️…），和 Discord 那套一致
       const zh=TOOL_VERB[t.tool]||t.toolZh||t.tool||'工具';
       const lbl=String(t.label||'').replace(/\s+/g,' ').trim();
@@ -510,16 +782,20 @@
       const nth=seenTools.get(sig);
       const txt=(lbl?zh+' '+lbl.slice(0,44):zh)+(nth>1?' (×'+nth+')':'');
       say('tool',txt,t.emoji||'🛠');paint();},
-    onUsage:u=>{view.usage=u;paint();},onInfo:i=>{view.info=i;paint();},
-    onError:e=>{view.error=e;view.status='failed';finishBar('error','出错');paint();},
-    onDone:stopped=>{view.status=stopped?'interrupted':'done';_tabStreaming[view.sid]=false;finishBar(stopped?'stopped':'done',stopped?'已停止':'完成');_flushStreamRender('queue:'+view.id);renderTurn(view);loadSessions();
+    onUsage:u=>{view.usage=u;paint();},
+    onInfo:i=>{view.info=i;
+      /* 真提示（连接中断/正在恢复）转成状态栏 alert 档，不再既占状态栏又占底部一行 */
+      if(/重连|连接中断|恢复进度/.test(String(i||'')))view.live={mode:'alert',text:String(i),icon:'🔄'};
+      paint();},
+    onError:e=>{view.error=e;view.status='failed';view.info='';view.live=null;finishBar('error','出错');paint();},
+    onDone:stopped=>{view.status=stopped?'interrupted':'done';view.info='';view.live=null;_tabStreaming[view.sid]=false;finishBar(stopped?'stopped':'done',stopped?'已停止':'完成');_flushStreamRender('queue:'+view.id);renderTurn(view);loadSessions();
       // Reload committed message identities/result after the runner finished, without touching other tabs.
       if(view.sid===currentSession)setTimeout(()=>loadSessionMessages(view.sid,false,true),100);
       if(!stopped&&view.text&&localStorage.getItem('fnos-voice-autoplay')==='1'&&view.sid===currentSession)setTimeout(()=>{const button=document.querySelector('.msg.assistant[data-request-id="'+view.id+'"] [onclick="speakMsg(this)"]');if(button)speakMsg(button);},250);
     },
   };}
   function watchJob(job){
-    let view=views.get(job.id);if(!view){view={id:job.id,sid:job.session_id,message:job.message,created_at:job.created_at,identity:job.identity,user_identity:job.user_identity,text:'',reasoning:'',tools:[],status:job.status};views.set(job.id,view);}
+    let view=views.get(job.id);if(!view){view={id:job.id,sid:job.session_id,message:job.message,created_at:job.created_at,identity:job.identity,user_identity:job.user_identity,text:String(job.result?.reply||''),reasoning:String(job.result?.reasoning||''),tools:Array.isArray(job.result?.tools)?job.result.tools.slice():[],status:job.status};views.set(job.id,view);}
     const state={id:job.id,sid:job.session_id,cb:callbacks(view),text:view.text,reasoning:view.reasoning,seq:0,status:job.status,finished:false,failures:0,startedAt:Date.now()};subscriptions.set(job.id,state);subscribe(state);
   }
   window.sendRaw=async function(text){
@@ -542,18 +818,34 @@
       const model=selectedModel,payload={session_id:sid,request_id:uuid(),message:buildMessageContent(text+(turn.length?'\n\n【本轮参考上下文】\n'+turn.join('\n'):''),attachments),system:''};
       if(typeof model==='object'&&model?.model){payload.model=model.model;if(model.provider)payload.provider=model.provider;}else if(model)payload.model=model;
       remember(payload);try{localStorage.removeItem('panel-send-recovery');}catch{}if(currentSession===sid){_pendingAttachments=[];renderAttachChips();}
-      const view={id:payload.request_id,sid,message:buildMessageContent(text,attachments),ask:askText,quote:quoteForView,created_at:Date.now(),...context,text:'',reasoning:'',tools:[],status:'pending'};views.set(view.id,view);renderTurn(view);clearSentDraft(sid);submit(payload,callbacks(view));
+      const view={id:payload.request_id,sid,message:buildMessageContent(text,attachments),ask:askText,quote:quoteForView,created_at:Date.now(),...context,text:'',reasoning:'',tools:[],status:'pending'};views.set(view.id,view);renderTurn(view);clearSentDraft(sid,askText);submit(payload,callbacks(view));
     }catch(e){
       const d=getDraft(sid);if(!d.text)saveLocal(sid,{...d,text:askText,attachments,dirty:true,local_updated_at:Date.now()});
       if(sid===currentSession){const ta=document.getElementById('chatInput');if(!ta.value){ta.value=askText;_pendingAttachments=attachments;renderAttachChips();autoResize(ta);}captureDraft(sid);}
       toast('消息未发送，输入已保留：'+e.message);
     }
   };
-  document.addEventListener('input',e=>{if(e.target.id==='chatInput')captureDraft(currentSession||'new');});
+  /* 2026-11-13（用户第 10 条）：队列跑下一条时报文/草稿会重建输入框，用户正在打的字被冲掉。
+     这里记一笔「用户最近真敲过键盘」，applyDraft 遇到这种情况就不许回填（只存本地草稿）。 */
+  const _composerEditAt={};
+  window._pwComposerEditAt=_composerEditAt;
+  document.addEventListener('input',e=>{
+    if(e.target&&e.target.id==='chatInput'){_composerEditAt[currentSession||'new']=Date.now();captureDraft(currentSession||'new');}
+  });
   window.addEventListener('beforeunload',e=>{for(const [sid,d] of localDrafts){const state=draftDurability.get(sid)||{local:true,server:false};if(d.dirty&&!state.local&&!state.server){e.preventDefault();e.returnValue='';return;}}});
   window.addEventListener('pagehide',()=>captureDraft(currentSession||'new'));
   window.addEventListener('online',()=>{fetchToken().then(()=>{resumeOutbox();refreshQueue();for(const [sid,d] of localDrafts)if(d.dirty)syncDraft(sid);});});
   document.addEventListener('visibilitychange',()=>{if(document.hidden)captureDraft(currentSession||'new');else{refreshQueue();resumeOutbox();}});
-  async function init(){await fetchToken();await refreshQueue();restoreDraft(currentSession||'new');resumeOutbox();queueTimer=setInterval(()=>{refreshQueue();if(navigator.onLine)resumeOutbox();},4000);}
+  async function init(){
+    await fetchToken();
+    try{await refreshQueue();}catch(e){}
+    /* 蒙版第四格：队列回来了（气泡占位、跑马灯都按队列真源画完）再放行 */
+    try{window.bootMaskMark&&window.bootMaskMark('queue');}catch(e){}
+    try{restoreDraft(currentSession||'new');}catch(e){}
+    /* 蒙版第五格：草稿回填完，输入框不再是空的再显影 */
+    try{window.bootMaskMark&&window.bootMaskMark('draft');}catch(e){}
+    resumeOutbox();
+    queueTimer=setInterval(()=>{refreshQueue();if(navigator.onLine)resumeOutbox();},4000);
+  }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',()=>init().catch(()=>{}));else init().catch(()=>{});
 })();

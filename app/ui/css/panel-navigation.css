@@ -10,10 +10,24 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
 .global-sidebar.workbench-sidebar .nav-settings { margin-top:auto; }
 .section-navigation { display:flex; gap:6px; flex-shrink:0; padding:8px 24px; border-bottom:1px solid var(--border); background:var(--bg1); overflow-x:auto; }
 .section-navigation[hidden] { display:none; }
-.section-tab { padding:9px 14px; min-height:42px; border:1px solid transparent; background:transparent; color:var(--text2); font:inherit; font-size:13px; border-radius:8px; white-space:nowrap; cursor:pointer; }
-.section-tab.active { background:var(--accent-bg); color:var(--accent); border-color:var(--border); }
-.workbench-navigation .page-header { min-height:70px; height:auto; gap:12px; flex-wrap:wrap; padding:18px 24px; }
-.workbench-navigation .page-header h1 { font-size:21px; letter-spacing:-.03em; }
+.section-tab { padding:9px 14px; min-height:42px; border:1px solid transparent; background:transparent; color:var(--text2); font:inherit; font-size:13px; border-radius:8px; white-space:nowrap; cursor:pointer; transition:background .15s, color .15s, border-color .15s;}
+/* 2026-11-12 模板统一：L2 页签（换页面）与 L3 分区（.ui-tabs 底槽）同一套设计语言——
+   同一个 13px、同样 600 的选中字重、同一档圆角；区别只在 L3 有底槽、L2 没有。
+   之前 L2 选中是 400、L3 是 600，两条导航一个轻一个重，看着像两个作者写的。 */
+.section-tab.active { background:var(--accent-bg); color:var(--accent); border-color:var(--border); font-weight:600; }
+.section-tab:hover { background:var(--bg2); color:var(--text); }
+.workbench-navigation .page-header { min-height:70px; height:70px; gap:12px; flex-wrap:nowrap; padding:0 24px; align-items:center; }
+/* 桌面端页头恒高 70px：内容对齐、字号、按钮 34px 三项一起才保证所有页面正文从同一 y 开始。
+   窄屏仍放开（下面 @media 覆盖成 auto），否则 2 行页头会被裁。 */
+@media (max-width: 720px) { .workbench-navigation .page-header { height:64px; min-height:64px; padding:10px 16px; flex-wrap:nowrap; } }
+/* 2026-11-12 模板统一：页头高度必须全站一致。专家库的「新建」按钮实测 45px 高，比 21px 标题高 17px，
+   把 header 顶到 81px，页面正文就比别的页低 11px（190 vs 179）。把页头按钮收进 34px，页头恒 70px。 */
+.workbench-navigation .page-header > .btn,
+.workbench-navigation .page-header > button { height:34px; min-height:34px; padding:0 14px; font-size:13px; border-radius:8px; }
+.workbench-navigation .page-header h1 { font-size:21px; letter-spacing:-.03em; line-height:28px; }
+/* line-height 必须写死（2026-11-12）：默认 normal 时行盒高度跟着字形走，
+   纯中文标题 28px、纯拉丁标题「JEV」只有 24px，页头 align-items:center 一居中
+   就整体下沉 2px——八个模型页里 JEV 的标题比别的高 2px，肉眼看得出歪。 */
 .workbench-navigation .page-body { padding:24px; }
 .workbench-navigation #sidebarToggle[hidden] { display:none; }
 .workbench-navigation #page-rooms > .page-body { display:flex; min-height:0; overflow:hidden; }
@@ -65,8 +79,12 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
   .mobile-navigation .nav-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:48px; min-height:48px; flex:1; border:0; border-radius:10px; background:transparent; color:var(--text2); font:12px var(--font); cursor:pointer; }
   .mobile-navigation .nav-btn.active { background:var(--accent-bg); color:var(--accent); }
   .mobile-navigation svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.8; }
-  .section-navigation { padding:6px 12px; }.section-tab { min-height:44px; }
-  .workbench-navigation .page-header { padding:16px; gap:8px; }.workbench-navigation .page-header h1 { font-size:19px; }
+  .section-navigation { padding:6px 12px; flex-wrap:wrap; overflow-x:visible; row-gap:6px;padding:6px 10px; column-gap:5px;}.section-tab { min-height:44px; padding:6px 9px; font-size:12px; min-height:38px;}
+  /* 窄屏不许横向滚动裁掉半颗胶囊（2026-11-12）：模型服务 8 个页签在 390 宽下
+     合计 641px，overflow-x:auto 会把后 4 个推出屏幕外，看着像少了一半功能。
+     改折行，行间距 6px 与页签 gap 一致。 */
+    /* 320 档 8 个页签折三行吃掉 157px，正文被挤下去；收窄内边距与字号压回两行。 */
+      .workbench-navigation .page-header { padding:16px; gap:8px; }.workbench-navigation .page-header h1 { font-size:19px; line-height:25px; }
   .workbench-navigation .page-body { padding:16px; }
   .workbench-navigation .global-topbar { padding:0 12px; }
   .workbench-navigation .page-header button { min-height:44px; }
@@ -111,8 +129,8 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
  #chatComposer .toolbar-toggle{position:static;grid-column:1;grid-row:1;align-self:end;width:38px;height:38px;padding:0;font-size:20px;border:0;background:transparent;color:var(--text2);display:inline-flex;align-items:center;justify-content:center}
  /* 工具条：不换行、横向滚动，底部原来 52px 内边距是纯空隙（底部菜单栏自己带安全区），去掉 */
  #chatComposer .toolbar{grid-column:1/-1;width:100%;min-width:0;margin-top:8px;padding:0;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none}
- #chatComposer .toolbar::-webkit-scrollbar{display:none}
- #chatComposer .toolbar .tool-btn{flex:0 0 auto}
+ #chatComposer .toolbar::-webkit-scrollbar{display:none;display:none}
+ #chatComposer .toolbar .tool-btn{flex:0 0 auto;min-width:32px;min-height:32px;width:32px;height:32px;padding:0}
  /* 底部菜单栏本身已含 64px + 安全区，输入区不再叠一次安全区，否则中间空一大截 */
  #chatComposer.chat-composer, #chatComposer{padding-bottom:10px}
 }
@@ -129,7 +147,7 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
 }
 #chatComposer .toolbar{gap:8px;align-items:center;flex-wrap:wrap}
 /* 工具栏六个按钮统一 32×32 纯图标：模型名/专家名不再塞进按钮里当文字，
-   改由 data-tip 的 hover 提示承担（见 index.html 的 [data-tip] 规则）。 */
+   改由 data-tip 气泡承担（单例层在 js/panel-tooltip.js，靠边自动夹进视口、触屏不弹）。 */
 #chatComposer #btnExpert,#chatComposer #btnModel{width:32px;min-width:32px;height:32px;min-height:32px;padding:0;gap:0;max-width:32px}
 #chatComposer .model-badge{display:none}
 #chatComposer #btnExpert svg,#chatComposer #btnModel svg{flex-shrink:0}
@@ -138,10 +156,8 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
    在后面，靠前的位置写 nowrap 会被它盖掉（实测仍旧两行、高 90px） */
 @media(max-width:768px){
  #chatComposer .toolbar{gap:4px;flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;margin-top:8px;padding:0;width:100%;min-width:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
- #chatComposer .toolbar::-webkit-scrollbar{display:none}
- #chatComposer .toolbar>*{flex:0 0 auto}
- #chatComposer .toolbar .tool-btn{min-width:32px;min-height:32px;width:32px;height:32px;padding:0}
- #chatComposer .tool-btn svg{width:16px;height:16px}
+  #chatComposer .toolbar>*{flex:0 0 auto}
+  #chatComposer .tool-btn svg{width:16px;height:16px}
  #chatComposer #btnModel,#chatComposer #btnExpert{width:32px;min-width:32px;max-width:32px;height:32px;min-height:32px;padding:0}
  #chatComposer.chat-composer{padding-bottom:8px}
 }
@@ -255,7 +271,10 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
 .chat-body .msg-act-btn.msg-q-cancel:hover{background:rgba(229,72,77,.12)}
 @media (prefers-reduced-motion:reduce){
   .chat-body .msg.running .hp-ring{animation:none;filter:hue-rotate(120deg)}
-  .chat-body .msg.queued .hp-ring{animation:none;opacity:.42}
+  .chat-body .msg.queued .hp-ring{animation:none}
+  .chat-body .msg.queued .hp-line{stroke:var(--hp-breath)}
+  .chat-body .msg.queued .hp-halo{animation:none;opacity:calc(var(--hp-glow-peak, .46) * .5)}
+  .chat-body .msg.queued .hp-shape{animation:none}
 }
 
 /* 34) 标题行状态：Discord 那种「图标 + 动作 + 目标」一行小字，超出省略。
