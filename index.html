@@ -57,14 +57,85 @@
   .btn.primary{background:var(--accent); color:#04121c; border-color:var(--accent)}
   .btn.primary:hover{background:#7dd3fc}
 
-  /* ---------- 截图 ---------- */
-  figure{margin:0}
+  /* ---------- 实拍截图：取景器 ---------- */
+  /* 静态大图直接摆进来会和铜版插图打架：插图是"画"，截图是"证据"，
+     两者并排放读者分不清在看什么。所以截图不静置 ——
+     滚入视口后镜头缓慢推近到关键区域、停住、再拉回，像纪录片里的推镜。
+     点击展开全尺寸，交代这是真能跑的界面，不是画的。 */
   .shot{
     margin:52px 0 0; border:1px solid var(--line); border-radius:var(--r);
-    overflow:hidden; background:var(--bg-soft); box-shadow:0 20px 60px -30px #000;
+    overflow:hidden; background:#080a0e;
   }
-  .shot img{display:block; width:100%; height:auto}
+  .shot-frame{
+    display:block; position:relative; width:100%; padding:0; border:0;
+    background:#080a0e; cursor:zoom-in; overflow:hidden;
+    aspect-ratio:1400/880; appearance:none;
+  }
+  .shot-frame img{
+    display:block; width:100%; height:100%; object-fit:cover;
+    transform-origin:var(--fx,50%) var(--fy,50%);
+    transform:scale(1); will-change:transform;
+  }
+  /* 14s 一轮：0→38% 推近，38→62% 停住让人看清，62→100% 拉回 */
+  .shot.in .shot-frame img{animation:dolly 14s cubic-bezier(.4,0,.55,1) infinite}
+  @keyframes dolly{
+    0%   {transform:scale(1)}
+    38%  {transform:scale(1.85)}
+    62%  {transform:scale(1.85)}
+    100% {transform:scale(1)}
+  }
+  @media(prefers-reduced-motion:reduce){
+    .shot.in .shot-frame img{animation:none}
+  }
+  /* 取景器四角标记 */
+  .cm{
+    position:absolute; width:15px; height:15px; pointer-events:none;
+    border:1px solid rgba(196,129,63,.7);
+  }
+  .cm.tl{left:12px; top:12px; border-right:0; border-bottom:0}
+  .cm.tr{right:12px; top:12px; border-left:0; border-bottom:0}
+  .cm.bl{left:12px; bottom:12px; border-right:0; border-top:0}
+  .cm.br{right:12px; bottom:12px; border-left:0; border-top:0}
+  .shot-live{
+    position:absolute; left:16px; bottom:14px; pointer-events:none;
+    font-family:JBMono,monospace; font-size:10px; letter-spacing:.22em;
+    color:var(--accent-hi); background:rgba(6,8,12,.78);
+    padding:3px 8px; border:1px solid rgba(196,129,63,.35);
+  }
+  .shot figcaption{
+    display:flex; gap:6px 16px; align-items:baseline; flex-wrap:wrap;
+    font-size:13px; color:var(--fg-faint); padding:13px 16px;
+    border-top:1px solid var(--line-soft); background:var(--bg-soft);
+  }
+  .shot figcaption b{color:var(--fg); font-weight:600; font-size:13.5px}
+  .shot figcaption .hint{font-family:JBMono,monospace; font-size:11px; letter-spacing:.06em; color:var(--accent)}
   figcaption{font-size:13px; color:var(--fg-faint); padding:11px 16px; border-top:1px solid var(--line-soft)}
+
+  /* ---------- 全尺寸查看层 ---------- */
+  .lb{
+    position:fixed; inset:0; z-index:200; display:none; overflow:auto;
+    background:rgba(5,6,9,.95); padding:56px 4vw 40px; cursor:zoom-out;
+    backdrop-filter:blur(3px);
+  }
+  .lb.on{display:block}
+  .lb img{
+    display:block; width:100%; max-width:1400px; margin:0 auto;
+    border:1px solid var(--line); border-radius:var(--r);
+    box-shadow:0 40px 120px -50px #000;
+  }
+  .lb-close{
+    position:fixed; top:18px; right:24px; z-index:201;
+    display:inline-flex; align-items:center; gap:9px;
+    font-family:JBMono,monospace; font-size:11px; letter-spacing:.14em;
+    color:var(--fg-dim); background:rgba(20,26,38,.92);
+    border:1px solid var(--line); border-radius:2px;
+    padding:9px 13px; cursor:pointer; appearance:none;
+  }
+  .lb-close:hover{color:var(--fg); border-color:var(--accent)}
+  .lb-close i{
+    font-style:normal; font-size:15px; line-height:1;
+    color:var(--accent-hi);
+  }
 
   /* ---------- 顶栏 ---------- */
   .topbar{
@@ -228,9 +299,17 @@
       </figure>
     </div>
 
-    <figure class="shot">
-      <img src="promo/img/chat.jpg" alt="面板对话界面：左侧按项目分组的会话列表，右侧是一次真实任务的执行记录">
-      <figcaption>左边是它的记忆（162 个会话，按项目分好），右边是一次真活的执行过程</figcaption>
+    <figure class="shot" style="--fx:64%;--fy:47%">
+      <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+        <img src="promo/img/chat.jpg" alt="面板对话界面：左侧按项目分组的会话列表，右侧是一次真实任务的执行记录" loading="lazy">
+        <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+        <span class="shot-live">SCREENSHOT</span>
+      </button>
+      <figcaption>
+        <b>会话列表 · 一次真活的执行记录</b>
+        <span>左边 162 个会话按项目分好，右边是同一个任务从第一句到收尾的全过程。</span>
+        <span class="hint">点开看全尺寸</span>
+      </figcaption>
     </figure>
   </div>
 </header>
@@ -272,8 +351,13 @@
     </figure>
 
     <div class="two">
-      <figure class="shot" style="margin:0">
-        <img src="promo/img/collab.jpg" alt="专家库界面：315 位不同专业的角色卡片">
+      <figure class="shot" style="margin:0;--fx:48%;--fy:52%">
+        <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+          <img src="promo/img/collab.jpg" alt="专家库界面：315 位不同专业的角色卡片" loading="lazy">
+          <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+          <span class="shot-live">SCREENSHOT</span>
+        </button>
+        <figcaption><b>专家库</b><span class="hint">点开看全尺寸</span></figcaption>
       </figure>
       <div class="body-copy">
         <p>里面备着 <strong>315 位不同专业的角色</strong>：程序员、产品经理、法务、财务、营养师、翻译、运营、心理咨询……
@@ -311,8 +395,13 @@
           <span>它自己的调度台，你不用守着</span>
         </div>
       </div>
-      <figure class="shot" style="margin:0">
-        <img src="promo/img/cron.jpg" alt="定时任务列表：Cron 表达式、下次执行时间、上次执行时间">
+      <figure class="shot" style="margin:0;--fx:38%;--fy:50%">
+        <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+          <img src="promo/img/cron.jpg" alt="定时任务列表：Cron 表达式、下次执行时间、上次执行时间" loading="lazy">
+          <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+          <span class="shot-live">SCREENSHOT</span>
+        </button>
+        <figcaption><b>定时任务</b><span class="hint">点开看全尺寸</span></figcaption>
       </figure>
     </div>
   </div>
@@ -329,8 +418,13 @@
     </figure>
 
     <div class="two">
-      <figure class="shot" style="margin:0">
-        <img src="promo/img/archive.jpg" alt="档案页：SOUL、MEMORY、AGENTS 等文本文件与 358 个技能">
+      <figure class="shot" style="margin:0;--fx:46%;--fy:48%">
+        <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+          <img src="promo/img/archive.jpg" alt="档案页：SOUL、MEMORY、AGENTS 等文本文件与 358 个技能" loading="lazy">
+          <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+          <span class="shot-live">SCREENSHOT</span>
+        </button>
+        <figcaption><b>档案 · 技能库</b><span class="hint">点开看全尺寸</span></figcaption>
       </figure>
       <div class="body-copy">
         <p>别的 AI 产品，你只能通过「提示词」求它听话。这里不一样：
@@ -375,8 +469,13 @@
           <span>这一条决定了你敢不敢把它放在自己的机器上</span>
         </div>
       </div>
-      <figure class="shot" style="margin:0">
-        <img src="promo/img/tools.jpg" alt="能力页：每一项能力后面对应一个启用开关">
+      <figure class="shot" style="margin:0;--fx:74%;--fy:50%">
+        <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+          <img src="promo/img/tools.jpg" alt="能力页：每一项能力后面对应一个启用开关" loading="lazy">
+          <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+          <span class="shot-live">SCREENSHOT</span>
+        </button>
+        <figcaption><b>能力开关</b><span class="hint">点开看全尺寸</span></figcaption>
       </figure>
     </div>
   </div>
@@ -388,8 +487,13 @@
     <p class="sub">它花的是你自己的 token，所以账目摊开给你看。</p>
 
     <div class="two">
-      <figure class="shot" style="margin:0">
-        <img src="promo/img/health.jpg" alt="维护页：服务状态、运行时长、内存、日志">
+      <figure class="shot" style="margin:0;--fx:50%;--fy:42%">
+        <button class="shot-frame" type="button" aria-label="点开看全尺寸">
+          <img src="promo/img/health.jpg" alt="维护页：服务状态、运行时长、内存、日志" loading="lazy">
+          <i class="cm tl"></i><i class="cm tr"></i><i class="cm bl"></i><i class="cm br"></i>
+          <span class="shot-live">SCREENSHOT</span>
+        </button>
+        <figcaption><b>运行状态</b><span class="hint">点开看全尺寸</span></figcaption>
       </figure>
       <div class="body-copy">
         <p>这一页回答三个问题：<strong>它现在是活的吗、刚才干了什么、这个月花了多少钱。</strong></p>
@@ -499,5 +603,50 @@
   </div>
 </footer>
 
+<script>
+(function(){
+  // 取景器：滚进视口才开始推镜，滚出去就停，省电也省得同时跑六路动画。
+  var shots = [].slice.call(document.querySelectorAll('.shot'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function(entries){
+      entries.forEach(function(e){
+        e.target.classList.toggle('in', e.isIntersecting);
+      });
+    }, {threshold: 0.22});
+    shots.forEach(function(s){ io.observe(s); });
+  } else {
+    shots.forEach(function(s){ s.classList.add('in'); });
+  }
+
+  // 全尺寸查看层。截图缩在 100% 宽里，细节看不清，得给个能凑近看的口子。
+  var lb = document.createElement('div');
+  lb.className = 'lb';
+  lb.innerHTML = '<img alt="">' +
+    '<button class="lb-close" type="button"><i>×</i>关闭 · ESC</button>';
+  document.body.appendChild(lb);
+  var lbImg = lb.querySelector('img');
+
+  function closeLb(){
+    lb.classList.remove('on');
+    document.documentElement.style.overflow = '';
+  }
+
+  [].forEach.call(document.querySelectorAll('.shot-frame'), function(btn){
+    btn.addEventListener('click', function(){
+      var img = btn.querySelector('img');
+      lbImg.src = img.currentSrc || img.src;
+      lbImg.alt = img.alt || '';
+      lb.classList.add('on');
+      lb.scrollTop = 0;
+      document.documentElement.style.overflow = 'hidden';
+    });
+  });
+
+  lb.addEventListener('click', closeLb);
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape' && lb.classList.contains('on')) closeLb();
+  });
+})();
+</script>
 </body>
 </html>

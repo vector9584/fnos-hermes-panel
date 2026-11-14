@@ -156,6 +156,43 @@ body.theme-dark {
   background: var(--card); border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
 }
 .arc-rail-btn:hover { color: var(--accent); border-color: var(--accent); }
+/* ── 滚动槽固定（2026-11-15 用户反馈：树变长出滚动条、内容被挤、页面抽搐） ──
+   两件事分开做：
+   ① scrollbar-gutter: stable —— 滚动槽常驻，滚动条出现/消失都不改内容盒宽度。
+      这是治本的一条：浏览器提前把槽挖好，不等到溢出才抢 10–15px。
+   ② 统一细滚动条：Chromium 里 scrollbar-width:thin 优先于 ::-webkit-scrollbar，
+      实测占位 10px（不是下面写的 6px）；老 Chromium/WebKit 走 6px 那批规则，
+      Firefox 走 thin + scrollbar-color。两条都给，别以为 6px 那批在生效。
+   .arc-main 一起加：长/短文档来回切时正文不再左右跳；统计栏不跳则画布宽度不抖。 */
+.arc-rail-scroll,
+.arc-main,
+.arc-stat-side,
+.arc-search-list,
+.arc-outline {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+  scrollbar-gutter: stable;
+}
+.arc-rail-scroll::-webkit-scrollbar,
+.arc-main::-webkit-scrollbar,
+.arc-stat-side::-webkit-scrollbar,
+.arc-search-list::-webkit-scrollbar,
+.arc-outline::-webkit-scrollbar { width: 6px; }
+.arc-rail-scroll::-webkit-scrollbar-track,
+.arc-main::-webkit-scrollbar-track,
+.arc-stat-side::-webkit-scrollbar-track,
+.arc-search-list::-webkit-scrollbar-track,
+.arc-outline::-webkit-scrollbar-track { background: transparent; }
+.arc-rail-scroll::-webkit-scrollbar-thumb,
+.arc-main::-webkit-scrollbar-thumb,
+.arc-stat-side::-webkit-scrollbar-thumb,
+.arc-search-list::-webkit-scrollbar-thumb,
+.arc-outline::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+.arc-rail-scroll::-webkit-scrollbar-thumb:hover,
+.arc-main::-webkit-scrollbar-thumb:hover,
+.arc-stat-side::-webkit-scrollbar-thumb:hover,
+.arc-search-list::-webkit-scrollbar-thumb:hover,
+.arc-outline::-webkit-scrollbar-thumb:hover { background: var(--muted); }
 .arc-rail-scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; min-height: 0; padding-bottom: 12px; }
 .arc-rail-foot {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;

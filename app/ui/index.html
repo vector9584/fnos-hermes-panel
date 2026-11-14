@@ -14,17 +14,17 @@
   <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-maid-192.png?v=f79af7d4">
   <link rel="apple-touch-icon" sizes="180x180" href="images/favicon-maid-180.png?v=b8637e2c">
   <meta name="theme-color" content="#141518">
-  <link rel="stylesheet" href="css/base.css?v=6e6fe1ac">
+  <link rel="stylesheet" href="css/base.css?v=112afbb1">
 <script src="scripts/marked.min.js?v=606c428a"></script>
 <script src="scripts/purify.min.js?v=fd4f07a2"></script>
 <script src="scripts/qrcode.min.js?v=b86b6879"></script>
 <link rel="stylesheet" href="css/panel-tree.css?v=c6661d61">
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
 <link rel="stylesheet" href="css/panel-workspace.css?v=559864a4">
-    <link rel="stylesheet" href="css/panel-maintenance.css?v=6deb5756">
-    <link rel="stylesheet" href="css/archive.css?v=3641b3bd">
+    <link rel="stylesheet" href="css/panel-maintenance.css?v=4fa1e732">
+    <link rel="stylesheet" href="css/archive.css?v=160b1a85">
 <link rel="stylesheet" href="css/panel-model-deck.css?v=1eb7510c">
-<link rel="stylesheet" href="css/ui-kit.css?v=9bcb6d9c">
+<link rel="stylesheet" href="css/ui-kit.css?v=343723a8">
 </head>
 <body class="theme-dark">
 <div class="app" id="app">
@@ -739,6 +739,13 @@
           <div class="page-body">
             <section id="configRecovery" class="config-recovery" aria-label="配置保存恢复"></section>
             <div id="maintenanceRepositories" class="maintenance-repositories"></div>
+            <section id="maintenanceActivity" class="maint-activity" aria-label="提交活跃度" hidden>
+              <div class="maint-activity-head"><h2>提交活跃度</h2><div class="maint-chips" id="maintActivitySummary"></div></div>
+              <div class="maint-heat-wrap"><div class="maint-months" id="maintMonths"></div><div class="maint-heat" id="maintHeatmap"></div></div>
+              <div class="maint-heat-foot"><div class="maint-legend"><span>少</span><i data-lv="0"></i><i data-lv="1"></i><i data-lv="2"></i><i data-lv="3"></i><i data-lv="4"></i><span>多</span></div></div>
+              <div class="maint-types" id="maintTypeBars"></div>
+              <div class="maint-day" id="maintDayList" hidden></div>
+            </section>
             <div id="maintenanceFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div>
             <div id="maintenanceHistory"></div>
             <button class="ov-actbtn" id="maintenanceMore" hidden>加载更早的提交</button>
@@ -887,8 +894,8 @@
 <script src="js/panel-channels-ui.js?v=79ed9a69"></script>
 <script src="js/panel-typing-ui.js?v=f308c763"></script>
 <script src="js/panel-settings.js?v=51441ddd"></script>
-<script src="js/panel-maintenance-ui.js?v=9139b2c4"></script>
-<script src="js/panel-config-recovery-ui.js?v=fd07baed"></script>
+<script src="js/panel-maintenance-ui.js?v=65154c3d"></script>
+<script src="js/panel-config-recovery-ui.js?v=d471a7e8"></script>
 <script src="js/panel-plans-ui.js?v=d1ddc290"></script>
 <script src="js/panel-library-drafts.js?v=f1279a85"></script>
 <!-- 档案三页：提示词 / 知识库 / 留痕录（2026-11-14 替换 panel-library-ui 与 panels/assistant）
