@@ -56,3 +56,5 @@ app/ui/_dup_test.js
 # Python 工具缓存
 dev/__pycache__/
 __pycache__/
+index.html.old-promo
+article.html.bak
