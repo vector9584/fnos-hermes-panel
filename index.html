@@ -205,6 +205,23 @@ footer .sig{
   display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
 }
 footer .sig code{font-family:var(--mono);font-size:12px}
+
+/* ---------- hero tweaks ---------- */
+header .lede-2{margin-top:14px;margin-bottom:34px}
+header .lede:last-of-type{margin-bottom:34px}
+.metric .k{font-size:13px}
+.metric-hero{background:linear-gradient(180deg,rgba(94,234,212,.07),rgba(94,234,212,.02))}
+.metric-hero .k{color:var(--accent-2)}
+
+/* ---------- table scroll (mobile) ---------- */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:6px;
+  border:1px solid var(--line-soft);border-radius:var(--r)}
+.tbl-wrap .tbl{margin-top:0;min-width:660px}
+@media(max-width:700px){
+  .tbl-wrap{border:0;border-radius:0;margin:0 -24px;padding:0 24px}
+  .tbl-wrap .tbl{min-width:600px}
+  .tbl th,.tbl td{padding:11px 12px;font-size:13px}
+}
 </style>
 </head>
 <body>
@@ -213,10 +230,11 @@ footer .sig code{font-family:var(--mono);font-size:12px}
   <div class="wrap">
     <a class="brand" href="#top"><span class="dot"></span>fnos-hermes-panel</a>
     <div class="links">
-      <a href="#why">为什么拆</a>
-      <a href="#what">拆成了什么</a>
-      <a href="#verify">怎么验的</a>
-      <a href="#start">快速开始</a>
+      <a href="#why">为什么做</a>
+      <a href="#compare">定位</a>
+      <a href="#panels">能力面</a>
+      <a href="#verify">怎么验</a>
+      <a href="#deploy">部署</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel">GitHub</a>
     </div>
   </div>
@@ -224,39 +242,25 @@ footer .sig code{font-family:var(--mono);font-size:12px}
 
 <header id="top">
   <div class="wrap">
-    <span class="eyebrow">GPL-3.0 · fnOS · self-hosted</span>
-    <h1>把一台 NAS<br>变成<span class="grad">能自己动手改</span>的 AI 控制台</h1>
+    <div class="eyebrow">AGENT HARNESS · 自托管 · GPL-3.0</div>
+    <h1>一副你能<span class="grad">拆开看</span>的<br>Agent harness</h1>
     <p class="lede">
-      这套面板原本是<b>一个 658 KB 的 index.html</b>——134 KB 内联样式，470 KB 内联脚本，
-      557 个函数挤在一个作用域里。这个仓库是把它<b>拆开之后的样子</b>，
-      以及拆开过程中长出来的那套工具：架构门禁、部署账本、生产对账。
+      模型换来换去，决定一个 Agent 好不好用的其实是外面那层壳：上下文怎么裁、工具怎么挂、跑崩了怎么退、错了怎么回滚。
+      这层壳不该只长在别人的云上，也不该装好就关死。
+    </p>
+    <p class="lede lede-2">
+      这里是<b>一套完整的 harness，跑在你自己的机器里</b>——79 个前端模块，56 条后端责任链，改哪条都能查。
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/vector9584/fnos-hermes-panel/releases/latest">
-        下载安装包 <small>.fpk</small>
-      </a>
-      <a class="btn btn-ghost" href="https://github.com/vector9584/fnos-hermes-panel">
-        查看源码 →
-      </a>
+      <a class="btn btn-primary" href="https://github.com/vector9584/fnos-hermes-panel">GitHub 仓库</a>
+      <a class="btn btn-ghost" href="#deploy">怎么装</a>
     </div>
 
     <div class="metrics">
-      <div class="metric">
-        <div class="v">658<span class="unit">KB</span> → <span class="cut">71</span><span class="unit">KB</span></div>
-        <div class="k">index.html 体积</div>
-      </div>
-      <div class="metric">
-        <div class="v">79</div>
-        <div class="k">前端模块</div>
-      </div>
-      <div class="metric">
-        <div class="v">638</div>
-        <div class="k">全局符号 · 零差异</div>
-      </div>
-      <div class="metric">
-        <div class="v">0<span class="unit">px</span></div>
-        <div class="k">截图差异</div>
-      </div>
+      <div class="metric"><div class="v">12</div><div class="k">运行时面板</div></div>
+      <div class="metric"><div class="v">56</div><div class="k">后端责任链</div></div>
+      <div class="metric"><div class="v">6</div><div class="k">对话渠道</div></div>
+      <div class="metric metric-hero"><div class="v"><span class="cut">0</span></div><div class="k">字节出域 · 数据只在你机器上</div></div>
     </div>
   </div>
 </header>
@@ -264,151 +268,196 @@ footer .sig code{font-family:var(--mono);font-size:12px}
 <section id="why">
   <div class="wrap">
     <div class="sec-head">
-      <div class="tag">Problem</div>
-      <h2>问题不是代码丑，是三件每天咬人的事</h2>
-      <p>单文件本身不致命。致命的是它让"改一处生效没生效"变成一件无法回答的事。</p>
+      <div class="tag">2026 的行业共识</div>
+      <h2>分水岭已经不在模型，在 harness</h2>
+      <p>
+        这一年模型的差距被拉平，行业口径出奇地一致：提示词工程退场，<b>harness 工程</b>上场。
+        差别不在你把哪句话写得漂亮，而在上下文怎么管、工具怎么接、多步怎么编排、失败怎么重来。
+      </p>
     </div>
+
     <div class="cards">
       <div class="card">
-        <span class="ic">✱</span>
-        <h3>单文件即单点</h3>
-        <p>任何一个字符打错，哪怕是个未闭合的字符串，整个面板白屏。没有局部失败这回事，也没有"只坏一个面板"这种中间状态。</p>
+        <span class="ic">◇</span>
+        <h3>大厂都在往这层收口</h3>
+        <p>
+          Workday 的 Agent Harness、Salesforce 的 Trusted Enterprise AI Harness、AWS 的 AgentCore Managed Harness
+          —— 今年先后把产品重心从"模型"挪到"包在模型外面的那层"。
+        </p>
       </div>
       <div class="card">
-        <span class="ic">⇄</span>
-        <h3>谁后加载谁赢</h3>
-        <p>同名函数在三处定义，改对了两次，第三次静默覆盖。比如 <code>toast</code>：新版建好了组件层，老版位置更靠后，于是一直是老版在跑。</p>
+        <span class="ic">◇</span>
+        <h3>但给的都是一模一样的盒子</h3>
+        <p>
+          装好、配完、关上门。你能调的是它给你的选项，不是它的行为。
+          想换模型先看支持列表，想改一步流程先提工单，想看一眼日志先申请权限。
+        </p>
       </div>
       <div class="card">
-        <span class="ic">↯</span>
-        <h3>部署是 cp</h3>
-        <p>拷过去就算发布。拷了一半、拷错目录、源和目标不同步，全靠人眼发现。没有任何账本告诉你"生产上跑的是不是这份代码"。</p>
+        <span class="ic">◇</span>
+        <h3>所以有了这个</h3>
+        <p>
+          同样的能力面——渠道、记忆、知识、技能、定时、用量、进程守护——但<b>每一条都摆在你面前</b>，
+          跑在你自己的 NAS 或 Mac 上，改完有工具告诉你有没有改坏。
+        </p>
       </div>
     </div>
-    <pre><span class="c"># 这三件事的共同点</span>
-代码能跑 · 现象正确 · <span class="w">改动却静默失效</span>
-
-<span class="c"># 靠 review 抓不住，靠测试也抓不住</span>
-<span class="c"># 因为没有任何一处报错</span></pre>
   </div>
 </section>
 
-<section id="what">
+<section id="compare">
   <div class="wrap">
     <div class="sec-head">
-      <div class="tag">Architecture</div>
-      <h2>拆完的分层：加载顺序就是依赖顺序</h2>
-      <p>没有打包器，没有模块系统。79 个文件靠 <code style="font-family:var(--mono);font-size:.88em;color:var(--accent)">&lt;script&gt;</code> 顺序加载，所以顺序本身就是契约——这也是为什么每一步都做了符号级验证。</p>
+      <div class="tag">定位对照</div>
+      <h2>三种 harness，你只能改其中一种</h2>
+      <p>不是替谁下判断，是三种东西本来就服务不同的诉求。你要的是哪种，看这张表就够。</p>
     </div>
-    <div class="layers">
-      <div class="layer" style="--lc:#38bdf8">
-        <div class="nm">index.html<small>71 KB · 只有骨架</small></div>
-        <div class="ds">静态骨架 + 资源清单 + <b>76 个 script 标签</b>。没有一行业务逻辑。</div>
-      </div>
-      <div class="layer" style="--lc:#5eead4">
-        <div class="nm">js/core/ · 12<small>地基</small></div>
-        <div class="ds"><b>utils / ui-kit / api / state / data / router / theme / markdown / init</b>——不依赖任何业务的面板无关代码。</div>
-      </div>
-      <div class="layer" style="--lc:#a78bfa">
-        <div class="nm">js/chat/ · 6<small>对话层</small></div>
-        <div class="ds">会话树、气泡与流式渲染、输入与斜杠命令、语音与引用、多 Agent 圆桌。</div>
-      </div>
-      <div class="layer" style="--lc:#f59e0b">
-        <div class="nm">js/panels/ · 12<small>面板层</small></div>
-        <div class="ds">概览、模型、定时任务、扩展、记忆、用量、渠道、隧道、工作台、终端、学习。</div>
-      </div>
-      <div class="layer" style="--lc:#f87171">
-        <div class="nm">js/panel-*.js · 36<small>历史遗留</small></div>
-        <div class="ds">功能都在用，职责与 <b>panels/</b> 重叠。<b>动之前两个文件都要看</b>——这是明写在文档里的债，不是漏了。</div>
-      </div>
-      <div class="layer" style="--lc:#94a3b8">
-        <div class="nm">server/ · 56<small>后端责任链</small></div>
-        <div class="ds">3,576 行，平均每个 <b>64 行</b>。一个接口域一个文件，导出一个 handler 工厂，依赖全注入。</div>
-      </div>
+
+    <div class="tbl-wrap"><table class="tbl">
+      <thead>
+        <tr>
+          <th style="width:22%"></th>
+          <th>托管 Harness<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Salesforce / Workday / AWS</span></th>
+          <th>SaaS 办公 Agent<br><span style="font-weight:400;text-transform:none;letter-spacing:0">WorkBuddy 一类</span></th>
+          <th style="color:var(--accent-2)">这个</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr><td>跑在哪</td><td>厂商的云</td><td>厂商的云</td><td class="mono">你的 NAS / 你的 Mac</td></tr>
+        <tr><td>对话与日志</td><td>出域，进他们的合规体系</td><td>出域</td><td class="mono">不出门</td></tr>
+        <tr><td>换模型</td><td>厂商支持清单内</td><td>绑定自家生态</td><td class="mono">改一行 config.yaml</td></tr>
+        <tr><td>Harness 内部</td><td>黑盒</td><td>黑盒</td><td class="mono">79 前端模块 + 56 责任链</td></tr>
+        <tr><td>改坏了怎么知道</td><td>不知道</td><td>不知道</td><td class="mono">lint / 探针 / 部署对账</td></tr>
+        <tr><td>谁替你运维</td><td>厂商</td><td>厂商</td><td class="mono">面板自己管（进程守护·配置事务·重启编排）</td></tr>
+        <tr><td>花什么钱</td><td>席位费</td><td>席位费</td><td class="mono">电费，和你自己的 token</td></tr>
+      </tbody>
+    </table></div>
+  </div>
+</section>
+
+<section id="panels">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="tag">能力面</div>
+      <h2>12 个面板，覆盖 Agent 运行时的全部关节</h2>
+      <p>
+        不是一个聊天框加一圈设置项。模型接入、渠道收发、记忆读写、知识检索、技能装配、定时调度、
+        用量归因、进程守护——每一块都有自己的面板和自己的后端。
+      </p>
     </div>
+
+    <div class="cards">
+      <div class="card"><span class="ic">◈</span><h3>overview · 总览</h3><p>进程、端口、渠道、模型的活死状态，一屏看完。不靠 <code>ps</code> 猜。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>assistant · 助手</h3><p>对话、子代理、后台任务，同一副记忆贯穿。会话断了能接着跑。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>models · 模型</h3><p>多 provider 并存，密钥与模型解耦，带连通性检查——不是填完就当通。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>channels · 渠道</h3><p>QQ、微信、飞书、Discord、Telegram、本地面板，六个入口一套上下文。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>memory · 记忆</h3><p>长期记忆的读写、压缩与审计。谁写进去的、什么时候被压掉的，查得到。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>learning · 知识</h3><p>知识库索引与检索。沉淀是靠流程，不是靠模型的记性。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>extensions · 扩展</h3><p>技能库、MCP 服务器、专家角色。装新的不动主程序。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>cron · 定时</h3><p>周期任务、钩子、历史回放。跑过的每一次都有回执可对。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>workspace · 工作区</h3><p>项目和产物的落盘位置、部署账本、逐文件对账。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>terminal · 终端</h3><p>面板里直接开 shell，不用为了看一眼日志再开一个 SSH。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>usage · 用量</h3><p>token 花在哪个会话、哪个模型、哪一天，按归因拆开算。</p></div>
+      <div class="card"><span class="ic">◈</span><h3>tunnel · 隧道</h3><p>外网入口与穿透状态。打没打通，这里说了算。</p></div>
+    </div>
+
+    <p style="margin-top:26px;font-size:14px;color:var(--fg-dim);max-width:760px">
+      后端不是一个巨型 router。会话、渠道、配置事务、重启编排、队列、语音、库、模型、运维——
+      按职责切成 56 条责任链，平均 64 行。<b style="color:var(--fg)">改一条不会连坐其它</b>，这也是它敢让你自己动手的原因。
+    </p>
   </div>
 </section>
 
 <section id="verify">
   <div class="wrap">
     <div class="sec-head">
-      <div class="tag">Verification</div>
-      <h2>"我看过了没问题"不算证明</h2>
-      <p>面板跑在正在用的 NAS 上，不能有行为变化。所以验收标准从"看起来一样"变成三层可量化的等价。</p>
+      <div class="tag">工程保障</div>
+      <h2>能改的前提，是改完还知道对不对</h2>
+      <p>
+        开源一个能改的东西不难，难的是让"改了"这件事可验证。所以这里有三级探针，
+        而不是一句"我看过了没问题"。
+      </p>
     </div>
+
     <div class="verify">
       <div class="vstep">
-        <div class="n">LAYER 01</div>
+        <span class="n">LEVEL 01</span>
         <h4>符号级等价</h4>
-        <p>拆文件改变函数的物理位置，不该改变存在性。对比 <code style="font-family:var(--mono);font-size:.9em;color:var(--accent)">Object.keys(window)</code>，差一个就说明漏了、重了，或者被后面的覆盖了。</p>
-        <span class="num">638 函数 + 314 对象 · 差异 0</span>
+        <p>拆模块前先把全局符号拍成快照，拆完逐个比对定义位置和引用关系。</p>
+        <span class="num">638 函数 + 314 对象 · 零差异</span>
       </div>
       <div class="vstep">
-        <div class="n">LAYER 02</div>
+        <span class="n">LEVEL 02</span>
         <h4>样式级等价</h4>
-        <p>CSS 拆分会踩一个隐蔽坑：层叠顺序变了，权重没变，赢家变了。所以要量每个元素<b>最终生效</b>的计算样式，逐属性比对。</p>
-        <span class="num">getComputedStyle 全量快照</span>
+        <p>拿 <code>getComputedStyle</code> 把关键元素的计算值全量导出，新旧两版 diff。</p>
+        <span class="num">key 顺序也纳入比对</span>
       </div>
       <div class="vstep">
-        <div class="n">LAYER 03</div>
+        <span class="n">LEVEL 03</span>
         <h4>像素级等价</h4>
-        <p>截图前必须先验三件事：资源真加载了、符号数对得上、动画禁掉了。少一件，比对就是在比随机数——或者两个坏页面互相证明。</p>
+        <p>Playwright 在真实视口截图，逐像素算偏差，超阈值直接判红。</p>
         <span class="num">1440×1000 / 390×844 · 0 像素</span>
       </div>
     </div>
-    <pre><span class="c"># 假绿的陷阱，真实发生过</span>
-&lt;base href&gt; 写错 → 所有 CSS/JS 请求 <span class="w">404</span>
-两版页面都没有样式、都没有脚本 → 截图<span class="g">一模一样</span>
-<span class="w">两个坏页面，比出了一个满分。</span>
 
-<span class="c"># 从此截图验证前必须过三道前置检查</span>
-<span class="g">1</span> 资源真的加载了（查 network，不是查 HTML 里有没有标签）
-<span class="g">2</span> 全局符号数对得上
-<span class="g">3</span> 动画禁掉再截</pre>
+    <div class="layers" style="margin-top:34px">
+      <div class="layer" style="--lc:#38bdf8"><div class="nm">core<small>加载顺序就是依赖顺序</small></div><div class="ds">状态、路由、请求、主题——<b>12 个模块，最底层，谁都不许反向依赖它</b></div></div>
+      <div class="layer" style="--lc:#5eead4"><div class="nm">chat<small>会话域</small></div><div class="ds">消息流、输入、附件、语音条、断流恢复 —— <b>6 个模块</b></div></div>
+      <div class="layer" style="--lc:#a78bfa"><div class="nm">panels<small>业务域</small></div><div class="ds">12 个主面板，各自成域，<b>互相之间只通过 core 通信</b></div></div>
+      <div class="layer" style="--lc:#f59e0b"><div class="nm">panel-*<small>横切能力</small></div><div class="ds">36 个可复用片段：鉴权、门禁、拖拽、悬浮、树、斜杠、提示……<b>谁需要谁引</b></div></div>
+      <div class="layer" style="--lc:#94a3b8"><div class="nm">archive<small>冷路径</small></div><div class="ds">归档、草稿、评审 —— <b>不参与首屏，按需加载</b></div></div>
+    </div>
   </div>
 </section>
 
-<section id="start">
+<section id="deploy">
   <div class="wrap">
     <div class="sec-head">
-      <div class="tag">Get started</div>
-      <h2>装它，或者只预览前端不碰生产</h2>
-      <p>从 Releases 下 <code style="font-family:var(--mono);font-size:.9em;color:var(--accent)">.fpk</code> 在 fnOS 应用中心手动安装；也可以克隆源码，用带账本的部署脚本。</p>
+      <div class="tag">三种跑法</div>
+      <h2>NAS 上、Mac 上，或者只看看前端</h2>
+      <p>它原本是 fnOS 上的一个应用包，但面板这一层不依赖 fnOS——单独跑起来也能用。</p>
     </div>
-    <pre><span class="c"># 部署到生产目录（有账本，不是裸 cp）</span>
-git clone https://github.com/vector9584/fnos-hermes-panel.git
-cd fnos-hermes-panel
-bash dev/deploy-workspace.sh
 
-<span class="c"># 重启应用（唯一合法路径，别用 pkill）</span>
-fnos-cli --profile nas app restart hermes-agent --yes
+<pre><span class="c"># 1. 完整安装（fnOS 应用包）</span>
+<span class="b">git</span> clone https://github.com/vector9584/fnos-hermes-panel
+<span class="b">cd</span> fnos-hermes-panel
+<span class="b">bash</span> build-slim.sh          <span class="c"># 产出 fpk</span>
+<span class="c"># 应用中心 → 手动安装 → 选刚生成的 fpk</span>
 
-<span class="c"># 生产对账：源码 vs 运行目录，逐文件 SHA-256</span>
-bash dev/verify-prod.sh
+<span class="c"># 2. 只要面板前端（不碰生产）</span>
+<span class="b">python3</span> -m http.server 8080 <span class="c">--directory</span> app/ui
+<span class="c"># 打开 http://localhost:8080 —— 静态预览，接口走 mock</span>
 
-<span class="c"># 只预览前端，不碰生产 —— 改 CSS 的时候用这个</span>
-bash dev/hermes-dev.sh 8917
-<span class="c"># → http://&lt;nas-ip&gt;:8917/app/hermes-agent/</span></pre>
+<span class="c"># 3. 只要源码包</span>
+<span class="b">bash</span> dev/make-release.sh
+<span class="g">→ dist/fnos-hermes-panel-&lt;sha&gt;.zip   15.6 MB / 1074 文件</span></pre>
+
+    <p style="margin-top:22px;font-size:14px;color:var(--fg-dim)">
+      源码包用 <code style="font-family:var(--mono);color:var(--accent)">git archive</code> 出，
+      只认已提交内容——<code style="font-family:var(--mono);color:var(--accent)">.env</code>、构建产物、回滚快照天然进不去，
+      打完还会再查一遍。
+    </p>
   </div>
 </section>
 
 <section id="debt">
   <div class="wrap">
     <div class="sec-head">
-      <div class="tag">Known debt</div>
+      <div class="tag">诚实清单</div>
       <h2>没做完的部分，写在明面上</h2>
-      <p>诚实列出来比藏起来好。每一条都有对应的检查器或文档章节。</p>
+      <p>一个项目最该被看见的不是它做完了什么，是它知道自己还差什么。</p>
     </div>
-    <table class="tbl">
-      <thead><tr><th>债</th><th>规模</th><th>影响</th></tr></thead>
+
+    <div class="tbl-wrap"><table class="tbl">
+      <thead><tr><th style="width:34%">项</th><th style="width:14%">状态</th><th>说明</th></tr></thead>
       <tbody>
-        <tr><td>js/panel-*.js 未并入三层</td><td class="mono">36 个文件</td><td>与 js/panels/ 职责重叠，同一个面板要改两处</td></tr>
-        <tr><td>原生 confirm() / alert()</td><td class="mono">38 + 2 处</td><td>样式不可控，且 confirm 是同步阻塞，换异步要改函数签名</td></tr>
-        <tr><td>ui.* 组件层未全覆盖</td><td class="mono">已调用 60 次</td><td>新代码用 ui.*，老代码仍在手拼 DOM</td></tr>
-        <tr><td>monitor.js 仍是单文件</td><td class="mono">9,473 行</td><td>跨域编排故意不拆，但单测困难</td></tr>
-        <tr><td>前端没有模块系统</td><td class="mono">—</td><td>加载顺序是隐式契约，改顺序可能静默出错</td></tr>
+        <tr><td>架构 lint 存量违规</td><td class="mono" style="color:var(--warn)">103 条</td><td>存量与新增分开计数，新增必须为 0，存量按域逐步还</td></tr>
+        <tr><td>测试覆盖</td><td class="mono" style="color:var(--warn)">部分</td><td>等价性与部署对账有自动化探针，业务逻辑单测还不成体系</td></tr>
+        <tr><td>i18n</td><td class="mono">中文</td><td>界面文案目前只有中文，没有做多语言抽取</td></tr>
+        <tr><td>移动端</td><td class="mono" style="color:var(--accent-2)">可用</td><td>390 宽做了适配与真机验收，但复杂表格仍是横滑</td></tr>
+        <tr><td>多用户</td><td class="mono">单实例</td><td>一个面板服务一个 agent 实例，没有做租户隔离</td></tr>
       </tbody>
-    </table>
+    </table></div>
   </div>
 </section>
 
@@ -417,28 +466,29 @@ bash dev/hermes-dev.sh 8917
     <div class="cols">
       <div>
         <h5>fnos-hermes-panel</h5>
-        <p style="color:var(--fg-dim);font-size:13.5px;line-height:1.75;max-width:320px">
-          Hermes Agent 在 fnOS 上的控制面板工程化重构。<br>
-          每个数字都是跑出来的，不是估的。
+        <p style="font-size:13.5px;line-height:1.75">
+          一个自托管的 Agent harness 面板。<br>
+          从 fnOS 应用中心里的一个 658 KB 单文件界面，拆成 79 个模块、56 条责任链，
+          再把每一处改动都变成可验证的。
         </p>
       </div>
       <div>
         <h5>文档</h5>
-        <a href="https://github.com/vector9584/fnos-hermes-panel#readme">README</a>
+        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/README.md">README</a>
         <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/JOURNEY.md">改造历程</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/app/ui/ARCHITECTURE.md">架构规矩</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/UPDATE-LOG.md">改动流水</a>
+        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/app/ui/ARCHITECTURE.md">架构约定</a>
+        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/UPDATE-LOG.md">更新日志</a>
       </div>
       <div>
-        <h5>相关</h5>
-        <a href="https://github.com/NousResearch/hermes-agent">Hermes Agent ↗</a>
-        <a href="https://github.com/veenyi/fnos-hermes-agent">fnOS 打包层 ↗</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/releases">全部版本 ↘</a>
+        <h5>项目</h5>
+        <a href="https://github.com/vector9584/fnos-hermes-panel">源码</a>
+        <a href="https://github.com/vector9584/fnos-hermes-panel/issues">问题</a>
+        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/LICENSE">GPL-3.0</a>
       </div>
     </div>
     <div class="sig">
-      <span>GPL-3.0 · 与上游一致</span>
-      <span><code>658 KB → 71 KB</code> · 79 modules · 56 handlers</span>
+      <span>上游 Hermes Agent 由 Nous Research 开发，本项目是它在一个真实 NAS 上的长期改造。</span>
+      <code>GPL-3.0 · 2026</code>
     </div>
   </div>
 </footer>
