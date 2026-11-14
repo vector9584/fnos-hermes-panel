@@ -24,11 +24,13 @@
 (function (self) {
   'use strict';
   var n = 0, W = 900, H = 560, mode = 'bh', theta = 0.9, alpha = 1, linkLen = 100, repulse = 2600;
-  var x, y, vx, vy, ax, ay, sx, sy, deg, rad, fixed, vis, edges, parent, catCount = 0;
-  var anchorX, anchorY, anchorK = 0, repulseEff = 2600;
-  var frame = 0, timer = null, disposed = false, posOut = null;
+  var x, y, vx, vy, ax, ay, sx, sy, deg, rad, fixed, vis, edges, parent, catCount = 0, anchors = 0;
+  var anchorX, anchorY, anchorK = 0, repulseEff = 2600, clusterR = null, linkEff = 100, groupLink = null, grpX = null, grpY = null;
+  var frame = 0, timer = null, disposed = false, paused = false, posOut = null;
   var qCap = 0, qChild, qMass, qCx, qCy, qMinX, qMinY, qSize, qBody, qCount = 0, stack;
   var GOLD = 2.399963229728653, DAMP = 0.85;
+  /* 簇半径缩放 & 锚点牵引强度：多分类 packing 后这两个一起决定收敛形态 */
+  var RSCALE = 0.78, ANCHOR_K = 0.05, SOFT = 40, VMAX = 18;
 
   function alloc(nc) {
     qCap = nc;
@@ -115,42 +117,150 @@
     computeMass(0);
   }
 
-  /* 分类锚点：按画布宽高分别取椭圆半径，铺满视口而不是缩在中心小圆上。
-     同时把斥力按规模归一化——这是「节点多了才炸」的根子。 */
+  /* 分类锚点 + 簇半径（第二版，2026-11-14）
+   *
+   * 老实现有两个只在「分类多」时才炸的假设：
+   *   1. 簇半径按相邻锚点的弧长折算（sep*0.5）。分类一多弧长就缩到 20px 下限，
+   *      147 个技能的 fnos-knowledge 被塞进半径 20 的球里 —— 技能轨迹因此看着像
+   *      「引力模型根本没生效」；知识图谱只有 4 类，同一个公式看着又正常。
+   *   2. 把 nodes[0..catCount-1] 当骨架锚点钉死。那是「有显式分类节点」时的约定，
+   *      技能轨迹没有分类节点，于是前 27 个技能被随机钉在别人的簇心上不动。
+   *
+   * 现在：簇半径按「本簇节点数 / 总节点数 × 可用面积」开方算（面积等比，大分类占大地盘）；
+   * 分类少仍铺椭圆（知识图谱外观不变），分类多到一圈摆不下就换成面积等比的多环螺旋，
+   * 大分类落内环。钉死的只有调用方真正传进来的锚点节点（anchors）。
+   */
   function layoutAnchors() {
-    var cx = W * 0.5, cy = H * 0.5, Rx = W * 0.34, Ry = H * 0.32, cc = catCount;
-    if (cc > 0) {
-      for (var c = 0; c < cc; c++) {
+    var cx = W * 0.5, cy = H * 0.5, cc = catCount, i, c;
+    /* 边的理想长度也得跟着规模走：387 个技能挤在 716×520 里，每个节点只摊到
+       ~480px²（间距 22px），还按 100px 当弹簧静止长度，边就是十几倍伸长的橡皮筋，
+       簇被拽散、节点互相压叠。按「每节点可用面积的等效间距」折算，知识图谱（116 节点
+       间距 40px）仍落在 88px，跟原来的 100 差不多，外观不动。 */
+    linkEff = Math.max(26, Math.min(linkLen, 2.2 * Math.sqrt(0.5 * W * H / Math.max(1, n))));
+    if (!groupLink || groupLink.length < Math.max(1, cc)) groupLink = new Float32Array(Math.max(1, cc));
+    var usedPacking = false;
+    var cap = Math.max(1, cc);
+    if (!clusterR || clusterR.length < cap) clusterR = new Float32Array(cap);
+    /* grpX/grpY 存「分类锚点坐标」，anchorX/anchorY 才是「每个节点被吸向哪儿」。
+       以前两者共用一块数组，普通节点从 0 开始编号时会把前 cc 个锚点坐标覆盖掉。 */
+    if (!grpX || grpX.length < cap) { grpX = new Float32Array(cap); grpY = new Float32Array(cap); }
+    if (cc <= 0) {
+      for (i = 0; i < n; i++) { anchorX[i] = cx; anchorY[i] = cy; }
+      anchorK = 0; repulseEff = repulse * 36 / Math.max(36, n);
+      return;
+    }
+    var Rx = W * 0.34, Ry = H * 0.32;
+    var cnt = new Int32Array(cc), total = 0;
+    for (i = anchors; i < n; i++) { var p = parent[i]; if (p < 0 || p >= cc) p = 0; cnt[p]++; total++; }
+    if (total <= 0) total = 1;
+    var usable = Math.PI * Rx * Ry * 0.92;
+    var per = Math.PI * (3 * (Rx + Ry) - Math.sqrt((3 * Rx + Ry) * (Rx + 3 * Ry)));
+    var spacing = per / cap;
+    /* 簇半径上限：半个画布短边，避免一个巨簇把画布撑破 */
+    var capRoom = Math.min(W, H) * 0.26;
+    var need = new Float32Array(cc), maxNeed = 0;
+    for (c = 0; c < cc; c++) {
+      need[c] = Math.sqrt(cnt[c] / total * usable / Math.PI);
+      if (need[c] > maxNeed) maxNeed = need[c];
+    }
+    /* 一圈摆得下：相邻锚点弧长容得下两个簇半径 */
+    var ellipseOk = cc === 1 || (cc <= 3) || spacing >= maxNeed * 1.85;
+    if (ellipseOk) {
+      for (c = 0; c < cc; c++) {
         var a = 2 * Math.PI * c / cc - Math.PI / 2;
-        anchorX[c] = cx + Math.cos(a) * Rx; anchorY[c] = cy + Math.sin(a) * Ry;
-      }
-      for (var i = cc; i < n; i++) {
-        var p = parent[i]; if (p < 0 || p >= cc) p = 0;
-        anchorX[i] = anchorX[p]; anchorY[i] = anchorY[p];
+        grpX[c] = cx + Math.cos(a) * Rx; grpY[c] = cy + Math.sin(a) * Ry;
+        clusterR[c] = Math.max(20, Math.min(spacing * 0.50, Math.min(W, H) * 0.24));
       }
     } else {
-      for (var j = 0; j < n; j++) { anchorX[j] = cx; anchorY[j] = cy; }
+      usedPacking = true;
+      /* 分类多到一圈摆不下（技能轨迹 27 类）：一个椭圆环上放 27 个盘，弧长只有
+         48px，任何半径都摆不开。改成「盘按面积算 + 在画布里做贪心圆 packing」：
+         大分类优先落位、整个盘必须落在画布内、盘与盘留 6px 间隙。
+         这样 147 个技能的 fnos-knowledge 拿到 118 半径的地盘，而不是被塞进 20。 */
+      var order = [];
+      for (c = 0; c < cc; c++) order.push(c);
+      order.sort(function (a2, b2) { return (cnt[b2] - cnt[a2]) || (a2 - b2); });
+      var radii = new Float32Array(cc);
+      for (var k = 0; k < cc; k++) {
+        c = order[k];
+        radii[c] = Math.max(14, Math.min(need[c] * RSCALE, capRoom));
+      }
+      var padX = 18, padTop = 18, padBot = 58;
+      var minX = padX, maxX = W - padX, minY = padTop, maxY = H - padBot;
+      /* 先按面积等分的网格铺开，再做圆盘松弛：盘与盘互推、撞墙回推，
+         最后盘心铺满整张画布（贪心首fit 会把 27 个盘全挤在中心 300×300 里）。 */
+      var cols = Math.max(1, Math.ceil(Math.sqrt(cc))), rows = Math.ceil(cc / cols);
+      for (var k3 = 0; k3 < cc; k3++) {
+        c = order[k3];
+        clusterR[c] = radii[c];
+        grpX[c] = minX + ((k3 % cols) + 0.5) * (maxX - minX) / cols;
+        grpY[c] = minY + (Math.floor(k3 / cols) + 0.5) * (maxY - minY) / rows;
+      }
+      for (var it = 0; it < 220; it++) {
+        for (var a3 = 0; a3 < cc; a3++) {
+          var ca = order[a3], ra = clusterR[ca];
+          for (var b3 = a3 + 1; b3 < cc; b3++) {
+            var cb = order[b3];
+            var ddx2 = grpX[cb] - grpX[ca], ddy2 = grpY[cb] - grpY[ca];
+            var dd2 = Math.sqrt(ddx2 * ddx2 + ddy2 * ddy2) || 0.01;
+            var want = ra + clusterR[cb] + 6;
+            if (dd2 < want) {
+              var push = (want - dd2) * 0.5, ux = ddx2 / dd2, uy = ddy2 / dd2;
+              grpX[ca] -= ux * push; grpY[ca] -= uy * push;
+              grpX[cb] += ux * push; grpY[cb] += uy * push;
+            }
+          }
+        }
+      }
+      /* 松弛后再整体等比缩放贴到画布：松弛本身不设墙（墙的回推只朝内，会把整群
+         盘吸回中心），间距定下来之后一次缩放决定最终大小，间距比例不变、不会压叠。 */
+      var bMinX = 1e9, bMaxX = -1e9, bMinY = 1e9, bMaxY = -1e9;
+      for (var k4 = 0; k4 < cc; k4++) {
+        c = order[k4]; var r4 = clusterR[c];
+        if (grpX[c] - r4 < bMinX) bMinX = grpX[c] - r4;
+        if (grpX[c] + r4 > bMaxX) bMaxX = grpX[c] + r4;
+        if (grpY[c] - r4 < bMinY) bMinY = grpY[c] - r4;
+        if (grpY[c] + r4 > bMaxY) bMaxY = grpY[c] + r4;
+      }
+      var scX = (maxX - minX) / Math.max(1, bMaxX - bMinX);
+      var scY = (maxY - minY) / Math.max(1, bMaxY - bMinY);
+      var sc = Math.min(scX, scY);
+      var midX = (bMinX + bMaxX) * 0.5, midY = (bMinY + bMaxY) * 0.5;
+      for (var k5 = 0; k5 < cc; k5++) {
+        c = order[k5]; var r5 = clusterR[c];
+        grpX[c] = (grpX[c] - midX) * sc + (minX + maxX) * 0.5;
+        grpY[c] = (grpY[c] - midY) * sc + (minY + maxY) * 0.5;
+      }
     }
-    anchorK = cc > 0 ? 0.035 : 0;
+    /* 弹簧静止长度只在「多分类铺盘」时才按簇地盘折算：45 个节点的小盘（r=59）若还按
+       48px 的静止长度，弹簧会把节点推出盘外、糊成一团（技能轨迹 other 这一类 p90 257）。
+       分类少的椭圆布局（知识图谱）保持原口径，外观不动。 */
+    if (usedPacking) for (c = 0; c < cc; c++) groupLink[c] = Math.max(16, Math.min(linkEff, clusterR[c] * 0.52));
+    else for (c = 0; c < cc; c++) groupLink[c] = linkLen;
+    for (i = 0; i < n; i++) {
+      if (i < anchors) { anchorX[i] = grpX[i]; anchorY[i] = grpY[i]; continue; }
+      var pp = parent[i]; if (pp < 0 || pp >= cc) pp = 0;
+      anchorX[i] = grpX[pp]; anchorY[i] = grpY[pp];
+    }
+    /* 牵引强度也分档：铺盘布局的簇地盘比椭圆小，需要更强的手把节点按回盘里；
+       椭圆布局（知识图谱/合成回归图）沿用 0.035，外观与旧版一致。 */
+    if (!usedPacking) linkEff = linkLen;
+    anchorK = usedPacking ? ANCHOR_K : 0.035;
     repulseEff = repulse * 36 / Math.max(36, n);
   }
 
   function initialPos() {
     layoutAnchors();
-    var cc = catCount, cx = W * 0.5, cy = H * 0.5;
-    for (var c = 0; c < cc; c++) { x[c] = anchorX[c]; y[c] = anchorY[c]; }
-    /* 簇半径由相邻分类间距决定，避免簇互相重叠或溢出画布 */
-    var cap = Math.max(1, cc);
-    var sep = Math.min(W * 0.34, H * 0.32) * 2 * Math.sin(Math.PI / cap);
-    var clusterR = Math.max(20, Math.min(sep * 0.50, Math.min(W, H) * 0.24));
+    var cc = catCount, cap = Math.max(1, cc), cx = W * 0.5, cy = H * 0.5;
+    for (var c = 0; c < anchors; c++) { x[c] = anchorX[c]; y[c] = anchorY[c]; }
     var noCatR = Math.min(W, H) * 0.42;
     var cnt = new Int32Array(cap), idx = new Int32Array(cap);
-    for (var q = cc; q < n; q++) { var pp = parent[q]; if (pp < 0 || pp >= cc) pp = 0; cnt[pp]++; }
-    for (var i = cc; i < n; i++) {
+    for (var q = anchors; q < n; q++) { var pp = parent[q]; if (pp < 0 || pp >= cc) pp = 0; cnt[pp]++; }
+    for (var i = anchors; i < n; i++) {
       var p = parent[i]; if (p < 0 || p >= cc) p = 0;
       var k = idx[p]++, ang = k * GOLD + p * 0.7;
       /* 面积均匀填充：半径 ∝ sqrt(k/簇容量)，节点不会堆在簇心 */
-      var rr = cc > 0 ? clusterR * Math.sqrt((k + 0.5) / Math.max(1, cnt[p]))
+      var rr = cc > 0 ? clusterR[p] * Math.sqrt((k + 0.5) / Math.max(1, cnt[p]))
                       : Math.min((34 + 20 * Math.sqrt(k + 1)), noCatR);
       var ox = cc > 0 ? anchorX[p] : cx, oy = cc > 0 ? anchorY[p] : cy;
       x[i] = ox + Math.cos(ang) * rr; y[i] = oy + Math.sin(ang) * rr;
@@ -161,8 +271,8 @@
   }
   function doLayered() {
     initialPos();
-    for (var c = 0; c < catCount; c++) { vx[c] = 0; vy[c] = 0; fixed[c] = 1; }
-    for (var i = catCount; i < n; i++) { vx[i] = 0; vy[i] = 0; }
+    for (var c = 0; c < anchors; c++) { vx[c] = 0; vy[c] = 0; fixed[c] = 1; }
+    for (var i = anchors; i < n; i++) { vx[i] = 0; vy[i] = 0; }
   }
   function step() {
     if (disposed) return;
@@ -189,7 +299,10 @@
           d2 = dx * dx + dy * dy + 0.01;
           var s = qSize[node];
           if (body >= 0 || s * s < theta * theta * d2) {
-            d = Math.sqrt(d2); f = repulseEff * m / d2;
+            /* 软化核：d→0 时 1/d² 会让两个重合节点获得上万的速度，直接把节点甩到
+               画布角上钉死（2,2 / 714,518 那批）。SOFT 只压近距（d<10），
+               取 140 会连中距斥力一起削弱，簇被压成实心球（121 图最大格 64/121）。 */
+            d = Math.sqrt(d2); f = repulseEff * m / (d2 + SOFT);
             fx -= dx / d * f; fy -= dy / d * f;
           } else {
             var base = node * 4;
@@ -208,7 +321,12 @@
         if (vis[a] === 0 || vis[b] === 0) continue;
         dx = x[b] - x[a]; dy = y[b] - y[a];
         d = Math.sqrt(dx * dx + dy * dy) || 1;
-        f = (d - linkLen) * 0.012;
+        var ll = linkEff;
+        if (groupLink && catCount > 0) {
+          var pa = parent[a], pb = parent[b];
+          ll = (groupLink[pa < 0 || pa >= catCount ? 0 : pa] + groupLink[pb < 0 || pb >= catCount ? 0 : pb]) * 0.5;
+        }
+        f = (d - ll) * 0.012;
         sx[a] += dx / d * f; sy[a] += dy / d * f; deg[a]++;
         sx[b] -= dx / d * f; sy[b] -= dy / d * f; deg[b]++;
       }
@@ -225,6 +343,9 @@
         if (x[i] < pad) tx += (pad - x[i]) * 0.12; else if (x[i] > W - pad) tx -= (x[i] - (W - pad)) * 0.12;
         if (y[i] < pad) ty += (pad - y[i]) * 0.1; else if (y[i] > bottom) ty -= (y[i] - bottom) * 0.12;
         vx[i] = (vx[i] + tx) * DAMP; vy[i] = (vy[i] + ty) * DAMP;
+        /* 单帧速度上限：再大的合力也不许把节点一步甩到几百像素外 */
+        if (vx[i] > VMAX) vx[i] = VMAX; else if (vx[i] < -VMAX) vx[i] = -VMAX;
+        if (vy[i] > VMAX) vy[i] = VMAX; else if (vy[i] < -VMAX) vy[i] = -VMAX;
         x[i] += vx[i] * alpha; y[i] += vy[i] * alpha;
         /* 仅作数值兜底，正常收敛不会触发 */
         x[i] = Math.max(2, Math.min(W - 2, x[i]));
@@ -235,7 +356,7 @@
     var t1 = (typeof performance !== 'undefined' ? performance.now() : Date.now());
     var conv = (alpha === 0 || mode === 'layered');
     emit(t1 - t0, conv);
-    if (!conv) timer = setTimeout(step, 16);
+    if (!conv && !paused) timer = setTimeout(step, 16);
   }
   function emit(dt, conv) {
     if (!posOut || posOut.length !== n * 2) posOut = new Float32Array(n * 2);
@@ -244,7 +365,7 @@
     self.postMessage({ type: 'frame', pos: posOut, alpha: alpha, physics: dt, frame: frame, converged: conv, mode: mode, theta: theta });
   }
   function schedule() {
-    if (timer === null && !disposed) timer = setTimeout(step, 16);
+    if (timer === null && !disposed && !paused) timer = setTimeout(step, 16);
   }
   function kick() {
     if (mode === 'layered') { step(); return; }
@@ -258,15 +379,23 @@
         n = m.n; W = m.W; H = m.H;
         /* 参数缺省即兜底：mode 缺失会让 step 走到不存在的分支、坐标直接变 NaN */
         mode = m.mode || 'bh'; theta = m.theta || 0.9; linkLen = m.linkLen || 100;
-        catCount = m.catCount; parent = m.parent; edges = m.edges; rad = m.radius;
+        catCount = m.catCount || 0;
+        /* anchors：真正要钉死的分类锚点节点个数。知识图谱/技能轨迹都没有显式分类节点，
+           传 0 —— 以前拿 catCount 当锚点数，等于把前 N 个普通节点钉在别人的簇心上。 */
+        /* 兼容旧调用方：老约定是「节点 0..catCount-1 就是分类锚点，默认钉死」。
+           想改成「没有锚点节点」必须显式传 anchors: 0，避免静默换语义。 */
+        anchors = (m.anchors === undefined) ? (m.catCount || 0) : (m.anchors || 0);
+        if (anchors > catCount) anchors = catCount;
+        parent = m.parent; edges = m.edges; rad = m.radius;
         x = new Float32Array(n); y = new Float32Array(n);
         vx = new Float32Array(n); vy = new Float32Array(n);
         ax = new Float32Array(n); ay = new Float32Array(n);
         sx = new Float32Array(n); sy = new Float32Array(n); deg = new Int32Array(n);
         anchorX = new Float32Array(n); anchorY = new Float32Array(n);
         fixed = new Uint8Array(n); vis = new Uint8Array(n); vis.fill(1);
+        clusterR = null;
         /* 分类节点是骨架锚点，不参与自由碰撞，否则会被斥力推到画布四角 */
-        for (var fi = 0; fi < catCount; fi++) fixed[fi] = 1;
+        for (var fi = 0; fi < anchors; fi++) fixed[fi] = 1;
         if (m.visible && m.visible.length === n) vis.set(m.visible);
         if (m.pos && m.pos.length === n * 2) {
           for (i = 0; i < n; i++) { x[i] = m.pos[i * 2]; y[i] = m.pos[i * 2 + 1]; }
@@ -280,29 +409,34 @@
       }
       case 'drag': x[m.i] = m.x; y[m.i] = m.y; vx[m.i] = 0; vy[m.i] = 0; fixed[m.i] = 1; kick(); break;
       /* 分类锚点钉死，拖完也不解除固定 */
-      case 'unfix': if (m.i >= catCount) { fixed[m.i] = 0; kick(); } break;
+      case 'unfix': if (m.i >= anchors) { fixed[m.i] = 0; kick(); } break;
       case 'filter': if (m.visible && m.visible.length === n) vis.set(m.visible); emit(0, true); break;
       case 'mode': mode = m.mode; alpha = 1; if (timer !== null) { clearTimeout(timer); timer = null; } step(); break;
       case 'resize': {
         var oldAX, oldAY, dxA, dyA, c2, j2;
-        if (anchorX) { oldAX = anchorX.slice(); oldAY = anchorY.slice(); }
+        if (grpX) { oldAX = grpX.slice(); oldAY = grpY.slice(); }
         W = m.W; H = m.H; layoutAnchors();
         if (oldAX && catCount > 0) {
-          /* 锚点随画布伸缩，子节点整体跟着平移，避免竖屏转横屏时塌到一边 */
+          /* 分类锚点随画布伸缩，子节点整体跟着平移，避免竖屏转横屏时塌到一边 */
           for (c2 = 0; c2 < catCount; c2++) {
-            dxA = anchorX[c2] - oldAX[c2]; dyA = anchorY[c2] - oldAY[c2];
-            x[c2] = anchorX[c2]; y[c2] = anchorY[c2];
-            for (j2 = catCount; j2 < n; j2++) if (parent[j2] === c2) { x[j2] += dxA; y[j2] += dyA; }
+            dxA = grpX[c2] - oldAX[c2]; dyA = grpY[c2] - oldAY[c2];
+            if (c2 < anchors) { x[c2] = grpX[c2]; y[c2] = grpY[c2]; }
+            for (j2 = anchors; j2 < n; j2++) if (parent[j2] === c2) { x[j2] += dxA; y[j2] += dyA; }
           }
         }
         kick(); break;
       }
       case 'reset': {
         if (timer !== null) { clearTimeout(timer); timer = null; }
-        fixed.fill(0); for (var r = 0; r < catCount; r++) fixed[r] = 1;
+        fixed.fill(0); for (var r = 0; r < anchors; r++) fixed[r] = 1;
         vx.fill(0); vy.fill(0); initialPos(); alpha = 1; step(); break;
       }
       case 'kick': kick(); break;
+      /* 页面被切走（display:none）时暂停：以前隐藏的图还在按 16ms 一帧地空转，
+         385 节点的技能轨迹图切走后照样吃满 CPU，切回来的图要等它让出主线程，
+         用户看到的就是「切 tab 之后图半天不出来 / 出来是挤成一坨」。 */
+      case 'pause': paused = true; if (timer !== null) { clearTimeout(timer); timer = null; } break;
+      case 'resume': paused = false; schedule(); break;
       case 'dispose': disposed = true; if (timer !== null) { clearTimeout(timer); timer = null; } break;
     }
   }

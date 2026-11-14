@@ -59,7 +59,15 @@ window.Archive.register('trajectory', (function () {
       };
     })(st);
 
+    /* 首开要读 385 个 SKILL.md 的 usage 再算关系，真机上从点击到首帧约 0.46s。
+       这半秒里原来是一片空白（主区连骨架都没有），看着像"点了没反应"。
+       先挂一句占位，数据回来时连同它一起换掉。 */
+    var loading = A.el('div', null, 'arc-empty-block');
+    loading.append(A.el('p', '正在统计技能调用…', 'arc-dim'));
+    host.append(loading);
+
     return load(st).then(function (data) {
+      if (loading.parentNode) loading.remove();
       var G = A.modules.graph;
       var skills = (data.skills || []).slice();
       var relations = data.relations || [];
@@ -319,6 +327,20 @@ window.Archive.register('trajectory', (function () {
           side.append(row);
         });
 
+
+        /* 「调用最多」放在分类分布之前：27 条分类条会把 TOP6 推到首屏外 */
+        side.append(A.el('div', '调用最多', 'arc-h'));
+        skills.slice().sort(function (a, b) { return (b.usage_count || 0) - (a.usage_count || 0); })
+          .slice(0, 6).forEach(function (skill) {
+            var item = A.el('div', null, 'arc-top-item');
+            var nm = A.el('b', shortName(skill));
+            nm.title = skill.id + ' · ' + categoryOf(skill);
+            item.append(nm, A.el('span', String(skill.usage_count || 0)));
+            item.onclick = function () { go('skills', skill.id + '/SKILL.md'); };
+            side.append(item);
+          });
+        if (!used.length) side.append(A.el('p', '所有技能调用次数都是 0——统计来自内核记录，不是没读到。', 'arc-dim'));
+
         side.append(A.el('div', '分类分布', 'arc-h'));
         var bars = A.el('div', null, 'arc-bars');
         catOrder.forEach(function (name) {
@@ -340,19 +362,6 @@ window.Archive.register('trajectory', (function () {
           bars.append(row);
         });
         side.append(bars);
-
-        side.append(A.el('div', '调用最多', 'arc-h'));
-        skills.slice().sort(function (a, b) { return (b.usage_count || 0) - (a.usage_count || 0); })
-          .slice(0, 6).forEach(function (skill) {
-            var item = A.el('div', null, 'arc-top-item');
-            var nm = A.el('b', shortName(skill));
-            nm.title = skill.id + ' · ' + categoryOf(skill);
-            item.append(nm, A.el('span', String(skill.usage_count || 0)));
-            item.onclick = function () { go('skills', skill.id + '/SKILL.md'); };
-            side.append(item);
-          });
-        if (!used.length) side.append(A.el('p', '所有技能调用次数都是 0——统计来自内核记录，不是没读到。', 'arc-dim'));
-
         side.append(A.el('div', '节点详情', 'arc-h'));
         if (!picked) {
           side.append(A.el('p', '点图上任意节点，这里显示它的真实调用和关联。', 'arc-dim'));

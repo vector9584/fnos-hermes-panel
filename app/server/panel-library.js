@@ -4,6 +4,26 @@ import {randomUUID,createHash} from 'node:crypto';
 import {StateFile,SessionDrafts,digest,safeId,stateError} from './panel-state.js';
 const hash=bytes=>createHash('sha256').update(bytes).digest('hex');
 const within=(root,path)=>path===root||path.startsWith(root+sep);
+/* frontmatter 里的 tags —— 图谱按标签筛选的唯一真源，不从路径猜。
+   两种写法都认：块列表（tags:\n  - 概念）与行内（tags: [概念, 研究调研]）。
+   同篇内重名去重、保留文件里的先后顺序；写成 #概念 的也按 概念 收。 */
+export function frontmatterTags(text){
+ const head=/^---\r?\n([\s\S]*?)\r?\n---/.exec(String(text||''));if(!head)return [];
+ const out=[],push=value=>{const name=String(value).trim().replace(/^["']|["']$/g,'').replace(/^#/,'').trim();if(name&&!out.includes(name))out.push(name);};
+ let inTags=false;
+ for(const line of head[1].split(/\r?\n/)){
+  const field=/^([A-Za-z_][\w-]*)\s*:\s*(.*)$/.exec(line);
+  if(field){
+   inTags=field[1].toLowerCase()==='tags';
+   if(inTags){const rest=field[2].trim();if(rest.startsWith('[')){for(const part of rest.replace(/^\[/,'').replace(/\]$/,'').split(','))push(part);}else if(rest)push(rest);}
+   continue;
+  }
+  if(!inTags)continue;
+  const item=/^\s*[-*]\s+(.+)$/.exec(line);
+  if(item)push(item[1]);else if(line.trim())inTags=false;
+ }
+ return out;
+}
 export class LibraryStore{
  constructor({root,sources}){Object.assign(this,{root,sources});this.drafts=new SessionDrafts(join(root,'library-drafts'),{maxTextBytes:8*1024*1024,maxOptionsLength:64*1024*1024});}
  source(id){const source=this.sources().find(s=>s.id===id);if(!source)throw stateError('资料来源不存在',404);const root=resolve(source.root),actual=fs.existsSync(root)?fs.realpathSync(root):root;return {...source,root,root_revision:digest([id,actual])};}
@@ -44,16 +64,25 @@ export class LibraryStore{
   const {items}=this.catalog({source:sourceId,limit:5000});
   const notes=items.filter(item=>/\.md$/i.test(item.path)&&!item.missing),byPath=new Map(notes.map(item=>[item.path,item]));
   const byName=new Map();for(const item of notes){for(const name of [item.title,item.title.replace(/\.md$/i,'')]){const key=name.toLowerCase(),list=byName.get(key)||[];list.push(item);byName.set(key,list);}}
-  const edges=[],linked=new Set();
-  for(const item of notes){const content=this.read(sourceId,item.path).content;for(const match of content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)){
+  const edges=[],linked=new Set(),tags=new Map();
+  for(const item of notes){const content=this.read(sourceId,item.path).content;
+   const itemTags=frontmatterTags(content);if(itemTags.length)tags.set(item.path,itemTags);
+   for(const match of content.matchAll(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g)){
     const target=match[1].trim().replace(/\\/g,'/');if(!target)continue;
     const direct=[target,target.toLowerCase().endsWith('.md')?target:target+'.md'].flatMap(path=>[relative(source.root,resolve(source.root,dirname(item.path),path)).split(sep).join('/'),relative(source.root,resolve(source.root,path)).split(sep).join('/')]);
     let found=direct.map(path=>byPath.get(path)).find(Boolean);
     if(!found){const matches=byName.get(basename(target.replace(/\.md$/i,'')).toLowerCase())||[];if(matches.length===1)found=matches[0];}
     if(found&&found.path!==item.path){const key=item.path+'\0'+found.path;if(!linked.has(key)){linked.add(key);edges.push({from:item.path,to:found.path});}}
   }}
-  const included=new Set(edges.flatMap(edge=>[edge.from,edge.to])),nodes=notes.filter(item=>included.has(item.path)).map(item=>({path:item.path,title:item.title,links:edges.filter(edge=>edge.from===item.path).map(edge=>edge.to),bytes:item.bytes}));
-  return {nodes,edges};
+  const included=new Set(edges.flatMap(edge=>[edge.from,edge.to])),outDeg={},inDeg={};
+  for(const edge of edges){outDeg[edge.from]=(outDeg[edge.from]||0)+1;inDeg[edge.to]=(inDeg[edge.to]||0)+1;}
+  const nodes=notes.filter(item=>included.has(item.path)).map(item=>({path:item.path,title:item.title,links:edges.filter(edge=>edge.from===item.path).map(edge=>edge.to),bytes:item.bytes,out:outDeg[item.path]||0,in:inDeg[item.path]||0,tags:tags.get(item.path)||[]}));
+  /* 双向互链：A→B 且 B→A。单看边数看不出"这两篇在互相引用"，统计栏要单独报。 */
+  const pair=new Set(edges.map(edge=>edge.from+'\0'+edge.to));
+  const reciprocal=edges.filter(edge=>pair.has(edge.to+'\0'+edge.from)&&edge.from<edge.to).length;
+  /* tags 回全部笔记（不只入图的那批）：默认不画的孤立笔记也要能按标签筛出来，
+     前端点「显示未连接」时不必再为它们补一次请求。 */
+  return {nodes,edges,tags:Object.fromEntries(tags),totals:{notes:notes.length,linked:included.size,isolated:notes.length-included.size,edges:edges.length,reciprocal,tagged:tags.size}};
  }
  consumeDraft(source,path,body){
   const located=this.path(source,path,{create:true});

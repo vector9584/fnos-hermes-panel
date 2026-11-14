@@ -8,7 +8,7 @@
  async function api(body){var r=await fetch(apiUrl('/api/panel-models'),{method:body?'POST':'GET',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:body?JSON.stringify(body):undefined,cache:'no-store'}),out=await r.json();if(!r.ok||!out.ok){var error=Error(out.error||'模型配置操作失败');error.status=r.status;throw error;}return out;}
  function accept(out){data=out;_cfg.providers=out.providers.filter(p=>p.enabled);_cfg.primary=out.primary;_cfg.active_provider=out.active_provider;_cfg.fallback_providers=out.fallback_providers;window.__hermesConfigured=out.hermes_configured;renderConfigBanner();_syncModelBtn();}
  function remember(out){if(out.change_id){last={id:out.change_id,revision:out.revision};try{localStorage.setItem('panel-model-change',JSON.stringify(last));}catch(_){}}window.panelRuntimeRefresh?.();}
- async function mutate(body){var out=await api({...body,revision:data.revision});remember(out);accept(out);render();feedback.textContent=out.changed?'配置已保存，待重启应用生效':'配置没有变化';return out;}
+ async function mutate(body){var out=await api({...body,revision:data.revision});remember(out);accept(out);render();feedback.textContent=out.changed?'已保存，下一条消息生效':'没有变化';return out;}
  function primaryNow(){var p=data.primary||{};return [String(p.provider||'').replace(/^custom:/,''),String(p.model||'')];}
  function sameTarget(item,pair){return String(item.provider||'').replace(/^custom:/,'')===pair[0]&&String(item.model||'')===pair[1];}
  function routeEntries(list){return (list||[]).map(function(x){return {key:x.key,provider:x.provider,model:x.model};});}
@@ -17,7 +17,7 @@
   try{
    var out=await api({action:'routes',provider:provider,model:model,entries:entries,revision:data.revision});
    remember(out);accept(out);render();
-   feedback.textContent=out.changed?((okText||'路线已保存')+'；待重启应用生效'):(okText||'路线没有变化');
+   feedback.textContent=out.changed?((okText||'路线已保存')+'，下一条消息生效'):(okText||'路线没有变化');
   }catch(e){
    if(e.status===409){feedback.textContent='模型配置刚在别处被改过，已刷新成最新版本；请再操作一次';await load();return;}
    feedback.textContent=e.message;try{render();}catch(_){}
@@ -164,7 +164,7 @@
     if(!agg.value)throw Error('请选择聚合模型');
     var chosen=JSON.parse(agg.value);
     var out=await api({action:'moa_save',revision:moaRead.moa_revision,enabled:onBox.checked,preset:nameInput.value.trim(),reference_models:refs,aggregator:{provider:chosen[0],model:chosen[1]}});
-    d.status.textContent=out.changed?'已保存，重启应用后新配置才生效':'没有变化';await load();if(out.changed)setTimeout(()=>d.close(),700);
+    d.status.textContent=out.changed?'已保存，下一条消息生效':'没有变化';await load();if(out.changed)setTimeout(()=>d.close(),700);
    }catch(e){d.status.textContent=e.message;}finally{save.disabled=false;}
   });
   d.actions.append(save);
@@ -372,7 +372,7 @@
     del.disabled=true;del.textContent='正在删除…';
     try{
      var out=await mutate({action:'delete',id:p.id});
-     deckClose();feedback.textContent=out.changed?'已删除「'+p.name+'」，待重启应用生效':'没有变化';
+     deckClose();feedback.textContent=out.changed?'已删除「'+p.name+'」':'没有变化';
     }catch(e){
      del.disabled=false;del.textContent='删除「'+p.name+'」';
      zone.querySelector('.model-danger-error')?.remove();
@@ -456,7 +456,7 @@
   try{var draft=JSON.parse(localStorage.getItem(draftKey)||'null');if(draft){name.value=draft.name;url.value=draft.base_url;mode.value=draft.api_mode;note.value=draft.note;defaultModel.value=draft.default_model;modelData=draft.models;base.revision=draft.revision||base.revision;baseline=draft.baseline||baseline;d.status.textContent='已恢复未保存的表单';}}catch(_){}
   d.body.addEventListener('input',e=>{if(!credentials.contains(e.target))persist();});mode.addEventListener('change',persist);renderRows();
   function credentialEditsPending(){return keyAction.value==='clear'||(keyAction.value==='replace'&&!!key.value.trim())||headers.some(function(item){return !!item.h.value.trim()&&(item.a.value==='clear'||(item.a.value==='replace'&&!!item.v.value));});}
-  d.box.beforeClose=function(){var warnings=[];if(!persist())warnings.push('草稿未能保存到浏览器，关闭会丢失非凭证修改');if(credentialEditsPending())warnings.push('API 密钥或请求头有未保存输入，凭证不会储存在浏览器');if(warnings.length&&!confirm(warnings.join('；')+'。仍要关闭吗？'))return false;if(!draftDurable){try{localStorage.removeItem(draftKey);}catch(_){d.status.textContent='旧草稿无法从浏览器存储清除，弹窗保持打开；请恢复存储后再保存或丢弃。';return false;}}return true;};var save=button('保存配置',async()=>{save.disabled=true;try{var values=snapshot();if(!values.default_model||!values.models.some(m=>m.id===values.default_model&&m.enabled)){throw Error('请选择一个已启用的服务默认模型；模型发现不会替你决定默认项');}var changes={};Object.keys(values).forEach(k=>{if(!provider||JSON.stringify(values[k])!==JSON.stringify(baseline[k]))changes[k]=values[k];});changes.credential={action:keyAction.value,...(keyAction.value==='replace'?{value:key.value}:{})};changes.headers={};headers.forEach(({h,a,v})=>{if(h.value.trim())changes.headers[h.value.trim()]={action:a.value,...(a.value==='replace'?{value:v.value}:{})};});var out=await api({action:provider?'update':'create',id:provider?.id,revision:base.revision,changes});remember(out);accept(out);render();try{localStorage.removeItem(draftKey);}catch(_){}d.close();feedback.textContent='模型配置已保存，待重启应用生效';window.loadModelChecks?.();}catch(e){d.status.textContent=e.message;save.disabled=false;}});d.actions.append(save);revisionCheck(d,base);d.actions.append(button('关闭',d.requestClose));name.focus();
+  d.box.beforeClose=function(){var warnings=[];if(!persist())warnings.push('草稿未能保存到浏览器，关闭会丢失非凭证修改');if(credentialEditsPending())warnings.push('API 密钥或请求头有未保存输入，凭证不会储存在浏览器');if(warnings.length&&!confirm(warnings.join('；')+'。仍要关闭吗？'))return false;if(!draftDurable){try{localStorage.removeItem(draftKey);}catch(_){d.status.textContent='旧草稿无法从浏览器存储清除，弹窗保持打开；请恢复存储后再保存或丢弃。';return false;}}return true;};var save=button('保存配置',async()=>{save.disabled=true;try{var values=snapshot();if(!values.default_model||!values.models.some(m=>m.id===values.default_model&&m.enabled)){throw Error('请选择一个已启用的服务默认模型；模型发现不会替你决定默认项');}var changes={};Object.keys(values).forEach(k=>{if(!provider||JSON.stringify(values[k])!==JSON.stringify(baseline[k]))changes[k]=values[k];});changes.credential={action:keyAction.value,...(keyAction.value==='replace'?{value:key.value}:{})};changes.headers={};headers.forEach(({h,a,v})=>{if(h.value.trim())changes.headers[h.value.trim()]={action:a.value,...(a.value==='replace'?{value:v.value}:{})};});var out=await api({action:provider?'update':'create',id:provider?.id,revision:base.revision,changes});remember(out);accept(out);render();try{localStorage.removeItem(draftKey);}catch(_){}d.close();feedback.textContent='已保存，下一条消息生效';window.loadModelChecks?.();}catch(e){d.status.textContent=e.message;save.disabled=false;}});d.actions.append(save);revisionCheck(d,base);d.actions.append(button('关闭',d.requestClose));name.focus();
  }
  window.addProvider=()=>edit(null);window.renderProviders=function(){load();window.loadAuxTasks?.();window.loadModelChecks?.();};
 })();

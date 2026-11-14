@@ -22,9 +22,9 @@ window.Archive = (function () {
       id: 'assistant', title: '提示词', sub: '改这里 = 改它是什么',
       note: '人格、记忆、指令、技能，都是每轮直接喂给它的东西。保存后按各自的生效时机加载。',
       sources: ['soul', 'memory', 'agents', 'skills'],
-      /* 提示词只有「改提示词」一件事，不再挂视图页签（2026-11-14 用户要求）：
-         技能图谱已整体迁到留痕录的「技能轨迹」，这页只留文档阅读/编辑。 */
-      views: [['doc', '文档']],
+      /* 2026-11-14 用户要求：提示词下面挂「文档 / 架构体系」两个按钮，
+         架构体系放他给的那张《Hermes 的文件即思维》全图。 */
+      views: [['doc', '文档'], ['arch', '架构体系']],
       home: { source: 'soul', path: 'SOUL.md' }
     },
     kb: {
@@ -42,7 +42,7 @@ window.Archive = (function () {
       id: 'memory', title: '留痕录', sub: '它做过什么，只读',
       note: '运行日记、整理草稿、维护报告都只读；技能轨迹统计来自真实的技能调用记录。',
       sources: ['daily', 'organize', 'curator'],
-      views: [['doc', '记录'], ['trajectory', '技能轨迹']],
+      views: [['doc', '文档'], ['trajectory', '技能轨迹']],
       home: null
     }
   };
@@ -120,6 +120,9 @@ window.Archive = (function () {
                         'M3 10h18l-2.1 7.4A2 2 0 0 1 17 19H5.1a2 2 0 0 1-2-1.7z'] },
       file: { d: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5'] },
       chevron: { d: ['M9.5 6.5 15 12l-5.5 5.5'] },
+      info: { d: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5.4', 'M12 7.6h.01'] },
+      tag: { d: ['M3 12.4V4h8.4L21 13.6 12.6 22z', 'M7.2 7.2h.01'] },
+      link: { d: ['M10.5 13.5a4 4 0 0 0 5.66 0l2.83-2.83a4 4 0 0 0-5.66-5.66L11.5 6.8', 'M13.5 10.5a4 4 0 0 0-5.66 0L5.01 13.3a4 4 0 0 0 5.66 5.66l1.83-1.83'] },
       alert: { d: ['M12 4.5 2.8 20h18.4z', 'M12 10v4.2', 'M12 17.3h.01'] }
     };
     var def = icons[name] || { d: [] };
@@ -563,31 +566,44 @@ window.Archive = (function () {
     foot(st, { left: '', mid: '', right: '0 份' });
   }
 
-  /* ── 提示条：右下角可堆叠（照墨档案例的位置），不用居中横幅 ──
-     多条同时来的时候往上摞，最旧的那条先淘汰，最多留 4 条。 */
-  var TOAST_LIMIT = 4;
-  function toastHost() {
-    var host = document.getElementById('arcToast');
-    if (!host) {
-      host = el('div', null, 'arc-toast-host');
-      host.id = 'arcToast';
-      host.setAttribute('role', 'status');
-      host.setAttribute('aria-live', 'polite');
-      document.body.append(host);
-    }
-    return host;
-  }
+  /* ── 提示条：2026-11-14 收口到全站统一通知组件（js/core/utils.js 的 window.toast）
+     档案页原来自己一套 .arc-toast（右下角、2.6s、最多 4 条），和面板别处的提示条长相、
+     位置都不一样。现在这里只做一层薄封装，位置/堆叠/去重全交给统一组件，
+     调用签名 toast(text, kind) 与 slowNotice 的语义原样保留。 */
+  var TYPES = { ok: 'success', success: 'success', warn: 'warning', warning: 'warning',
+    err: 'error', error: 'error', info: 'info', null: 'info' };
+
   function toast(text, kind) {
-    var host = toastHost();
-    var item = el('div', text, 'arc-toast' + (kind ? ' is-' + kind : ''));
-    host.append(item);
-    while (host.children.length > TOAST_LIMIT) host.firstElementChild.remove();
-    requestAnimationFrame(function () { item.classList.add('show'); });
-    item._timer = setTimeout(function () { dismissToast(item); }, 2600);
-    return item;
+    if (typeof window.__hzToast !== 'function') {
+      /* 兜底：万一 utils 没加载（老缓存），仍要能提示，别静默吞掉 */
+      var host = document.getElementById('arcToast');
+      if (!host) {
+        host = el('div', null, 'arc-toast-host');
+        host.id = 'arcToast';
+        host.setAttribute('role', 'status');
+        document.body.append(host);
+      }
+      var item = el('div', text, 'arc-toast is-' + (kind || 'info'));
+      host.append(item);
+      requestAnimationFrame(function () { item.classList.add('show'); });
+      setTimeout(function () { dismissToast(item); }, 2600);
+      return item;
+    }
+    return window.__hzToast({
+      message: String(text == null ? '' : text),
+      type: TYPES[kind || 'info'] || 'info',
+      /* 案例的 toast 在右下角（right 18 / bottom 22），统一组件按这个放 */
+      position: 'bottom-right',
+      duration: 2600
+    });
   }
+
+  /* 接受统一组件的句柄（函数）、或老式的元素 */
   function dismissToast(item) {
-    if (!item || !item.parentNode) return;
+    if (!item) return;
+    if (typeof item === 'function') { item(); return; }
+    if (item.close) { item.close(); return; }
+    if (!item.parentNode) return;
     clearTimeout(item._timer);
     item.classList.remove('show');
     setTimeout(function () { item.remove(); }, 220);
@@ -649,6 +665,71 @@ window.Archive = (function () {
     });
   }
 
+  /* ── frontmatter（Obsidian 兼容 YAML 头）──
+     知识库笔记的头里就两种形态：单值（created）和列表（tags）。
+     只认这两种，其余原始行塞进 unknown，回写时原样带回去——面板认不出不代表
+     用户写的字段可以丢。raw 是逐字原文，回写内容时用它拼回去，不重新格式化用户的手写内容。 */
+  function unquote(v) {
+    var s = String(v == null ? '' : v).trim();
+    if (s.length > 1 && ((s[0] === '"' && s[s.length - 1] === '"') || (s[0] === "'" && s[s.length - 1] === "'"))) {
+      return s.slice(1, -1);
+    }
+    return s;
+  }
+  function fmSplit(text) {
+    var src = String(text == null ? '' : text);
+    var m = /^---[ \t]*\r?\n([\s\S]*?)\r?\n---[ \t]*(?:\r?\n|$)/.exec(src);
+    if (!m) return { raw: '', data: {}, order: [], unknown: [], body: src, has: false };
+    var data = {}, order = [], unknown = [], key = null;
+    m[1].split(/\r?\n/).forEach(function (line) {
+      var item = /^\s*-\s+(.*\S)\s*$/.exec(line);
+      if (item) {
+        if (key && Array.isArray(data[key])) data[key].push(unquote(item[1]));
+        else if (line.trim()) unknown.push(line);
+        return;
+      }
+      var kv = /^([A-Za-z0-9_\u4e00-\u9fa5.-]+)\s*:\s*(.*)$/.exec(line);
+      if (!kv) { if (line.trim()) unknown.push(line); return; }
+      key = kv[1];
+      if (order.indexOf(key) < 0) order.push(key);
+      var val = kv[2].trim();
+      /* 空值后面跟 - 列表，先占位成数组；没有列表项就是一个空数组，序列化回 `key:` */
+      data[key] = val ? unquote(val) : [];
+    });
+    return { raw: m[0], data: data, order: order, unknown: unknown, body: src.slice(m[0].length), has: true };
+  }
+  function fmJoin(data, order, unknown) {
+    var keys = (order || []).slice();
+    Object.keys(data || {}).forEach(function (k) { if (keys.indexOf(k) < 0) keys.push(k); });
+    var lines = [];
+    keys.forEach(function (k) {
+      if (!(k in data)) return;
+      var v = data[k];
+      if (Array.isArray(v)) {
+        if (!v.length) { lines.push(k + ':'); return; }
+        lines.push(k + ':');
+        v.forEach(function (item) { lines.push('  - ' + item); });
+      } else {
+        lines.push(k + ': ' + v);
+      }
+    });
+    (unknown || []).forEach(function (line) { lines.push(line); });
+    if (!lines.length) return '';
+    return '---\n' + lines.join('\n') + '\n---\n';
+  }
+  /* 标签去重（保留原顺序、大小写不敏感判重） */
+  function uniqTags(list) {
+    var seen = {}, out = [];
+    (list || []).forEach(function (t) {
+      var v = String(t == null ? '' : t).trim().replace(/^#/, '');
+      if (!v) return;
+      var k = v.toLowerCase();
+      if (seen[k]) return;
+      seen[k] = 1; out.push(v);
+    });
+    return out;
+  }
+
   function register(name, module) { modules[name] = module; }
 
   /* 切换到本页时：刷新一次目录（60 秒节流在 loadCatalog 里） */
@@ -671,7 +752,15 @@ window.Archive = (function () {
      黑底图上留一堆浅色描边节点。这里盯 body class，变了就把挂着图谱/轨迹的页面
      重画一遍，分类色 catColor 也跟着重新取（2026-11-14）。 */
   if (typeof MutationObserver !== 'undefined') {
+    /* 只认「深色/浅色真的翻了」这一件事。原来 body 上任何 class 变化（手机抽屉、
+       弹窗遮罩、键盘态都给 body 加类）都会触发全页重画——2026-11-14 实测：
+       手机上点「更多标签」chip，body 被加了别的类，图谱整页被重建，
+       浮层刚插进 DOM 就被换掉，看着像按钮没反应。 */
+    var themeWasDark = document.body.classList.contains('theme-dark');
     new MutationObserver(function () {
+      var isDark = document.body.classList.contains('theme-dark');
+      if (isDark === themeWasDark) return;
+      themeWasDark = isDark;
       Object.keys(states).forEach(function (id) {
         var st = states[id];
         if (!st || !st.nodes || !st.nodes.shell) return;
@@ -713,6 +802,7 @@ window.Archive = (function () {
     dismissToast: dismissToast, slowNotice: slowNotice,
     el: el, svgIcon: svgIcon, rowsOf: rowsOf, sourceOf: sourceOf,
     paintStatus: paintStatus, foot: foot, apiBag: apiBag, writeFold: writeFold,
-    catColor: catColor, colorOf: colorOf, isLight: isLight
+    catColor: catColor, colorOf: colorOf, isLight: isLight,
+    fm: { split: fmSplit, join: fmJoin, uniqTags: uniqTags }
   };
 })();

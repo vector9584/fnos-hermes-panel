@@ -162,7 +162,13 @@ window.Archive.register('md', (function () {
   }
 
   function render(text) {
-    var src = wikilinks(text);
+    /* frontmatter 不渲染：以前 `--- created: ... tags: - 概念 ---` 被当成水平线 + 段落 + 列表
+       直接铺在正文最上方（用户看到的"裸显 ---"就是这个）。元信息归「信息」面板管。 */
+    var body = String(text || '');
+    if (body.slice(0, 3) === '---' && window.Archive && window.Archive.fm) {
+      body = window.Archive.fm.split(body).body;
+    }
+    var src = wikilinks(body);
     var html;
     try {
       html = (window.marked && window.marked.parse)
@@ -281,12 +287,15 @@ window.Archive.register('md', (function () {
       ev.preventDefault();
       var name = a.dataset.wiki || '';
       if (!name) return;
-      var rows = window.Archive.rowsOf(st);
+      /* 用完整目录找，不用 rowsOf：rowsOf 会带上左栏筛选词，筛选状态下点引用就找不到目标了 */
+      var items = (st.catalog && st.catalog.items) || [];
       var bare = name.replace(/\.md$/i, '').toLowerCase();
-      var hit = rows.find(function (item) {
-        return item.path === name
-          || (item.title || '').replace(/\.md$/i, '').toLowerCase() === bare
-          || (item.path || '').replace(/\.md$/i, '').toLowerCase().endsWith('/' + bare);
+      var hit = items.find(function (item) {
+        return item.path === name || item.path === name + '.md';
+      }) || items.find(function (item) {
+        return (item.path || '').replace(/\.md$/i, '').toLowerCase().endsWith('/' + bare);
+      }) || items.find(function (item) {
+        return (item.title || '').replace(/\.md$/i, '').toLowerCase() === bare;
       });
       if (hit) api.open(hit.source, hit.path);
       else api.toast('没找到「' + name + '」对应的笔记', 'warn');

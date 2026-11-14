@@ -67,7 +67,12 @@ window.Archive.register('doc', (function () {
     var fileName = segments.pop() || '';
     var folder = segments.join('/');
     var category = segments[0] || '根目录';
-    var lineCount = doc.content ? String(doc.content).split('\n').length : 0;
+    /* frontmatter 单独拆出来：正文渲染和编辑器都只碰 body，
+       用户不再需要在内容编辑区里手改 YAML（2026-11-14 用户要求）。 */
+    var parts = A.fm.split(doc.content || '');
+    var fmData = parts.data || {};
+    var bodyText = parts.body;
+    var lineCount = bodyText ? String(bodyText).split('\n').length : 0;
 
     var iconBox = A.el('div', null, 'arc-dh-icon');
     iconBox.append(A.svgIcon('file', 18));
@@ -84,8 +89,27 @@ window.Archive.register('doc', (function () {
        散碎字段——那些叠在标题下就像一段「解释」，案例没有（2026-11-14 用户点名）。 */
     var meta = A.el('div', null, 'arc-dh-meta');
     if (source) meta.append(A.el('span', source.name, 'arc-badge'));
-    meta.append(A.el('span', '#' + category, 'arc-badge'));
-    meta.append(A.el('span', '更新 ' + (doc.mtime ? when(doc.mtime) : '—') + ' · ' + lineCount + ' 行', 'arc-dim'));
+    /* 目录不是标签。原来这里写的是 `#生活`，和 frontmatter 的 tags 长得一模一样，
+       用户自然以为标签是从路径里来的（2026-11-14 问「知识库 #生活 这些标签怎么来的」）。
+       加文件夹图标 + 「目录 · 」前缀，和真标签在视觉上分开。 */
+    var dirBadge = A.el('span', null, 'arc-badge is-dir');
+    dirBadge.append(A.svgIcon('folder', 12), A.el('span', '目录 · ' + category));
+    dirBadge.title = folder ? '所在目录：' + folder : '根目录';
+    meta.append(dirBadge);
+
+    /* 真标签来自 frontmatter.tags；没有就不占位，免得每篇都挂一排空 # */
+    A.fm.uniqTags(fmData.tags).forEach(function (tag) {
+      var chip = A.el('button', null, 'arc-tag');
+      chip.type = 'button';
+      chip.textContent = '#' + tag;
+      chip.title = '搜索这个标签';
+      chip.onclick = function () { if (A.modules.search) A.modules.search.open(st, tag); };
+      meta.append(chip);
+    });
+
+    var createdRaw = fmData.created || fmData.date || fmData.Created;
+    var created = createdRaw ? String(createdRaw).slice(0, 10) : '';
+    meta.append(A.el('span', (created ? '创建 ' + created + ' · ' : '') + '更新 ' + (doc.mtime ? when(doc.mtime) : '—') + ' · ' + lineCount + ' 行', 'arc-dim'));
     if (!doc.exists) meta.append(A.el('span', '未建立', 'arc-pill is-warn'));
     mainBox.append(pathLine, bigTitle, meta);
 
@@ -97,6 +121,25 @@ window.Archive.register('doc', (function () {
     editBtn.title = '编辑（⌘E）';
     editBtn.hidden = !doc.editable;
     editBtn.onclick = function () { toggleEdit(st); };
+
+    /* 信息：键值对编辑（created / tags / 自定义字段），单独一块面板，
+       不让用户在正文里手写 YAML（2026-11-14 用户明确要求）。 */
+    var infoBtn = A.el('button', null, 'arc-btn');
+    infoBtn.type = 'button';
+    infoBtn.dataset.act = 'info';
+    infoBtn.append(A.svgIcon('info', 14), A.el('span', '信息', 'arc-label'));
+    infoBtn.title = '编辑基本信息（frontmatter）';
+    infoBtn.disabled = !doc.editable;
+    infoBtn.onclick = function () { if (A.modules.info) A.modules.info.openInfo(st, A.apiBag(st)); };
+
+    /* 引用：给正文插一条 [[笔记名]]，带自动补全 */
+    var citeBtn = A.el('button', null, 'arc-btn');
+    citeBtn.type = 'button';
+    citeBtn.dataset.act = 'cite';
+    citeBtn.append(A.svgIcon('link', 14), A.el('span', '引用', 'arc-label'));
+    citeBtn.title = '插入引用（[[笔记名]]）';
+    citeBtn.disabled = !doc.editable;
+    citeBtn.onclick = function () { if (A.modules.info) A.modules.info.openCite(st, A.apiBag(st)); };
 
     var saveBtn = A.el('button', null, 'arc-btn is-primary');
     saveBtn.type = 'button';
@@ -138,7 +181,7 @@ window.Archive.register('doc', (function () {
     historyBtn.disabled = !st.history.length;
     historyBtn.onclick = function () { showHistory(st, historyBtn); };
 
-    actions.append(editBtn, saveBtn, cancelBtn, downloadBtn, copyBtn, historyBtn);
+    actions.append(editBtn, infoBtn, citeBtn, saveBtn, cancelBtn, downloadBtn, copyBtn, historyBtn);
     head.append(iconBox, mainBox, actions);
 
     var body = A.el('div', null, 'arc-doc-body');
@@ -173,7 +216,7 @@ window.Archive.register('doc', (function () {
       footText.textContent = n + ' 行 · ' + String(area.value || '').length + ' 字符 · 编辑中';
     }
     function paintRead() {
-      var outline = A.modules.md.paint(article, doc.content);
+      var outline = A.modules.md.paint(article, bodyText);
       A.modules.md.wireWiki(article, st, api);
       var old = document.querySelector('.arc-outline');
       /* 目录的 scroll-spy 监听挂在 .arc-main 上，换文档时必须摘掉，否则每开一篇就多一个滚动监听 */
@@ -196,23 +239,26 @@ window.Archive.register('doc', (function () {
       controls();
     }
     function controls() {
-      var dirty = state.editing && area.value !== doc.content;
+      var dirty = state.editing && area.value !== bodyText;
       state.dirty = dirty;
       editBtn.hidden = state.editing || !doc.editable;
       saveBtn.hidden = !state.editing;
       cancelBtn.hidden = !state.editing;
       saveBtn.disabled = state.saving || !dirty;
       area.readOnly = state.saving;
-      footState.textContent = state.saving ? '正在保存…' : dirty ? '有未保存的修改（⌘S 保存）' : '已与文件一致';
+      /* 「已与文件一致」只在缓冲区真的要跟磁盘对账时才有意义，但那是内部状态：
+         用户看到它反复出现只会疑惑（2026-11-14 点名问）。干净时清空，只在
+         正在保存/有改动时说话。 */
+      footState.textContent = state.saving ? '正在保存…' : dirty ? '有未保存的修改（⌘S 保存）' : '';
       footState.className = 'arc-foot-state' + (dirty ? ' is-dirty' : '');
       footText.textContent = state.editing
         ? (String(area.value || '').split('\n').length + ' 行 · ' + String(area.value || '').length + ' 字符 · 编辑中')
         : (lineCount + ' 行 · ' + (doc.bytes ? kb(doc.bytes) : '空文件'));
-      /* 页面底部状态条：左来源 · 中路径 · 右生效方式 */
+      /* 页面底部状态条：左来源 · 中路径 · 右可编辑状态 */
       A.foot(st, {
         left: source ? source.name : doc.source,
         mid: doc.path,
-        right: state.editing ? '编辑中' : (doc.exists ? '已与文件一致' : '未建立')
+        right: state.editing ? '编辑中' : (doc.exists ? (doc.editable ? '可编辑' : '只读') : '未建立')
       });
     }
 
@@ -247,7 +293,9 @@ window.Archive.register('doc', (function () {
         if (draft && draft.base !== doc.revision) {
           api.toast('原文已更新，本地草稿基于旧版本，保存前请核对', 'warn');
         }
-        area.value = (draft && draft.text) || doc.content;
+        /* 草稿与编辑区都只存正文：frontmatter 由「信息」面板管，正文编辑器不碰它 */
+        area.value = (draft && typeof draft.text === 'string') ? draft.text : bodyText;
+        if (A.modules.info) A.modules.info.wireCite(area, st);
         area.focus();
         area.setSelectionRange(0, 0);
       } else {
@@ -268,7 +316,10 @@ window.Archive.register('doc', (function () {
   function save(st) {
     if (!state.editing || !st.doc) { A.toast('当前没有正在编辑的内容'); return Promise.resolve(); }
     var doc = st.doc;
-    var text = state.area ? state.area.value : '';
+    var parts = A.fm.split(doc.content || '');
+    /* 编辑区只有正文，保存时把原 frontmatter 逐字接回去——用户在「信息」面板改的
+       字段已经写进 doc.content，所以这里重新拆一次拿最新的头，不用启动时的旧值。 */
+    var text = (parts.raw || '') + (state.area ? state.area.value : '');
     if (text === doc.content) { A.toast('没有改动'); return Promise.resolve(); }
     state.saving = true;
     var requestId = 'arc-' + (crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random().toString(36).slice(2));
@@ -409,5 +460,14 @@ window.Archive.register('doc', (function () {
     if (state.dirty && state.doc) A.toast('未保存的修改已存为本地草稿', 'warn');
   }
 
-  return { render: render, save: save, toggleEdit: toggleEdit, error: error, beforeLeave: beforeLeave };
+  /* 「信息」面板写回时要用"此刻的正文"：用户可能正在编辑器里改着，编辑区的
+     内容比磁盘上的新。这里只回答正文，不动 frontmatter。 */
+  function bodyNow(st) {
+    var doc = st && st.doc;
+    if (!doc) return '';
+    if (state.editing && state.area && state.doc === doc) return state.area.value;
+    return A.fm.split(doc.content || '').body;
+  }
+
+  return { render: render, save: save, toggleEdit: toggleEdit, error: error, beforeLeave: beforeLeave, bodyNow: bodyNow };
 })());

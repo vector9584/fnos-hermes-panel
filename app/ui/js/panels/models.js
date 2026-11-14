@@ -48,19 +48,22 @@ function loadConfig(){
     return _cfg;
   }).catch(function(e){ toast('读取配置失败：'+e.message); return _cfg; });
 }
-/* 聊天页横幅：hermes 未配置模型时提示引导（点击跳「模型」页） */
+/* 未配置模型的提示：2026-11-14 起不再往聊天页 DOM 里插一条 #modelConfigBanner，
+   改走统一通知组件（key='model-config'）。语义不变：提醒 + 一键去「模型」页。 */
 function renderConfigBanner(){
-  var chat = document.getElementById('page-chat');
-  if(!chat) return;
-  var old = document.getElementById('modelConfigBanner');
-  if(old && old.parentNode) old.parentNode.removeChild(old);
-  if(window.__hermesConfigured !== false) return;
-  var b = document.createElement('div');
-  b.id = 'modelConfigBanner';
-  b.style.cssText = 'margin:8px 14px 0;padding:10px 14px;border-radius:10px;background:var(--warn-banner-bg);border:1px solid var(--warn-banner-border);color:var(--warn-banner-text);font-size:13px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;z-index:5';
-  b.innerHTML = '<span>⚠ 尚未配置模型服务，聊天暂时不可用。请先添加一个模型供应商并填写 API Key。</span>' +
-    '<button onclick="switchPage(\'models\')" style="margin-left:auto;padding:5px 12px;border-radius:8px;border:1px solid var(--warn-banner-border);background:transparent;color:var(--warn-banner-text);cursor:pointer;font-size:12px;white-space:nowrap">去配置模型 →</button>';
-  var bodyEl = chat.querySelector('.chat-body');
-  chat.insertBefore(b, bodyEl || chat.firstChild);
+  if(window.__hermesConfigured !== false){
+    if(window.__hzToast && window.__hzToast.dismiss) window.__hzToast.dismiss('model-config');
+    return;
+  }
+  if(!window.__hzToast) return;
+  window.__hzToast({
+    key:'model-config', type:'warning', duration:0,
+    title:'尚未配置模型服务，聊天暂时不可用',
+    message:'先添加一个模型供应商并填写 API Key，配好就能直接对话。',
+    actions:[
+      {label:'稍后', onClick:'close'},
+      {label:'去配置模型', primary:true, onClick:function(){ switchPage('models'); }}
+    ]
+  });
 }
 /* 模型管理由 panel-models-ui.js 提供。 */
