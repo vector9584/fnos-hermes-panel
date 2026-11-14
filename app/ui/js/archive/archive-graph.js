@@ -7,12 +7,18 @@
 window.Archive.register('graph', (function () {
   'use strict';
 
+  /* 力导向物理引擎的坐标缓存版本，力学模型一改就 +1 */
+  var SIM_VER = 2;
   var A = window.Archive;
+  var SIM_ASSET_V = 'g2';   /* 引力模型 v2（2026-11-14）：缩放斥力 + 软边界 + 分类锚点 */
   var simCode = null;
 
   function loadSim() {
     if (simCode) return Promise.resolve(simCode);
-    return fetch(apiUrl('/js/archive/archive-sim.js')).then(function (r) {
+    /* sim 是运行时 fetch 的、不经过 index.html 的 ?v=（deploy 只给 index 里列出的脚本改哈希），
+       不带版本就会吃到浏览器缓存里的旧力学——改引擎忘了改这里 = 用户刷新了还是老图。
+       所以显式带一个版本号，改 archive-sim.js 时必须一起改它。 */
+    return fetch(apiUrl('/js/archive/archive-sim.js?v=' + SIM_ASSET_V)).then(function (r) {
       if (!r.ok) throw new Error('HTTP ' + r.status);
       return r.text();
     }).then(function (code) { simCode = code; return code; });
@@ -280,6 +286,9 @@ window.Archive.register('graph', (function () {
     var legend = A.el('div', null, 'arc-legend');
 
     var view = options.state || { pos: null, scale: 1, tx: 0, ty: 0, mode: 'bh' };
+    /* 坐标缓存版本：力学模型换代后旧坐标（四角挤成一团的那批）必须作废，
+       否则切页回来复用 view.pos，新版引擎再准也从错的起点出发。 */
+    if (view.simVer !== SIM_VER) { view.pos = null; view.simVer = SIM_VER; }
     var edgePairs = [];
     edges.forEach(function (edge) {
       var a = indexOf[edge.from], b = indexOf[edge.to];
@@ -625,7 +634,7 @@ window.Archive.register('graph', (function () {
     var dispose = function dispose() {
       if (observer) observer.disconnect();
       if (sim) sim.dispose();
-      view.pos = pos;
+      view.pos = pos; view.simVer = SIM_VER;
       /* 必须删 DOM：render 可能被 loadCatalog 完成 + hermes:page 各触发一次，
          dispose 只停 worker 不摘节点的话，第二次 mountForce 的 wrap 会叠在
          第一次的残影上，就是用户看到的「画两遍」。 */
