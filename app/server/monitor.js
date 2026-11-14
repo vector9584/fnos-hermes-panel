@@ -517,9 +517,10 @@ function formatUptime(ms) {
 const GATEWAY_PORT   = Number(process.env.GATEWAY_PORT || "8742");
 const UI_PORT        = Number(process.env.UI_PORT || "8650");
 const SOCKET_PATH    = (process.env.MONITOR_SOCKET_PATH || "").trim();
-if (!SOCKET_PATH) {
-  console.error("[FATAL] MONITOR_SOCKET_PATH is required — unix socket mode only");
-  process.exit(1);
+// 未设置 socket 路径时降级为纯 TCP 模式（跨平台 / 独立部署用；飞牛上始终会设这个变量）
+const UNIX_MODE      = SOCKET_PATH.length > 0;
+if (!UNIX_MODE) {
+  console.warn("[WARN] MONITOR_SOCKET_PATH 未设置，进入纯 TCP 模式（UI_PORT 可直连，无 unix socket）");
 }
 const BASE_PATH      = (process.env.BASE_PATH || "").replace(/\/+$/, "");
 const DASHBOARD_PORT = Number(process.env.DASHBOARD_PORT || "9219");
@@ -9215,21 +9216,27 @@ function startServer() {
   };
   server.on("upgrade", (req,socket,head)=>_handleUpgrade(req,socket,head,true));
 
-  server.on("error", (err) => {
-    log(`Server error: ${err?.message || err}`);
-    if (err?.code === "EADDRINUSE") {
-      log(`[FATAL] Unix socket ${SOCKET_PATH} 已被占用，可能存在另一个 monitor 实例；退出以避免多实例冲突`);
-      process.exit(1);
-    }
-  });
+  if (UNIX_MODE) {
+    server.on("error", (err) => {
+      log(`Server error: ${err?.message || err}`);
+      if (err?.code === "EADDRINUSE") {
+        log(`[FATAL] Unix socket ${SOCKET_PATH} 已被占用，可能存在另一个 monitor 实例；退出以避免多实例冲突`);
+        process.exit(1);
+      }
+    });
 
-  server.listen({ path: SOCKET_PATH }, () => {
-    try { chmodSync(SOCKET_PATH, 0o600); } catch {}
-    log(`Monitor ready — unix:${SOCKET_PATH} (base=${BASE_PATH || "/"}) | dashboard proxied at /proxy/dashboard/`);
-    // Keep user configuration unchanged at startup; invalid YAML is surfaced.
-    // 若已存在模型配置，自动启动 Gateway/Dashboard（覆盖安装/升级后无需手动点启动）
+    server.listen({ path: SOCKET_PATH }, () => {
+      try { chmodSync(SOCKET_PATH, 0o600); } catch {}
+      log(`Monitor ready — unix:${SOCKET_PATH} (base=${BASE_PATH || "/"}) | dashboard proxied at /proxy/dashboard/`);
+      // Keep user configuration unchanged at startup; invalid YAML is surfaced.
+      // 若已存在模型配置，自动启动 Gateway/Dashboard（覆盖安装/升级后无需手动点启动）
+      setTimeout(() => maybeAutoStartServices(), 2500);
+    });
+  } else {
+    // 纯 TCP 模式（跨平台 / 独立部署）：不建 unix socket，UI 走 UI_PORT
+    log(`Monitor ready — TCP only (base=${BASE_PATH || "/"}) | dashboard proxied at /proxy/dashboard/`);
     setTimeout(() => maybeAutoStartServices(), 2500);
-  });
+  }
 
   // ─── 独立 TCP 端口：浏览器直接访问（脱离飞牛框架，自定义 favicon/标签） ───
   const tcpServer = http.createServer(async (req, res) => {
@@ -9293,8 +9300,9 @@ try { panelRoomRunner.start(); } catch(e) { panelRoomRunner.fail(e); }
 // ─── 自愈：socket 文件被外部清理（如 fnOS 重置 @appcenter 安装目录）后自动重建 ───
 // 现象：monitor.js 进程存活，但 socket 文件被删除，fnOS 代理连不上、UI 转圈。
 // 监测到文件丢失即重建监听，无需依赖 fnOS 重启进程。
-const _sockDir = SOCKET_PATH.replace(/\/[^/]+$/, '');
-setInterval(() => {
+// 纯 TCP 模式没有 socket 文件，这套自愈逻辑不适用（否则每 10 秒误判一次、反复重建监听）
+const _sockDir = UNIX_MODE ? SOCKET_PATH.replace(/\/[^/]+$/, '') : '';
+if (UNIX_MODE) setInterval(() => {
   try {
     if (!existsSync(SOCKET_PATH)) {
       log(`[self-heal] 检测到 socket 文件丢失 (${SOCKET_PATH})，正在重建监听…`);
