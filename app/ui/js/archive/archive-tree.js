@@ -7,6 +7,15 @@
  * 层级是顺着虚线读出来的，不是靠 inline padding 假装缩进（旧版的错）。
  * 目录永远排在文件前面，同级按拼音：zh 排序（旧版按 mtime，看着毫无规律）。
  * 图标一律内联 SVG，不用 emoji（客户端字体一缺就是豆腐块）。
+ *
+ * 2026-11-14 第二次重写：
+ *   ① 外壳（筛选框/展开收起/底栏）只建一次，输入时只重画树本体。
+ *      旧版每次 oninput 都 replaceChildren 整个左栏，连正在组字的输入框一起换掉——
+ *      中文输入法一被打断就只能出英文，粘贴能进去但打不出来。这是"中文变英文"的真根因。
+ *   ② 组字期间（isComposing / compositionstart..end）不重绘，组完再画。
+ *   ③ 重绘压到 90ms 防抖：707 篇的树每敲一个字母重建一遍，打字会一顿一顿。
+ *   ④ 筛选命中不再只看叶子名：目录名单独判定并高亮，命中目录就保留它底下所有文件
+ *      （path 里本来就带目录名，这里把它写成显式规则，行为可预期）。
  */
 window.Archive.register('tree', (function () {
   'use strict';
@@ -95,47 +104,99 @@ window.Archive.register('tree', (function () {
     return s;
   }
 
-  function render(st, host, open) {
-    host.replaceChildren();
-    var rows = A.rowsOf(st);
-    var total = rows.length;
+  /* 命中的那一段套 <mark>，让人一眼看出是名字命中还是目录命中 */
+  function markText(text, q) {
+    var raw = String(text == null ? '' : text);
+    if (!q) return document.createTextNode(raw);
+    var i = raw.toLowerCase().indexOf(q);
+    if (i < 0) return document.createTextNode(raw);
+    var frag = document.createDocumentFragment();
+    frag.append(document.createTextNode(raw.slice(0, i)));
+    var m = document.createElement('mark');
+    m.className = 'arc-hit-mark';
+    m.textContent = raw.slice(i, i + q.length);
+    frag.append(m, document.createTextNode(raw.slice(i + q.length)));
+    return frag;
+  }
 
+  /* ---------- 外壳：只建一次 ---------- */
+  function ensureShell(st, host, open) {
+    if (host.dataset.arcShell === '1' && host._arcParts) return host._arcParts;
+    host.replaceChildren();
+
+    var p = {};
     var head = A.el('div', null, 'arc-rail-head');
     var filter = document.createElement('input');
     filter.type = 'search';
     filter.className = 'arc-filter';
-    filter.placeholder = '筛选资料';
+    filter.placeholder = '筛选文件名或文件夹';
     filter.value = st.q;
-    filter.setAttribute('aria-label', '筛选资料');
-    filter.oninput = function () {
+    filter.setAttribute('aria-label', '筛选文件名或文件夹');
+    p.filter = filter;
+
+    /* 组字标记放在闭包里，不塞 st（切页后状态还在，会卡住下一次输入） */
+    var composing = false;
+    function apply() {
       st.q = filter.value;
       st.remoteHits = null;
-      render(st, host, open);
-      var again = host.querySelector('.arc-filter');
-      if (again) { again.focus(); again.setSelectionRange(again.value.length, again.value.length); }
-    };
+      clearTimeout(p.timer);
+      p.timer = setTimeout(function () { paint(st, p, host, open); }, 90);
+    }
+    filter.addEventListener('compositionstart', function () { composing = true; });
+    filter.addEventListener('compositionend', function () {
+      composing = false;
+      apply();
+    });
+    filter.addEventListener('input', function (ev) {
+      /* 组字中不重绘：重绘会把输入框里正在组的那串字打断，之后只能出英文 */
+      if (composing || ev.isComposing) return;
+      apply();
+    });
     filter.onkeydown = function (ev) {
+      if (ev.isComposing) return;
       if (ev.key !== 'Enter') return;
       ev.preventDefault();
-      if (window.Archive.modules && window.Archive.modules.search) window.Archive.modules.search.open(st, filter.value);
+      if (A.modules && A.modules.search) A.modules.search.open(st, filter.value);
     };
+
     var expandBtn = A.el('button', '展开', 'arc-rail-btn');
     expandBtn.type = 'button';
     expandBtn.title = '全部展开';
     expandBtn.setAttribute('aria-label', '全部展开');
-    expandBtn.onclick = function () { setAllFolded(st, false); render(st, host, open); };
+    expandBtn.onclick = function () { setAllFolded(st, false); paint(st, p, host, open); };
     var foldBtn = A.el('button', '收起', 'arc-rail-btn');
     foldBtn.type = 'button';
     foldBtn.title = '全部收起';
     foldBtn.setAttribute('aria-label', '全部收起');
-    foldBtn.onclick = function () { setAllFolded(st, true); render(st, host, open); };
+    foldBtn.onclick = function () { setAllFolded(st, true); paint(st, p, host, open); };
     head.append(filter, expandBtn, foldBtn);
     host.append(head);
 
-    var scroller = A.el('div', null, 'arc-rail-scroll');
+    p.scroller = A.el('div', null, 'arc-rail-scroll');
 
     var footbar = A.el('div', null, 'arc-rail-foot');
-    var footLeft = A.el('span', total + ' 份', '');
+    p.count = A.el('span', '0 份', '');
+    p.mode = A.el('span', '', '');
+    footbar.append(p.count, p.mode);
+    host.append(p.scroller, footbar);
+
+    host.dataset.arcShell = '1';
+    host._arcParts = p;
+    return p;
+  }
+
+  function render(st, host, open) {
+    var p = ensureShell(st, host, open);
+    paint(st, p, host, open);
+  }
+
+  /* ---------- 树本体：输入时只重画这里 ---------- */
+  function paint(st, p, host, open) {
+    var scroller = p.scroller;
+    var q = String(st.q || '').trim().toLowerCase();
+    var rows = A.rowsOf(st);
+    p.count.textContent = rows.length + ' 份';
+
     var mode = '';
     st.cfg.sources.forEach(function (id) {
       var s = A.sourceOf(st, id);
@@ -144,8 +205,9 @@ window.Archive.register('tree', (function () {
       if (!mode) mode = label;
       else if (mode !== label) mode = '混合';
     });
-    footbar.append(footLeft, A.el('span', mode, ''));
-    host.append(scroller, footbar);
+    p.mode.textContent = mode;
+
+    scroller.replaceChildren();
 
     if (st.loading && !st.catalog) {
       scroller.append(A.el('p', '正在读取…', 'arc-empty'));
@@ -157,10 +219,10 @@ window.Archive.register('tree', (function () {
       var source = A.sourceOf(st, id);
       var items = rows.filter(function (item) { return item.source === id; });
       if (!source) return;
-      if (!items.length && st.q) return;
+      if (!items.length && q) return;
 
       var group = A.el('section', null, 'arc-group');
-      var folded = !!st.folded[id] && !st.q;
+      var folded = !!st.folded[id] && !q;
       var groupHead = A.el('button', null, 'arc-row arc-group-head');
       groupHead.type = 'button';
       groupHead.setAttribute('aria-expanded', folded ? 'false' : 'true');
@@ -174,11 +236,11 @@ window.Archive.register('tree', (function () {
       groupHead.onclick = function () {
         st.folded[id] = !st.folded[id];
         A.writeFold(st);
-        render(st, host, open);
+        paint(st, p, host, open);
       };
       group.append(groupHead);
 
-      if (!folded) group.append(walk(buildBranch(items), st, host, open, id, 1, ''));
+      if (!folded) group.append(walk(buildBranch(items), st, p, host, open, id, q, ''));
       nav.append(group);
     });
 
@@ -201,49 +263,52 @@ window.Archive.register('tree', (function () {
     });
 
     if (!nav.children.length) {
-      scroller.append(A.el('p', st.q ? '没有匹配的资料。' : '这个栏目下还没有资料文件。', 'arc-empty'));
+      scroller.append(A.el('p', q ? '没有匹配的资料。' : '这个栏目下还没有资料文件。', 'arc-empty'));
       return;
     }
     scroller.append(nav);
   }
 
   /* 递归：一层目录 = 一行 .arc-row.dir + 一个 .arc-kids 容器 */
-  function walk(node, st, host, open, srcId, depth, prefix) {
+  function walk(node, st, p, host, open, srcId, q, prefix) {
     var box = A.el('div', null, 'arc-kids');
     sortedKeys(node).forEach(function (key) {
       var child = node.kids[key];
       var path = prefix ? prefix + '/' + key : key;
 
       if (child.doc) {
-        box.append(leafRow(st, child.doc, open, depth));
+        box.append(leafRow(st, child.doc, open, q));
         return;
       }
 
       var fk = foldKey(srcId, path);
       var dflt = HEAVY[srcId] ? true : false;
-      var folded = (st.folded[fk] !== undefined ? st.folded[fk] : dflt) && !st.q;
+      var folded = (st.folded[fk] !== undefined ? st.folded[fk] : dflt) && !q;
       var row = A.el('button', null, 'arc-row arc-dir');
       row.type = 'button';
       row.setAttribute('aria-expanded', folded ? 'false' : 'true');
       row.title = path;
+      var name = A.el('span', null, 'arc-leaf-name');
+      /* 目录名也参与高亮：搜索"项目"时能看见自己命中的是哪一层 */
+      name.append(markText(key, q));
       row.append(
         caretNode(!folded),
         ico(folded ? 'folder' : 'folderOpen'),
-        A.el('span', key, 'arc-leaf-name'),
+        name,
         A.el('span', String(countLeaves(child)), 'arc-cnt')
       );
       row.onclick = function () {
         st.folded[fk] = !folded;
         A.writeFold(st);
-        render(st, host, open);
+        paint(st, p, host, open);
       };
       box.append(row);
-      if (!folded) box.append(walk(child, st, host, open, srcId, depth + 1, path));
+      if (!folded) box.append(walk(child, st, p, host, open, srcId, q, path));
     });
     return box;
   }
 
-  function leafRow(st, item, open, depth) {
+  function leafRow(st, item, open, q) {
     /* 只在文档视图里高亮选中的文件：停在密码本/图谱时左边还亮着一个文件，
        会让人以为主区显示的还是那份文档。 */
     var on = st.view === 'doc' && st.doc && st.doc.source === item.source && st.doc.path === item.path;
@@ -255,7 +320,10 @@ window.Archive.register('tree', (function () {
     var name = String(item.title || item.path).replace(/\.md$/i, '');
     /* 文件行补一个和折叠箭头同宽的占位：目录行有 caret(12)+gap(7) 才到图标，
        文件行不补就会顶到父级箭头那一列，名字看着比父级还靠左，像退了一级。 */
-    b.append(A.el('span', null, 'arc-caret'), ico('file'), A.el('span', name, 'arc-leaf-name'));
+    b.append(A.el('span', null, 'arc-caret'), ico('file'));
+    var label = A.el('span', null, 'arc-leaf-name');
+    label.append(markText(name, q));
+    b.append(label);
     var meta = item.missing ? '未建立' : kb(item.bytes);
     if (meta) b.append(A.el('span', meta, 'arc-leaf-meta'));
     b.onclick = function () {

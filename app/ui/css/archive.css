@@ -449,7 +449,7 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 .arc-outline-item.on { color: var(--accent); border-left-color: var(--accent); opacity: 1; }
 
 /* 编辑器：去掉行号槽（案例就是一块 textarea），上面一条说明/操作栏 */
-.arc-editor { display: flex; flex-direction: column; gap: 8px; }
+.arc-editor { display: flex; flex-direction: column; gap: 8px; position: relative; }
 .arc-editor-bar {
   display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--muted);
 }
@@ -569,9 +569,12 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 }
 .arc-gdesc { margin: 6px 0 0; font-size: 11.5px; line-height: 1.65; color: var(--muted); }
 .arc-chips {
-  display: flex; flex-wrap: nowrap; gap: 6px; margin-top: 11px;
-  overflow-x: auto; padding-bottom: 2px; scrollbar-width: none;
+  display: flex; flex-wrap: wrap; gap: 6px; margin-top: 11px;
+  padding-bottom: 2px; scrollbar-width: none;
 }
+/* 桌面放得下就换行：标签 + 目录两维一共十三四个 chip，横滑会把「目录」那一组
+   推到看不见的地方（2026-11-14 实测 chips 1777px / 可见 944px）。手机仍旧一行横滑，
+   那是屏幕宽度决定的，不是设计。 */
 .arc-chips::-webkit-scrollbar { display: none; }
 /* 分类二十多个，换行会把画布压矮；一行横滑，宽度让给图 */
 .arc-chips .arc-chip { flex: 0 0 auto; }
@@ -947,8 +950,14 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   }
   .arc-rail-toggle { grid-area: rail; display: inline-flex; }
   /* ☰ 在左、搜索框吃满中间、新建在右 */
-  .arc-searchbox { grid-area: search; display: flex; max-width: none; height: 34px; }
+  .arc-searchbox { grid-area: search; display: flex; max-width: none; height: 34px; min-width: 0; overflow: hidden; }
   .arc-tools { grid-area: tools; margin-left: 0; }
+  /* 375 下这一行是 ☰ / 搜索框 / 新增笔记 三样。搜索框内容（输入 + ⌘K + 搜索钮）
+     最小宽度顶到 300px，会直接压到「新增笔记」底下——实测三者重叠 107px：
+     ⌘K 在 280–311、搜索钮 317–361、新增笔记 263–363，等于搜索框的两个控件全被盖住。
+     手机上 ⌘ 没有意义、回车就能搜，两个都收掉，输入框自己可缩。 */
+  .arc-searchbox input { min-width: 0; flex: 1 1 0; width: 100%; }
+  .arc-kbd, .arc-search-go { display: none; }
   .arc-only-mobile { display: inline-flex; }
   .arc-shell { grid-template-columns: minmax(0, 1fr); }
   /* 抽屉只盖当前看的文档区：position 从 fixed 改成 absolute，锚到 .arc-shell 上。
@@ -1055,4 +1064,198 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 
 @media (prefers-reduced-motion: reduce) {
   .arc-rail, .arc-toast { transition: none; }
+}
+
+/* ── 架构体系（提示词页第二个视图，2026-11-14 用户要求）──
+   放用户给的《Hermes 的文件即思维》全图：三栏分工 + 底部一次会话的流程，
+   1920×1300 原图。视图自己管理缩放平移，所以不吃 .arc-main 的横向留白。 */
+.arc-main > .arc-arch,
+.arc-main > .arc-arch:first-child,
+.arc-main > .arc-arch:last-child { padding: 0; }
+.arc-arch { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.arc-arch-bar {
+  flex: 0 0 auto; display: flex; align-items: center; gap: 12px;
+  padding: 12px 20px 13px;
+  border-bottom: 1px solid var(--border); background: var(--bg1);
+}
+.arc-arch-tip {
+  font-size: 12.5px; color: var(--muted); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-arch-tools { margin-left: auto; display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.arc-arch-btn {
+  height: 30px; min-width: 30px; padding: 0 10px;
+  border: 1px solid var(--border); border-radius: 8px;
+  background: var(--card); color: var(--text2);
+  font-size: 12.5px; line-height: 28px; text-align: center; text-decoration: none;
+  cursor: pointer; font-family: inherit;
+}
+.arc-arch-btn:hover { color: var(--text); border-color: var(--accent); }
+.arc-arch-pct { min-width: 58px; font-variant-numeric: tabular-nums; }
+.arc-arch-stage {
+  flex: 1 1 auto; min-height: 360px; position: relative; overflow: hidden;
+  background:
+    radial-gradient(var(--arc-grid-dot) 1px, transparent 1px) 0 0 / 14px 14px,
+    var(--bg0);
+  cursor: grab; touch-action: none;
+}
+.arc-arch-stage.is-drag { cursor: grabbing; }
+.arc-arch-img {
+  position: absolute; left: 0; top: 0;
+  max-width: none; transform-origin: 0 0;
+  border-radius: 10px;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, .28);
+  user-select: none; -webkit-user-select: none;
+}
+@media (max-width: 900px) {
+  .arc-arch-bar { padding: 9px 12px; gap: 6px; flex-wrap: wrap; }
+  .arc-arch-tip { font-size: 11.5px; flex: 1 1 100%; order: 2; }
+  .arc-arch-tools { margin-left: 0; width: 100%; justify-content: flex-start; flex-wrap: nowrap; gap: 4px; order: 1; }
+  .arc-arch-btn { height: 28px; padding: 0 8px; font-size: 12px; line-height: 26px; }
+  .arc-arch-pct { min-width: 50px; }
+  .arc-arch-stage { min-height: 300px; }
+}
+
+/* ══ 2026-11-14 新增：目录 badge / 真标签 chip / 信息面板 / 引用选择器 ══
+   标签（frontmatter.tags）和目录（路径首段）在视觉上必须分开：
+   旧版把路径首段写成 `#生活`，和标签长得一样，用户以为标签来自文件夹。 */
+.arc-badge.is-dir { display: inline-flex; align-items: center; gap: 4px; color: var(--text2); }
+.arc-badge.is-dir svg { opacity: .65; }
+.arc-tag {
+  display: inline-flex; align-items: center; gap: 2px; height: 19px; padding: 0 8px;
+  font: inherit; font-size: 10.5px; line-height: 1; border-radius: 20px; cursor: pointer;
+  color: var(--accent); background: var(--accent-bg); border: 1px solid var(--accent-soft);
+  white-space: nowrap;
+}
+.arc-tag:hover { border-color: var(--accent); }
+.arc-tag.is-edit { cursor: default; padding-right: 3px; }
+.arc-tag-x {
+  border: 0; background: transparent; color: inherit; cursor: pointer;
+  font: inherit; font-size: 12px; line-height: 1; padding: 0 3px; opacity: .65;
+}
+.arc-tag-x:hover { opacity: 1; }
+
+.arc-dialog-wide { width: min(620px, 94vw); }
+.arc-fm { padding: 12px 16px 16px; max-height: 68vh; overflow-y: auto; }
+.arc-fm-tip { margin: 0 0 12px; font-size: 12px; color: var(--muted); line-height: 1.6; }
+.arc-fm-rows { display: flex; flex-direction: column; gap: 8px; }
+.arc-fm-row { display: grid; grid-template-columns: 132px 1fr 28px; gap: 8px; align-items: start; }
+.arc-fm-key, .arc-fm-input, .arc-fm-select {
+  font: inherit; font-size: 12.5px; height: 30px; padding: 0 9px; border-radius: 7px;
+  color: var(--text); background: var(--card); border: 1px solid var(--border);
+}
+.arc-fm-key { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--text2); }
+.arc-fm-key:focus, .arc-fm-input:focus, .arc-fm-select:focus { outline: none; border-color: var(--accent); }
+.arc-fm-val { min-width: 0; }
+.arc-fm-chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; min-height: 30px; }
+.arc-fm-add {
+  font: inherit; font-size: 12px; height: 24px; padding: 0 9px; border-radius: 20px;
+  color: var(--text); background: transparent; border: 1px dashed var(--border); min-width: 112px;
+}
+.arc-fm-add:focus { outline: none; border-color: var(--accent); }
+.arc-fm-del {
+  width: 28px; height: 28px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 7px; border: 1px solid transparent; background: transparent;
+  color: var(--muted); cursor: pointer; padding: 0;
+}
+.arc-fm-del:hover { color: var(--warning-dark, var(--warning)); border-color: currentColor; }
+.arc-fm-addbar {
+  display: flex; gap: 8px; margin-top: 14px; padding-top: 12px;
+  border-top: 1px dashed var(--border);
+}
+.arc-fm-addbar .arc-fm-input { flex: 1 1 auto; min-width: 0; }
+.arc-fm-select { flex: 0 0 auto; width: 110px; }
+
+.arc-cite-search { width: 100%; margin-bottom: 8px; }
+.arc-cite-list { display: flex; flex-direction: column; gap: 2px; max-height: 46vh; overflow-y: auto; }
+.arc-cite-list.is-side { max-height: none; overflow: visible; }
+.arc-cite-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; text-align: left;
+  padding: 7px 9px; font: inherit; font-size: 12.5px; color: var(--text);
+  background: transparent; border: 0; border-radius: 7px; cursor: pointer;
+}
+.arc-cite-item:hover, .arc-cite-item.on { background: var(--accent-bg); }
+.arc-cite-item svg { flex: 0 0 auto; color: var(--muted); }
+.arc-cite-name { flex: 0 0 auto; max-width: 54%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.arc-cite-path {
+  flex: 1 1 auto; min-width: 0; font-size: 10.5px; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.arc-cite-empty { margin: 0; padding: 10px; font-size: 12px; color: var(--muted); }
+.arc-cite-pop {
+  position: absolute; left: 12px; right: 12px; bottom: 12px; z-index: 20;
+  max-height: 240px; overflow-y: auto; padding: 6px; border-radius: 10px;
+  background: var(--card); border: 1px solid var(--border); box-shadow: 0 12px 28px rgba(0, 0, 0, .28);
+}
+
+.arc-kv { display: flex; flex-direction: column; gap: 5px; margin: 10px 0 4px; }
+.arc-kv-row { display: flex; align-items: baseline; gap: 6px; font-size: 12px; color: var(--text2); }
+.arc-kv-row b { margin-left: auto; font-variant-numeric: tabular-nums; }
+.arc-chip.is-ghost { border-style: dashed; }
+.arc-hit-mark { background: var(--accent-bg); color: var(--accent); border-radius: 3px; padding: 0; }
+
+@media (max-width: 900px) {
+  .arc-fm-row { grid-template-columns: 96px 1fr 26px; }
+  .arc-dialog-wide { width: 100vw; }
+  .arc-cite-name { max-width: 46%; }
+}
+
+/* ── 图谱筛选：标签主维度 + 目录第二维（2026-11-14） ──────────────────
+   chips 一行横滑，标签排在前（前 8 个 + 更多标签 + 无标签），目录在后。
+   分组小标题 10px 灰字，跟 chip 同基线，只是路标不抢视线。 */
+.arc-gtop { position: relative; }
+.arc-chips-label {
+  flex: 0 0 auto; display: inline-flex; align-items: center;
+  padding: 0 1px 0 7px; font-size: 10px; letter-spacing: .4px;
+  color: var(--muted); opacity: .9; user-select: none;
+}
+.arc-chips-label:first-of-type { padding-left: 2px; }
+.arc-chip.is-tag { font-variant-numeric: tabular-nums; }
+.arc-chip.is-more { border-style: dashed; }
+.arc-chip .arc-caret { width: auto; margin-left: 3px; }
+
+/* 「更多标签」浮层：119 个标签全塞 chips 会把目录挤到看不见，这里收纳长尾 */
+.arc-tagpop {
+  position: absolute; z-index: 24; width: min(360px, calc(100% - 28px));
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--card); border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, .28);
+}
+.arc-tagpop-head {
+  display: flex; align-items: center; gap: 8px; padding: 9px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.arc-tagpop-input {
+  flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
+  font: inherit; font-size: 12px; color: var(--text); outline: none;
+  background: var(--bg3); border: 1px solid var(--border); border-radius: 8px;
+}
+.arc-tagpop-input:focus { border-color: var(--accent); }
+.arc-tagpop-clear.is-on { color: var(--accent); }
+.arc-tagpop-list { max-height: 300px; overflow-y: auto; overscroll-behavior: contain; padding: 5px; }
+.arc-tagpop-item {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 8px;
+  font: inherit; font-size: 12px; text-align: left; cursor: pointer;
+  color: var(--text2); background: transparent; border: 0; border-radius: 7px;
+}
+.arc-tagpop-item:hover { background: var(--bg3); }
+.arc-tagpop-item.on { color: var(--accent); background: var(--accent-bg); font-weight: 600; }
+.arc-tagpop-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* 统计栏的「当前筛选」：图上只剩几个点时要能看出是筛出来的，不是图坏了 */
+.arc-filterbox { margin: 10px 0 2px; padding: 9px 10px; background: var(--bg3); border-radius: 10px; }
+.arc-filterhead {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  font-size: 11px; font-weight: 600; color: var(--text2);
+}
+.arc-filterchips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
+.arc-filterchips .arc-chip { padding: 3px 8px; font-size: 11px; }
+.arc-filterbox .arc-kv { margin: 7px 0 0; }
+.arc-wide { width: 100%; justify-content: center; margin-top: 8px; }
+
+@media (max-width: 900px) {
+  .arc-tagpop { width: calc(100% - 20px); }
+  .arc-tagpop-list { max-height: 46vh; }
+  .arc-chips-label { padding-left: 4px; }
+  .arc-chips { flex-wrap: nowrap; overflow-x: auto; }
 }

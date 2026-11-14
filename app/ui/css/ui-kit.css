@@ -213,39 +213,95 @@ textarea.uikit-input {
   }
 }
 
-/* ── 提示条（Element Plus 风格通知栈，2026-11-13 用户第 41 条）─────────────
-   唯一实现：js/core/utils.js 的 window.__hzToast。旧的 .uikit-toast 规则保留但已无
-   调用点（ui-kit 只转发）。位置/堆叠方向由 JS 写成 inline 的 top/right/gap，
-   这里只管长相：卡片 + 左侧类型图标 + 关闭按钮 + 进出场动效。 */
+/* ── 通知栈（全站唯一实现，2026-11-14 第二轮）───────────────────────────
+   实现：js/core/utils.js 的 window.__hzToast（window.toast 是它）。
+   长相参照档案页那套提示条：卡片 + 左侧 3px 类型色条 + 圆角，再补标题行与动作按钮。
+   位置/堆叠方向由 JS 写成 inline 的 top/left/bottom；这里只管长相与移动端兜底。 */
 .hz-toast-stack{position:fixed;z-index:99999;display:flex;flex-direction:column;gap:10px;
   pointer-events:none;max-width:calc(100vw - 32px)}
-.hz-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:9px;box-sizing:border-box;
-  min-width:200px;max-width:min(420px,calc(100vw - 32px));padding:11px 12px;border-radius:10px;
-  background:#22262f;border:1px solid rgba(255,255,255,.10);color:#e7e9ee;
-  box-shadow:0 10px 28px rgba(0,0,0,.38);font-size:13px;line-height:1.55;
-  opacity:0;transform:translateY(-6px) scale(.98);
-  transition:opacity .2s ease,transform .22s cubic-bezier(.34,1.16,.64,1)}
+.hz-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;box-sizing:border-box;
+  min-width:220px;max-width:min(400px,calc(100vw - 32px));padding:12px 13px;border-radius:11px;
+  background:#22262f;border:1px solid rgba(255,255,255,.10);border-left:3px solid #4a90e2;color:#e7e9ee;
+  box-shadow:0 14px 36px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.04);font-size:13px;line-height:1.55;
+  opacity:0;transform:translateY(8px) scale(.985);
+  transition:opacity .18s ease,transform .22s cubic-bezier(.34,1.16,.64,1)}
 .hz-toast.in{opacity:1;transform:none}
-.hz-toast.out{opacity:0;transform:translateY(-4px) scale(.98)}
-.hz-toast__ico{flex:0 0 16px;height:16px;margin-top:1px;color:#9aa4b2;display:flex}
+.hz-toast.out{opacity:0;transform:translateY(4px) scale(.99)}
+.hz-toast.is-success{border-left-color:#7ed07a}
+.hz-toast.is-warning{border-left-color:#e8b04a}
+.hz-toast.is-error{border-left-color:#e05b5b}
+.hz-toast.is-info{border-left-color:#5aa9ff}
+.hz-toast__ico{flex:0 0 16px;height:16px;margin-top:1.5px;color:#9aa4b2;display:flex;pointer-events:none;opacity:.95}
 .hz-toast.is-success .hz-toast__ico{color:#7ed07a}
 .hz-toast.is-warning .hz-toast__ico{color:#e8b04a}
-.hz-toast.is-error .hz-toast__ico{color:#ff8181}
+.hz-toast.is-error .hz-toast__ico{color:#f07373}
+.hz-toast.is-info .hz-toast__ico{color:#5aa9ff}
 .hz-toast__body{flex:1 1 auto;min-width:0}
-.hz-toast__text{margin:0;white-space:pre-wrap;word-break:break-word}
-.hz-toast__x{flex:0 0 auto;margin:-2px -4px 0 4px;padding:2px 6px;border:0;border-radius:6px;
-  background:transparent;color:#8b93a1;font-size:15px;line-height:1;cursor:pointer}
+.hz-toast__title{margin:0 0 2px;font-size:13px;font-weight:600;letter-spacing:.1px;white-space:pre-wrap;word-break:break-word}
+.hz-toast__text{margin:0;white-space:pre-wrap;word-break:break-word;color:inherit;opacity:.92}
+.hz-toast__title[hidden],.hz-toast__acts[hidden]{display:none}
+.hz-toast__acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;justify-content:flex-end}
+.hz-toast__btn{flex:0 0 auto;padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
+  background:rgba(255,255,255,.06);color:#e7e9ee;font-size:12px;line-height:1.5;cursor:pointer;
+  transition:background .14s ease,border-color .14s ease}
+.hz-toast__btn:hover{background:rgba(255,255,255,.13)}
+.hz-toast__btn.is-primary{background:#3d6fe0;border-color:#3d6fe0;color:#fff;font-weight:600}
+.hz-toast__btn.is-primary:hover{background:#4c7eee;border-color:#4c7eee}
+/* 主按钮跟随类型色：红提示配蓝按钮，一张卡里四种色相太吵（2026-11-14 视觉复核意见） */
+.hz-toast.is-error .hz-toast__btn.is-primary{background:#d13c3c;border-color:#d13c3c}
+.hz-toast.is-error .hz-toast__btn.is-primary:hover{background:#e04a4a;border-color:#e04a4a}
+.hz-toast.is-warning .hz-toast__btn.is-primary{background:#b5791a;border-color:#b5791a}
+.hz-toast.is-warning .hz-toast__btn.is-primary:hover{background:#c98a1c;border-color:#c98a1c}
+.hz-toast.is-success .hz-toast__btn.is-primary{background:#2f8f47;border-color:#2f8f47}
+.hz-toast.is-success .hz-toast__btn.is-primary:hover{background:#379e51;border-color:#379e51}
+.hz-toast__btn:disabled{opacity:.55;cursor:default}
+.hz-toast__x{flex:0 0 auto;margin:-2px -4px 0 2px;padding:2px 6px;border:0;border-radius:6px;
+  background:transparent;color:#a7b0bd;font-size:15px;line-height:1;cursor:pointer}
 .hz-toast__x:hover{background:rgba(255,255,255,.08);color:#e7e9ee}
 /* 浅色主题：白卡片 + Element 四色，别把深色卡片糊在白底上 */
-body.theme-light .hz-toast{background:#fff;border-color:#ebeef5;color:#303133;box-shadow:0 8px 24px rgba(0,0,0,.12)}
+body.theme-light .hz-toast{background:#fff;border-color:#ebeef5;border-left-color:#409eff;color:#303133;
+  box-shadow:0 10px 28px rgba(0,0,0,.14)}
+body.theme-light .hz-toast.is-success{border-left-color:#67c23a}
+body.theme-light .hz-toast.is-warning{border-left-color:#e6a23c}
+body.theme-light .hz-toast.is-error{border-left-color:#f56c6c}
+body.theme-light .hz-toast.is-info{border-left-color:#409eff}
 body.theme-light .hz-toast__ico{color:#909399}
 body.theme-light .hz-toast.is-success .hz-toast__ico{color:#67c23a}
 body.theme-light .hz-toast.is-warning .hz-toast__ico{color:#e6a23c}
 body.theme-light .hz-toast.is-error .hz-toast__ico{color:#f56c6c}
-body.theme-light .hz-toast__x{color:#a8abb2}
+body.theme-light .hz-toast.is-info .hz-toast__ico{color:#409eff}
+body.theme-light .hz-toast__btn{background:#f4f5f7;border-color:#dcdfe6;color:#303133}
+body.theme-light .hz-toast__btn:hover{background:#ebeef5}
+body.theme-light .hz-toast__btn.is-primary{background:#409eff;border-color:#409eff;color:#fff}
+body.theme-light .hz-toast__btn.is-primary:hover{background:#66b1ff;border-color:#66b1ff}
+body.theme-light .hz-toast__x{color:#6b7280}
 body.theme-light .hz-toast__x:hover{background:#f2f3f5;color:#303133}
-/* 手机上占满整行，别让 420px 卡在 390 屏幕里溢出 */
-@media (max-width:520px){
-  .hz-toast-stack{left:12px!important;right:12px!important;transform:none!important}
-  .hz-toast{max-width:none;width:100%;min-width:0}
+/* 手机端：整行铺满，抬到底部导航条上方（导航条 60px + 安全区），别压住输入框 */
+@media (max-width:760px){
+  /* 手机端：桌面那套「400px 卡片贴右下」在 390 宽屏上只剩一条窄柱，字挤成三行。
+     改成两张边距 12px 的整行卡片；竖直方向必须抬过输入框与底部导航
+     （390x844 实测：输入区 y 711-780、导航 784-844），148px 正好卡在上面。 */
+  .hz-toast-stack[data-pos^="bottom"]{left:12px!important;right:12px!important;transform:none!important;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 148px)!important;max-width:none;gap:8px}
+  .hz-toast-stack[data-pos^="top"]{left:12px!important;right:12px!important;transform:none!important;
+    top:calc(env(safe-area-inset-top,0px) + 12px)!important;max-width:none;gap:8px}
+  .hz-toast{max-width:none;width:100%;min-width:0;padding:14px 15px;border-radius:15px;
+    font-size:13.5px;max-height:52vh;overflow:auto}
+  .hz-toast__ico{flex:0 0 17px;height:17px;margin-top:2px}
+  .hz-toast__title{font-size:14px;line-height:1.45}
+  .hz-toast__text{font-size:13px;line-height:1.6}
+  /* 触控目标别做 34px 的小药丸，手指点不准 */
+  .hz-toast__acts{justify-content:stretch;margin-top:12px;gap:9px}
+  /* 38px 是"能点"，42px 才是"好点"：手指落在 390 宽的屏上，按钮就是唯一的手感来源 */
+  .hz-toast__acts .hz-toast__btn{flex:1 1 0;text-align:center;min-height:42px;padding:10px 14px;
+    font-size:13.5px;border-radius:11px}
+  .hz-toast__acts .hz-toast__btn+.hz-toast__btn{flex:0 0 auto;min-width:78px}
+  .hz-toast__x{font-size:17px;padding:6px 8px;margin:-4px -6px 0 4px}
+  /* 浅色手机：白卡压白底，靠阴影和描边分层，别只差一点点灰 */
+  body.theme-light .hz-toast{border-color:#e3e6ef;box-shadow:0 14px 34px rgba(15,23,42,.16),0 1px 2px rgba(15,23,42,.06)}
+  body.theme-light .hz-toast__btn{border-color:#d4d8e2;color:#3a3f4b}
+}
+@media (prefers-reduced-motion:reduce){
+  .hz-toast{transition:opacity .14s linear;transform:none}
+  .hz-toast.in{transform:none}
 }
