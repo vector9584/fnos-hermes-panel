@@ -10,10 +10,11 @@ class Store(unittest.TestCase):
  def begin(self):mutate(self.path,{'action':'begin','id':'one','lease':self.lease})
  def dispatch(self):mutate(self.path,{'action':'dispatch','id':'one','identity':{'pid':123,'start':'456'}})
  def release(self):mutate(self.path,{'action':'release','id':'one'})
- def test_cancel_before_claim_stops_claim(self):
+ def test_cancelled_record_is_a_stale_tombstone(self):
+  # release 之后的 cancelled 记录是墓碑：没有在跑的停止者时不该挡住下一次停止（11-14 10350 的真身）。
   self.begin();self.dispatch();self.release()
-  with self.assertRaises(LifecycleError):self.life.claim_panel_drain()
-  self.assertNotIn('stop_owner',json.loads(self.path.read_text()))
+  self.assertIsNone(self.life.claim_panel_drain())
+  self.assertFalse(self.path.exists())
  def test_claim_before_cancel_preserves_pinned_worker(self):
   self.begin();self.dispatch();self.life.claim_panel_drain();before=json.loads(self.path.read_text())['stop_owner'];self.release();after=json.loads(self.path.read_text());self.assertEqual(after['stop_owner'],before);self.assertEqual(after['phase'],'cancelled')
  def test_expired_record_with_live_stop_worker_cannot_be_replaced(self):

@@ -272,8 +272,11 @@
    veil.style.opacity='0';
    deckMorph(cardEl,sheet,toRect);
    requestAnimationFrame(function(){
+    // 2026-11-15：旧时序是幕布 .16s、配置页 .06s 就开始淡入，而飞行卡要 .44s 才落位——
+    // 观感就是「先灰一片，然后一大块东西突然闪出来」。改成等飞行卡接近落位再淡入。
+    veil.style.transition='opacity .18s ease';
     veil.style.opacity='1';
-    sheet.style.transition='opacity .3s ease .06s,transform .44s cubic-bezier(.22,.75,.2,1)';
+    sheet.style.transition='opacity .3s ease .2s,transform .5s cubic-bezier(.22,.75,.2,1) .06s';
     sheet.style.opacity='1';sheet.style.transform='none';
     sheet.classList.add('mdeck-in');
    });
@@ -368,7 +371,11 @@
    var zone=n('section',null,'model-danger-zone');
    zone.append(n('h3','删除这个服务'),n('p','只删这条服务的地址、密钥与模型清单；如果它还在主模型或回退路线里，会先被拦下来。','pw-hint'));
    var del=button('删除「'+p.name+'」',async function(){
-    if(!confirm('确定删除模型服务「'+p.name+'」？删除后它的地址、密钥和模型清单都不再保留。'))return;
+   /* 2026-11-15：原来用原生 confirm()，弹的是浏览器自己那套灰框，和面板样式完全不搭，
+     某些内嵌 webview 里还会被直接吞掉（点了没反应）。统一走 ui.confirm。 */
+   var yes=window.ui&&window.ui.confirm?await window.ui.confirm(
+     '删除后它的地址、密钥和模型清单都不再保留。',{title:'确定删除模型服务「'+p.name+'」？',okText:'删除',danger:true}):false;
+   if(!yes)return;
     del.disabled=true;del.textContent='正在删除…';
     try{
      var out=await mutate({action:'delete',id:p.id});
@@ -389,7 +396,8 @@
     rarityClass:p.enabled&&p.api_key_configured?' ssr':'',
     sub:p.base_url||'未设置服务地址',
     sheetSub:(p.enabled?'启用中':'已停用')+' · '+(p.api_key_configured?'密钥已配':'未配密钥')+' · '+protocol,
-    tags:[liveModels.length+' 个模型',p.api_key_configured?'密钥已配':'未配密钥',protocol],
+    tags:[liveModels.length+' 个模型',p.api_key_configured?'密钥已配':'未配密钥',protocol,
+     Object.keys(p.request_extra||{}).length?('扩展参数 '+Object.keys(p.request_extra||{}).length+' 项'):''],
     build:providerBody,disabled:p.enabled?false:true
    }));
   });
@@ -420,7 +428,9 @@
   moaBody.append(n('p','和回退不是一回事：回退是一个模型挂了换下一个；MOA 是几个模型各答一遍，再让聚合模型挑或合成。开着时主模型显示成 moa / 预设名，属于正常现象。','pw-hint'),moaState,moaFoot);
   moaBlock.append(moaSum,moaBody);
   var moaHost=document.getElementById('moaSlot');
-  if(moaHost){moaBlock.open=true;moaHost.append(moaBlock);}else routes.append(moaBlock);
+  /* 2026-11-15：原来是 moaHost.append(moaBlock)，render() 每跑一次就往 moaSlot 里堆一份，
+     页面上一模一样的 MOA 卡片会有两三张（实测首屏就是 2 张、按钮 4 个）。改成整体替换。 */
+  if(moaHost){moaBlock.open=true;moaHost.replaceChildren(moaBlock);}else routes.append(moaBlock);
   loadMoa();
 
   grid.onmousemove=function(ev){

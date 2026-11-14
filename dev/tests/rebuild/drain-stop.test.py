@@ -11,13 +11,22 @@ class StopGate(unittest.TestCase):
   if self.child.poll() is None:self.child.terminate()
   self.child.wait(timeout=5)
  def write(self):self.path.write_text(json.dumps(self.lease))
- def test_expired_or_unacknowledged_stop_never_signals(self):
-  for phase in ['preparing','cancelled','dispatched']:
-   self.lease['phase']=phase
-   if phase=='dispatched':self.lease['expires_at']=time.time()*1000-1
-   self.write()
-   with self.assertRaises(LifecycleError):self.life.stop()
-   self.assertEqual(self.signals,[]);self.assertIsNone(self.child.poll())
+ def test_preparing_stop_never_signals(self):
+  self.lease['phase']='preparing'
+  self.write()
+  with self.assertRaises(LifecycleError):self.life.stop()
+  self.assertEqual(self.signals,[]);self.assertIsNone(self.child.poll())
+ def test_cancelled_tombstone_does_not_block_stop(self):
+  # 11-14 22:13 面板重启被取消后留下的 cancelled 记录曾把应用中心停止永久顶成 10350。
+  self.lease['phase']='cancelled';self.write()
+  try:self.life.stop();self.fail('fixture gateway 还活着，stop 应当报「进程仍在运行」')
+  except LifecycleError as error:self.assertIn('进程仍在运行',str(error))
+  self.assertNotEqual(self.signals,[]);self.assertFalse(self.path.exists())
+ def test_expired_dispatched_without_owner_does_not_block_stop(self):
+  self.lease['phase']='dispatched';self.lease['expires_at']=time.time()*1000-1;self.write()
+  try:self.life.stop();self.fail('fixture gateway 还活着，stop 应当报「进程仍在运行」')
+  except LifecycleError as error:self.assertIn('进程仍在运行',str(error))
+  self.assertNotEqual(self.signals,[]);self.assertFalse(self.path.exists())
  def test_valid_stop_claim_pins_worker_identity(self):
   self.write();self.life.claim_panel_drain();record=json.loads(self.path.read_text());self.assertEqual(record['stop_owner']['pid'],os.getpid());self.assertEqual(record['stop_owner']['script'],str(self.app/'server/panel_lifecycle.py'))
  def test_foreign_owner_cannot_extend_lease(self):

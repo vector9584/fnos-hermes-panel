@@ -529,6 +529,54 @@ def main(argv=None):
     backup = f"{sfile}.bak-compress-{now_ms}"
     shutil.copy2(sfile, backup)
 
+    # ── 归档：被压掉的原文另存一份（2026-11-15 用户第 45 条）
+    # 「上次用了直接回话消息给我删没了」——压缩本身没错，错在原话无处可翻。
+    # 落 <chat-dir>/compressed/<sid>/<ts>.json —— 和「已归档会话」同一个归档根，
+    # 面板「已归档」弹窗统一列、统一彻底删除；会话被彻底删除时连带清掉，不留孤儿。
+    archive_rel = ""
+    try:
+        archive_dir = os.path.join(chat_dir, "compressed", a.session)
+        os.makedirs(archive_dir, exist_ok=True)
+        archive_name = f"{now_ms}.json"
+        payload = {
+            "session_id": a.session,
+            "at": now_ms,
+            "removed": len(head),
+            "kept": len(tail),
+            "before_tokens": before_tokens,
+            "after_tokens": after_tokens,
+            "focus": a.focus,
+            "model": f"{used['name']}/{used['model']}" if used else "",
+            "summary": summary,
+            "messages": head,
+        }
+        afile = os.path.join(archive_dir, archive_name)
+        atmp = afile + ".tmp"
+        with open(atmp, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False)
+        os.replace(atmp, afile)
+        idx_file = os.path.join(archive_dir, "index.json")
+        idx = []
+        if os.path.exists(idx_file):
+            try:
+                with open(idx_file, "r", encoding="utf-8") as f:
+                    idx = json.load(f) or []
+            except Exception:
+                idx = []
+        idx.insert(0, {
+            "at": now_ms, "file": archive_name, "removed": len(head), "kept": len(tail),
+            "before_tokens": before_tokens, "after_tokens": after_tokens,
+            "focus": a.focus, "messages": len(head),
+        })
+        itmp = idx_file + ".tmp"
+        with open(itmp, "w", encoding="utf-8") as f:
+            json.dump(idx[:100], f, ensure_ascii=False)
+        os.replace(itmp, idx_file)
+        archive_rel = f"compressed/{a.session}/{archive_name}"
+        log(f"归档写入 {afile}（{len(head)} 条）")
+    except Exception as exc:  # 归档失败不影响压缩本身，但要留痕
+        log(f"归档写入失败（压缩已完成）：{exc}")
+
     session["messages"] = new_messages
     session["updated_at"] = now_ms
     session["compression"] = {
@@ -540,6 +588,7 @@ def main(argv=None):
         "focus": a.focus,
         "model": f"{used['name']}/{used['model']}" if used else "",
         "backup": os.path.basename(backup),
+        "archive": archive_rel,
     }
     tmp = sfile + ".tmp"
     with open(tmp, "w", encoding="utf-8") as f:
@@ -558,6 +607,7 @@ def main(argv=None):
         "model_used": f"{used['name']}/{used['model']}" if used else "",
         "usage": usage,
         "backup": backup,
+        "archive": archive_rel,
         "attempts": errors,
         "duration_ms": int((time.time() - started) * 1000),
     }, ensure_ascii=False))

@@ -172,6 +172,8 @@ function updateHeader(){
  * 「上下文%」与自动压缩同一个口径（usage.pct = 估算 token / 上下文窗口），
  * 所以副标题上的百分比涨到压缩阈值附近，就是下一次压缩要触发的时候。 */
 var _hdrMetricCache = {};
+/* 归档批数缓存：只在会话切换/压缩后重取，别每轮 updateHeader 都打一次网络 */
+var _hdrArchiveCache = {};
 function _updateHeaderMetric(s){
   var sub = document.getElementById('chatSubtitle');
   if(!sub) return;
@@ -183,12 +185,23 @@ function _updateHeaderMetric(s){
   if(count != null) parts.push(count + (narrow ? ' 条' : ' 条消息'));
   if(c){
     /* 2026-11-13：后端 pct 被夹在 100，超窗看不出来。这里优先显示 pctRaw 真值并标「超窗」，
-       分子分母都还是同一个口径（估算 token / 上下文窗口），只是不再假装最高只有 100%。 */
+       分子分母都还是同一个口径（估算 token / 上下文窗口），只是不再假装最高只有 100%。
+       2026-11-15：加阈值配色（75% 黄 / 90% 红）并让百分比可点 —— 能看见「快到线了」，
+       且点一下就出压缩预览，不用先记住 /compress 这条命令。 */
     var _over = (c.over || c.pctRaw > 100);
     var _p = _over && c.pctRaw ? c.pctRaw : c.pct;
     var _tok = Math.round((c.total||0)/1000) + 'k tokens';
     var _win = c.window ? Math.round(c.window/1000) + 'k' : '';
-    parts.push('上下文 ' + _p + '%' + (_over ? '<span class="sub-over" title="上下文已超出窗口 ' + _tok + (c.window?(' / 窗口 '+Math.round(c.window/1000)+'k'):'') + '，下一轮会触发压缩">超窗</span>' : '') + '<span class="sub-tok">（' + _tok + (_win?' / '+_win:'') + '）</span>');
+    var _lvl = _over ? ' pct-crit' : (_p >= 90 ? ' pct-crit' : (_p >= 75 ? ' pct-warn' : ''));
+    var _tip = _over ? ('上下文已超出窗口 ' + _tok + (c.window?(' / 窗口 '+Math.round(c.window/1000)+'k'):'') + '，下一轮会触发压缩')
+                     : ('上下文占用 ' + _p + '%，点一下看压缩预览');
+    parts.push('<span class="sub-ctx' + _lvl + '" role="button" tabindex="0" data-sid="' + DOM.escAttr(s.id) + '" title="' + _tip + '">' +
+      '上下文 ' + _p + '%' + (_over ? '<span class="sub-over">超窗</span>' : '') +
+      '<span class="sub-tok">（' + _tok + (_win?' / '+_win:'') + '）</span></span>');
+  }
+  var arch = _hdrArchiveCache[s.id];
+  if(arch && arch.n > 0){
+    parts.push('<button type="button" class="sub-arch" data-sid="' + DOM.escAttr(s.id) + '" title="压缩时被换成摘要的原文都留着，点开翻">📦 归档 ' + arch.n + ' 批</button>');
   }
   sub.innerHTML = parts.length ? parts.join(' · ') : '—';
   if(c && (Date.now() - c.ts) < 30000) return;
@@ -202,7 +215,31 @@ function _updateHeaderMetric(s){
       if(currentSession === s.id) _updateHeaderMetric(_sessions.find(function(x){ return x.id === currentSession; }));
     })
     .catch(function(){});
+  /* 归档批数：跟 usage 一起刷，但按会话缓存 60s */
+  var ac = _hdrArchiveCache[s.id];
+  if(!ac || (Date.now() - ac.ts) > 60000){
+    if(typeof compressArchiveChip === 'function'){
+      compressArchiveChip(s.id).then(function(n){
+        _hdrArchiveCache[s.id] = { ts:Date.now(), n:n||0 };
+        if(currentSession === s.id) _updateHeaderMetric(_sessions.find(function(x){ return x.id === currentSession; }));
+      }).catch(function(){});
+    }
+  }
 }
+/* 会话头里两个可点元素：百分比 → 压缩预览；归档 → 原文查看器 */
+document.addEventListener('click', function(e){
+  var ctx = e.target.closest && e.target.closest('.sub-ctx');
+  if(ctx && typeof runCompress === 'function'){
+    e.preventDefault();
+    runCompress('预览', ctx.getAttribute('data-sid'));
+    return;
+  }
+  var arch = e.target.closest && e.target.closest('.sub-arch');
+  if(arch && typeof openCompressArchive === 'function'){
+    e.preventDefault();
+    openCompressArchive(arch.getAttribute('data-sid'));
+  }
+});
 /* ── 生成状态：会话标题旁的徽标 + 左侧会话列表同步
  * 复用 genBar 的 _tabGenState（按会话记 mode/text/ts/done），不新造事件源。 */
 var _ST_ICON = {thinking:'🤔',generating:'✍️',reasoning:'💭',tool:'🛠',writing:'💻',queued:'⏳',agent:'🤖',
@@ -349,6 +386,10 @@ function isMobileRail(){
   return (window.matchMedia && window.matchMedia('(max-width:768px)').matches) || window.innerWidth<=768;
 }
 function toggleRail(){
+  /* 档案三页（提示词/知识库/留痕录）共用这一颗顶栏按钮：它开的是资料树抽屉。
+     先问档案页、再判宽度——档案页的抽屉只跟「当前是哪一页」有关，跟窗口多宽无关；
+     原来档案页自己造了个 ☰ + 「目录」小按钮，同一个位置两个入口，2026-11-15 用户驳回。 */
+  if(window.Archive && window.Archive.toggleRailDrawer && window.Archive.toggleRailDrawer()) return;
   // 移动端是抽屉模式：会话树固定 hidden、靠 .open 滑出，桌面那套三级折叠在这里
   // 完全没有落点 —— 点一下改 _railState 却什么都看不见，按钮就等于失效。
   if(isMobileRail()){

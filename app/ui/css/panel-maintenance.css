@@ -336,6 +336,7 @@ body.theme-dark #page-experts .expert-library-actions .btn.primary{color:var(--a
   .maint-activity{padding:14px}
   .maint-activity-head h2{font-size:16px}
   .maint-chips{margin-left:0}
-  .maint-months,.maint-heat{--heat-cell:10px}
+  /* 触摸设备：10px 的格子手指点不准，放大到 13px */
+  .maint-months,.maint-heat{--heat-cell:13px}
   .maint-types{grid-template-columns:1fr}
 }

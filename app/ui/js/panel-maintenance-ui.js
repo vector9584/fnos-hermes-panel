@@ -147,38 +147,79 @@
         document.getElementById('maintTypeBars').replaceChildren(el('p',error.message,'pw-hint'));}
     }
   }
-  function tip(){
+  /* 气泡：桌面悬停 + 手机点按都要出。2026-11-15 用户报「手机上点上去没反应」，
+     原因就是原来只绑了 mouseover/mouseout——触摸设备根本不派发这两个事件。 */
+  var tipTimer=0,lastPointer='mouse';
+  function tipNode(){
     var node=document.getElementById('maintHeatTip');
     if(!node){node=el('div',undefined,'maint-tip');node.id='maintHeatTip';node.hidden=true;document.body.append(node);}
     return node;
+  }
+  function fillTip(cell){
+    var box=tipNode(),day=cell.dataset.day,count=Number(cell.dataset.count)||0;
+    var today=activity&&activity.today;
+    box.replaceChildren(el('strong',day+(today===day?' · 今天':'')),el('span',count?count+' 次提交':'没有提交'));
+    if(count){
+      var rows=((activity&&activity.commits)||[]).filter(function(item){return item[0]===day;}).slice(0,5);
+      rows.forEach(function(item){box.append(el('em',item[1]+' '+item[2]));});
+      if(count>rows.length)box.append(el('em','还有 '+(count-rows.length)+' 条…'));
+    }
+    return box;
+  }
+  function placeTip(cell){
+    if(!cell)return;
+    var box=fillTip(cell),rect=cell.getBoundingClientRect();
+    box.hidden=false;
+    var width=box.offsetWidth,height=box.offsetHeight;
+    var left=Math.min(window.innerWidth-width-12,Math.max(12,rect.left+rect.width/2-width/2));
+    var above=rect.top-height-10;
+    /* 格子贴着屏幕下沿时（手机热力图常这样）翻到下面，别把气泡顶出视口 */
+    var top=above>=12?above:Math.min(window.innerHeight-height-12,rect.bottom+10);
+    box.style.left=left+'px';
+    box.style.top=Math.max(12,top)+'px';
+  }
+  function hideTip(){tipNode().hidden=true;clearTimeout(tipTimer);tipTimer=0;}
+  function showTip(cell,hold){
+    if(!cell||!cell.dataset.day)return;
+    placeTip(cell);
+    clearTimeout(tipTimer);tipTimer=0;
+    if(hold)tipTimer=setTimeout(hideTip,2600);
   }
   function bindHeat(){
     var grid=document.getElementById('maintHeatmap');
     if(!grid||grid.dataset.bound)return;
     grid.dataset.bound='1';
-    grid.addEventListener('mouseover',function(event){
-      var cell=event.target.closest('.maint-cell');if(!cell||!cell.dataset.day)return;
-      var box=tip(),day=cell.dataset.day,count=Number(cell.dataset.count)||0;
-      box.replaceChildren(el('strong',day+(day===activity.today?' · 今天':'')),el('span',count?count+' 次提交':'没有提交'));
-      if(count){
-        var rows=(activity.commits||[]).filter(function(item){return item[0]===day;}).slice(0,5);
-        rows.forEach(function(item){box.append(el('em',item[1]+' '+item[2]));});
-        if(count>rows.length)box.append(el('em','还有 '+(count-rows.length)+' 条…'));
-      }
-      box.hidden=false;
-      var rect=cell.getBoundingClientRect(),width=box.offsetWidth;
-      var left=Math.min(window.innerWidth-width-12,Math.max(12,rect.left+rect.width/2-width/2));
-      box.style.left=left+'px';
-      box.style.top=Math.max(12,rect.top-box.offsetHeight-10)+'px';
+    grid.addEventListener('pointerover',function(event){
+      lastPointer=event.pointerType||'mouse';
+      if(lastPointer!=='mouse')return;
+      showTip(event.target.closest('.maint-cell'));
     });
-    grid.addEventListener('mouseout',function(event){
+    grid.addEventListener('pointerout',function(event){
+      if((event.pointerType||'mouse')!=='mouse')return;
       if(!event.target.closest('.maint-cell'))return;
-      tip().hidden=true;
+      hideTip();
     });
+    /* 触摸/笔：按下即出气泡——手机上唯一能看到气泡的路径 */
+    grid.addEventListener('pointerdown',function(event){
+      lastPointer=event.pointerType||'mouse';
+      if(lastPointer==='mouse'){hideTip();return;}
+      showTip(event.target.closest('.maint-cell'),true);
+    });
+    document.addEventListener('pointerdown',function(event){
+      if(event.target.closest&&event.target.closest('.maint-cell'))return;
+      hideTip();
+    },true);
+    window.addEventListener('scroll',hideTip,true);
+    window.addEventListener('resize',hideTip);
     grid.addEventListener('click',function(event){
       var cell=event.target.closest('.maint-cell');if(!cell||!cell.dataset.day)return;
-      pickedDay=pickedDay===cell.dataset.day?'':cell.dataset.day;
+      var day=cell.dataset.day;
+      pickedDay=pickedDay===day?'':day;
       renderDayList();renderHeat();
+      /* renderHeat 重建了格子，气泡节点挂在 body 上没被带走；点按后按新格子重贴一次 */
+      if(lastPointer!=='mouse')requestAnimationFrame(function(){
+        showTip(document.querySelector('.maint-cell[data-day="'+day+'"]'),true);
+      });
     });
     grid.addEventListener('keydown',function(event){
       if(event.key!=='Enter'&&event.key!==' ')return;

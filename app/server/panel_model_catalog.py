@@ -2,6 +2,11 @@
 from panel_config_txn import ConfigError,plain
 import re
 from urllib.parse import urlsplit
+# Keys the kernel or the agent loop owns. A value under one of these names would
+# rewrite the request envelope itself — `tools` in particular replaces the
+# agent's whole tool array, which silently disables every tool mid-session. They
+# are refused instead of stored, so a typo cannot degrade the agent.
+REQUEST_EXTRA_BLOCKED=('tools','tool_choice','messages','model','stream','stream_options','n','input','instructions','prompt','system','response_format')
 def enabled(item):
  flag=item.get('enabled',True)
  return flag.strip().lower() not in ('false','0','no','off') if isinstance(flag,str) else bool(flag)

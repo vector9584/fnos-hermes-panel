@@ -13,7 +13,9 @@
     // 现在八个分区就是八个真页面，顶部页签直接列八项，页内底槽撤掉。
     {id:'models',title:'模型',icon:'models',pages:[
       ['models-general','通用模型'],['models-api','模型 API'],['models-aux','辅助模型'],['models-moa','组合模型'],
-      ['models-jev','JEV'],['models-stt','STT 提供方'],['models-tts','TTS 提供方'],['models-checks','响应验证']]},
+      ['models-jev','JEV'],['models-stt','STT 提供方'],['models-tts','TTS 提供方'],['models-checks','响应验证'],
+      /* 2026-11-15：能力实验室。配置项 ≠ 能力，这一页把服务端能力做成可点的卡。 */
+      ['models-caps','能力实验室']]},
     {id:'maintenance',title:'维护',icon:'overview',pages:[['overview','运行状态'],['usage','用量统计'],['updates','本地版本']]},
     {id:'settings',title:'设置',icon:'settings',pages:[['settings','偏好设置']]},
   ];
@@ -63,9 +65,29 @@
     // 页内分区条不管 HTML 里叫什么容器（ch-filterbar / skill-subtabs / ext-tabs…），
     // 只要有 .ui-tab 就自动套上 .ui-tabs 的底槽，免得下回又漏掉一条、长成裸按钮。
     document.querySelectorAll('.ui-tab').forEach(function(t){var box=t.parentElement;if(box&&!box.classList.contains('ui-tabs'))box.classList.add('ui-tabs');});
-    var toggle=document.getElementById('sidebarToggle');if(toggle)toggle.hidden=page!=='chat';
+    syncRailToggle(page);
+
     if(page!=='chat')sidebar.classList.remove('collapsed');
     if(moreDialog&&moreDialog.open)moreDialog.close();
+  }
+  /* 顶栏这颗折叠按钮两个页面共用（2026-11-15 用户驳回档案页自造 ☰ 之后）：
+     对话页它开关会话树，档案三页（提示词/知识库/留痕录）它开关资料树。
+     档案页桌面端左栏常驻，不需要按钮，只在窄屏（≤900，和 archive.css 同一档）露出来。
+     这里只负责显隐；点下去干什么由 toggleRail() 分派。
+     ⚠️ 显隐是重点：display:none 的按钮 element.click() 照样触发事件，
+     只验"点了有效果"会漏掉"人根本看不见它"——上一版就是这么交付给用户的。 */
+  function syncRailToggle(page){
+    var toggle=document.getElementById('sidebarToggle');
+    if(!toggle)return;
+    page=page||activePage;
+    var arcPage=page==='assistant'||page==='kb'||page==='memory';
+    var narrow=window.matchMedia?window.matchMedia('(max-width:900px)').matches:window.innerWidth<=900;
+    toggle.hidden=!(page==='chat'||(arcPage&&narrow));
+    var open=arcPage&&window.Archive&&window.Archive.railDrawerOpen?!!window.Archive.railDrawerOpen():false;
+    toggle.setAttribute('aria-expanded',String(open));
+    if(arcPage&&narrow)toggle.title=open?'收起资料目录':'展开资料目录';
+    /* 切回对话页时把档案页留下的标题换掉，否则会出现"对话页按钮写着展开资料目录" */
+    else if(page==='chat'){var rail=document.getElementById('chatRail');toggle.title=(rail&&!rail.classList.contains('hidden'))?'折叠会话树':'展开会话树';}
   }
   function boot(){
     sidebar=document.querySelector('.global-sidebar');if(!sidebar)return;
@@ -116,6 +138,10 @@
     document.addEventListener('pointerdown',function(e){_pressTarget=e.target;},true);
     document.addEventListener('touchstart',function(e){_pressTarget=e.target;},{capture:true,passive:true});
     document.addEventListener('hermes:page',function(event){select(event.detail.page);});
+    /* 旋转屏幕 / 分屏 / 拉窗口跨过 900px 时，顶栏那颗按钮要跟着出现或消失；
+       只在切页时算一次，用户横屏回竖屏就得切页才回来。 */
+    var _railTimer=null;
+    window.addEventListener('resize',function(){clearTimeout(_railTimer);_railTimer=setTimeout(function(){syncRailToggle(activePage);},150);});
     window.addEventListener('hashchange',function(){var page=(location.hash.replace(/^#\/?/,'').split('/')[0]||'chat');page=aliases[page]||page;if(page!==activePage&&document.getElementById('page-'+page))navigate(page);});
     function viewportChanged(){
       var viewport=window.visualViewport;

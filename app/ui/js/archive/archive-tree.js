@@ -191,9 +191,36 @@ window.Archive.register('tree', (function () {
   }
 
   /* ---------- 树本体：输入时只重画这里 ---------- */
+  /* 重绘第一句是 scroller.replaceChildren()：整棵子树连同滚动位置一起被扔掉，
+     位置能不能自己活下来全看引擎（本机 Chromium 实测能活，用户那台会归零 →
+     「滚到下面展开一个文件夹，列表一下跳回最上面」）。另外每重建一次，
+     700+ 行 DOM 都要重新构造。所以：画之前记位置、画完放回去；
+     换了筛选词才回顶部——那是换了一批结果，留着位置没意义。 */
   function paint(st, p, host, open) {
-    var scroller = p.scroller;
     var q = String(st.q || '').trim().toLowerCase();
+    var prevTop = p.scroller.scrollTop;
+    var keepScroll = q === p.lastQ && prevTop > 0;
+    p.lastQ = q;
+    try {
+      paintTree(st, p, host, open, q);
+    } finally {
+      if (keepScroll) {
+        p.scroller.scrollTop = prevTop;
+        /* 新内容要等一次重排才定高，下一帧再兜一次；超出可滚范围就贴底 */
+        requestAnimationFrame(function () {
+          var max = p.scroller.scrollHeight - p.scroller.clientHeight;
+          var want = Math.min(prevTop, max > 0 ? max : 0);
+          if (Math.abs(p.scroller.scrollTop - want) > 0.5) p.scroller.scrollTop = want;
+        });
+      } else if (prevTop > 0) {
+        /* 换筛选词：结果集变了，显式回顶部，别指望浏览器替我们钳 */
+        p.scroller.scrollTop = 0;
+      }
+    }
+  }
+
+  function paintTree(st, p, host, open, q) {
+    var scroller = p.scroller;
     var rows = A.rowsOf(st);
     p.count.textContent = rows.length + ' 份';
 
@@ -228,7 +255,7 @@ window.Archive.register('tree', (function () {
       groupHead.setAttribute('aria-expanded', folded ? 'false' : 'true');
       groupHead.append(
         caretNode(!folded),
-        ico(folded ? 'folder' : 'folderOpen'),
+        ico('folderFill'),
         A.el('span', source.name, 'arc-group-name'),
         A.el('span', injectLabel(source), 'arc-badge' + (source.injected === 'full' ? ' is-full' : '')),
         A.el('span', String(items.length), 'arc-cnt')
@@ -255,7 +282,7 @@ window.Archive.register('tree', (function () {
       row.append(ico(sp.icon || 'lock'), A.el('span', sp.label, 'arc-special-name'));
       if (typeof st.vaultCount === 'number') row.append(A.el('span', String(st.vaultCount), 'arc-cnt'));
       row.onclick = function () {
-        st.nodes.shell.classList.remove('rail-open');
+        A.closeRailDrawer();
         A.setView(st, sp.view);
       };
       group.append(row);
@@ -267,6 +294,25 @@ window.Archive.register('tree', (function () {
       return;
     }
     scroller.append(nav);
+  }
+
+  /* 单个目录的展开/收起：就地增删那一段 .arc-kids，不碰整棵树。
+     整棵重画会把旧节点全扔掉，滚动位置在有些引擎上直接归零（用户那台就是）；
+     就地换子树则一行不动，滚动位置根本没机会丢。
+     只有 .arc-kids 是展开着的目录、且它紧接着这一行才算命中结构（walk 里就是这么 append 的）。 */
+  function toggleKids(row, child, nowFolded, st, p, host, open, srcId, q, path) {
+    row.setAttribute('aria-expanded', nowFolded ? 'false' : 'true');
+    var caret = row.querySelector('.arc-caret');
+    if (caret) caret.classList.toggle('is-open', !nowFolded);
+    var ti = row.querySelector('.arc-ti');
+    if (ti) ti.replaceChildren(A.svgIcon('folderFill', 14));
+    var sib = row.nextElementSibling;
+    var hasKids = !!(sib && sib.classList && sib.classList.contains('arc-kids'));
+    if (nowFolded) {
+      if (hasKids) sib.remove();
+      return;
+    }
+    if (!hasKids) row.after(walk(child, st, p, host, open, srcId, q, path));
   }
 
   /* 递归：一层目录 = 一行 .arc-row.dir + 一个 .arc-kids 容器 */
@@ -293,13 +339,19 @@ window.Archive.register('tree', (function () {
       name.append(markText(key, q));
       row.append(
         caretNode(!folded),
-        ico(folded ? 'folder' : 'folderOpen'),
+        ico('folderFill'),
         name,
         A.el('span', String(countLeaves(child)), 'arc-cnt')
       );
       row.onclick = function () {
-        st.folded[fk] = !folded;
+        /* 状态从 DOM 读，不用闭包里那个渲染时的 folded：
+           就地切换后闭包还停在旧值，第二次点会把"已收起"再收一次，看着像点不动。 */
+        var nowFolded = row.getAttribute('aria-expanded') === 'true';
+        st.folded[fk] = nowFolded;
         A.writeFold(st);
+        /* 有筛选词时保持老行为（搜索态一律展开，重画才一致）；
+           没有筛选词就地换子树，整棵重画会把滚动位置打到顶部 */
+        if (!q) { toggleKids(row, child, nowFolded, st, p, host, open, srcId, q, path); return; }
         paint(st, p, host, open);
       };
       box.append(row);
@@ -320,14 +372,14 @@ window.Archive.register('tree', (function () {
     var name = String(item.title || item.path).replace(/\.md$/i, '');
     /* 文件行补一个和折叠箭头同宽的占位：目录行有 caret(12)+gap(7) 才到图标，
        文件行不补就会顶到父级箭头那一列，名字看着比父级还靠左，像退了一级。 */
-    b.append(A.el('span', null, 'arc-caret'), ico('file'));
+    b.append(A.el('span', null, 'arc-caret'), ico('fileFill'));
     var label = A.el('span', null, 'arc-leaf-name');
     label.append(markText(name, q));
     b.append(label);
     var meta = item.missing ? '未建立' : kb(item.bytes);
     if (meta) b.append(A.el('span', meta, 'arc-leaf-meta'));
     b.onclick = function () {
-      st.nodes.shell.classList.remove('rail-open');
+      A.closeRailDrawer();
       open(st, item.source, item.path);
     };
     return b;

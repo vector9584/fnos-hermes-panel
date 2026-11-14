@@ -26,7 +26,7 @@
     { n: 'queue',       d: '排一条消息进队列',           a: '消息内容',    k: 'chip' },
     { n: 'steer',       d: '补充要求，插到队首',          a: '补充要求',    k: 'chip' },
     { n: 'goal',        d: '设定跨回合目标',            a: '目标',       k: 'chip' },
-    { n: 'compress',    d: '压缩上下文（真压缩，可加「预览」先看收益）', a: '', k: 'none' },
+    { n: 'compress',    d: '压缩上下文（点会话头 % 出预览·压掉的原文留档可翻）', a: '', k: 'none' },
     { n: 'stop',        d: '停止当前回合',              a: '',          k: 'none' },
     { n: 'interrupt',   d: '同 /stop',                 a: '',          k: 'none' },
     { n: 'usage',       d: '用量与花费',                a: '',          k: 'none' },

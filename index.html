@@ -76,16 +76,40 @@
     transform-origin:var(--fx,50%) var(--fy,50%);
     transform:scale(1); will-change:transform;
   }
-  /* 14s 一轮：0→38% 推近，38→62% 停住让人看清，62→100% 拉回 */
-  .shot.in .shot-frame img{animation:dolly 14s cubic-bezier(.4,0,.55,1) infinite}
+  /* 6.2s 一轮，快进快出：0→8% 静止，8→30% 一秒钟推到 1.85，30→62% 停住，
+     62→84% 拉回，84→100% 喘息。上一版 14s 是纪录片慢镜头，不是"啪"一声。 */
+  .shot.in .shot-frame img{animation:dolly 6.2s cubic-bezier(.16,1,.3,1) infinite}
   @keyframes dolly{
-    0%   {transform:scale(1)}
-    38%  {transform:scale(1.85)}
-    62%  {transform:scale(1.85)}
-    100% {transform:scale(1)}
+    0%,8%    {transform:scale(1)}
+    30%,62%  {transform:scale(1.85)}
+    84%,100% {transform:scale(1)}
   }
   @media(prefers-reduced-motion:reduce){
     .shot.in .shot-frame img{animation:none}
+  }
+
+  /* ---------- 入场：短促级联 ---------- */
+  /* "啪啪啪"不是单个长缓动，是一串短促打击。每个元素 170ms 走完，
+     相邻间隔 38ms，一组五六个元素在半秒内全部落位。 */
+  /* 注意：隐藏态挂在 .js-anim 上，只有 JS 真跑起来才生效。
+     写死 .rv{opacity:0} 的话，脚本一旦报错整页就全白 —— 动效不能拿内容当人质。 */
+  .js-anim .rv{
+    opacity:0; transform:translateY(16px);
+    transition:opacity .17s cubic-bezier(.2,.9,.2,1),
+               transform .17s cubic-bezier(.2,.9,.2,1);
+    transition-delay:calc(var(--i,0) * 38ms);
+  }
+  .js-anim .rv.in{opacity:1; transform:none}
+  /* 图注、编号这类"印刷件"从左擦入，比位移更像套印落版 */
+  .js-anim .rv-wipe{
+    opacity:0;
+    clip-path:inset(0 100% 0 0);
+    transition:opacity .1s linear, clip-path .22s cubic-bezier(.16,1,.3,1);
+    transition-delay:calc(var(--i,0) * 38ms);
+  }
+  .js-anim .rv-wipe.in{opacity:1; clip-path:inset(0 0 0 0)}
+  @media(prefers-reduced-motion:reduce){
+    .rv,.rv-wipe{opacity:1; transform:none; clip-path:none; transition:none}
   }
   /* 取景器四角标记 */
   .cm{
@@ -259,9 +283,41 @@
   footer{padding:56px 0 80px; color:var(--fg-faint); font-size:14px}
   footer a{color:var(--fg-dim)}
   .foot-links{display:flex; flex-wrap:wrap; gap:22px; margin-bottom:18px}
+  /* ---------- 章节导航：右侧竖排刻度 ---------- */
+  /* 参考「编辑部专题」那版的做法：右侧一列短刻度，当前章节那条拉长变铜。
+     不做成带字的按钮堆 —— 那会跟正文抢眼神，专题页靠留白说话。 */
+  .rail{position:fixed;right:20px;top:50%;transform:translateY(-50%);z-index:60;
+        display:flex;flex-direction:column;align-items:flex-end;gap:9px}
+  .rail a{display:block;width:16px;height:2px;background:var(--line);
+          transition:width .14s cubic-bezier(.2,.9,.2,1),background .14s linear}
+  .rail a:hover{background:var(--fg-dim)}
+  .rail a.on{width:32px;background:var(--accent)}
+  @media(max-width:1000px){.rail{display:none}}
+
+  .pcount{font-family:JBMono,monospace;font-size:10px;letter-spacing:.18em;
+          color:var(--fg-faint);margin-left:16px;white-space:nowrap}
+  .pcount b{color:var(--accent);font-weight:400}
+
+  /* ---------- 能做到 / 还差什么 两栏对照 ---------- */
+  /* 同一件事左右并排，右栏降饱和。边界要看得清，但不能让人读出「失败清单」的味道。 */
+  .pair{display:grid;grid-template-columns:1fr 1fr;gap:0 42px}
+  .pair ul{list-style:none;margin:0;padding:0}
+  .pair li{padding:13px 0;border-bottom:1px solid var(--line-soft);
+           font-size:15px;line-height:1.55}
+  .pair li::before{content:"—";margin-right:9px;color:var(--accent)}
+  .pair .no li{color:var(--fg-dim)}
+  .pair .no li::before{color:var(--fg-faint)}
+  .pair .h{font-family:JBMono,monospace;font-size:11px;letter-spacing:.2em;
+           text-transform:uppercase;color:var(--accent);
+           padding:0 0 12px;border-bottom:1px solid var(--line)}
+  .pair .h::before{content:"";margin:0}
+  .pair .no .h{color:var(--fg-faint)}
+  @media(max-width:760px){.pair{grid-template-columns:1fr;gap:34px}}
+
 </style>
 </head>
 <body>
+<script>document.documentElement.classList.add('js-anim');</script>
 
 <nav class="topbar">
   <div class="wrap topbar-in">
@@ -557,13 +613,24 @@
     <div class="sec-head"><div class="num">09</div><h2>还没做完的部分，写在明面上</h2></div>
     <p class="sub">省得你装上才发现。</p>
 
-    <ul class="plain honest">
-      <li>移动端能用，但还有几页在打磨。手机上的手感不如桌面</li>
-      <li>多人协作只做到了「一台机器多个入口」，真正的团队权限和成员管理还没做</li>
-      <li>技能市场没有。358 个技能是自己一台台攒出来的，装到别人机器上不会自动同步</li>
-      <li>文档偏技术，面向的是想改代码的人。只想用、不想改的人会觉得话太多</li>
-      <li>升级要手动。应用中心装完，新版本得自己下包覆盖，还没有自动更新</li>
-    </ul>
+    <div class="pair">
+      <ul class="yes">
+        <li class="h">已经能做到</li>
+        <li>手机能用，主要页面都通了</li>
+        <li>一台机器开几个入口，几个人各用各的</li>
+        <li>技能随手装、随手关，一个不开也不挡路</li>
+        <li>有文档，写给想改代码的人</li>
+        <li>应用中心点一下就能装上</li>
+      </ul>
+      <ul class="no">
+        <li class="h">还差什么</li>
+        <li>几页手感还在磨，不如桌面跟手</li>
+        <li>没有团队权限和成员管理，算不上真协作</li>
+        <li>没有技能市场，换台机器不会自动同步</li>
+        <li>只想用、不想改的人，会嫌话太多</li>
+        <li>新版本得自己下包覆盖，不能自动更新</li>
+      </ul>
+    </div>
   </div>
 </section>
 
@@ -605,6 +672,37 @@
 
 <script>
 (function(){
+  // 入场级联：给每节的直接子元素编号，滚进视口时按 38ms 间隔依次落位。
+  // 只播一次 —— 上下来回滚还重放，读起来像页面在抽筋。
+  var groups = [];
+  var heroCol = document.querySelector('.hero-grid > div');
+  if (heroCol) groups.push([].slice.call(heroCol.children));
+  var heroArt = document.querySelector('.hero-art');
+  if (heroArt) groups.push([heroArt]);
+  [].forEach.call(document.querySelectorAll('section > .wrap'), function(w){
+    groups.push([].slice.call(w.children));
+  });
+
+  var targets = [];
+  groups.forEach(function(g){
+    g.forEach(function(el, i){
+      el.classList.add('rv');
+      el.style.setProperty('--i', String(i));
+      targets.push(el);
+    });
+  });
+
+  if (!('IntersectionObserver' in window)) {
+    targets.forEach(function(el){ el.classList.add('in'); });
+  } else {
+    var io2 = new IntersectionObserver(function(es){
+      es.forEach(function(e){
+        if (e.isIntersecting) { e.target.classList.add('in'); io2.unobserve(e.target); }
+      });
+    }, {threshold: 0, rootMargin: '0px 0px -6% 0px'});
+    targets.forEach(function(el){ io2.observe(el); });
+  }
+
   // 取景器：滚进视口才开始推镜，滚出去就停，省电也省得同时跑六路动画。
   var shots = [].slice.call(document.querySelectorAll('.shot'));
   if ('IntersectionObserver' in window) {
@@ -646,6 +744,72 @@
   document.addEventListener('keydown', function(e){
     if (e.key === 'Escape' && lb.classList.contains('on')) closeLb();
   });
+
+  // 章节刻度：右侧一列，页眉显示当前是第几节，左右键翻章。
+  // 翻章键只在没有焦点在输入框时生效 —— 这页没输入框，但别把规矩留给下一次。
+  (function(){
+    var secs = [].slice.call(document.querySelectorAll('section'));
+    if (!secs.length) return;
+    var links = document.querySelector('.topbar-links');
+    var pc = null;
+    if (links && links.parentNode) {
+      pc = document.createElement('span');
+      pc.className = 'pcount';
+      links.parentNode.insertBefore(pc, links.nextSibling);
+    }
+    var rail = document.createElement('nav');
+    rail.className = 'rail';
+    rail.setAttribute('aria-label', '章节导航');
+    var dots = secs.map(function(s, i){
+      if (!s.id) s.id = 's' + (i + 1 < 10 ? '0' : '') + (i + 1);
+      var a = document.createElement('a');
+      a.href = '#' + s.id;
+      a.title = '第 ' + (i + 1) + ' 节';
+      rail.appendChild(a);
+      return a;
+    });
+    document.body.appendChild(rail);
+
+    var total = (secs.length < 10 ? '0' : '') + secs.length;
+    var cur = -1;
+    function mark(i){
+      if (i === cur) return;
+      cur = i;
+      dots.forEach(function(a, k){ a.classList.toggle('on', k === i); });
+      if (pc) pc.innerHTML = '<b>' + (i + 1 < 10 ? '0' : '') + (i + 1) + '</b> / ' + total;
+    }
+    mark(0);
+
+    // 用滚动位置算当前节，比 IntersectionObserver 稳：长节不会被整段跳过
+    var ticking = false;
+    function onScroll(){
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(function(){
+        var y = window.scrollY + window.innerHeight * 0.34;
+        var i = 0;
+        for (var k = 0; k < secs.length; k++) {
+          if (secs[k].offsetTop <= y) i = k;
+        }
+        mark(i);
+        ticking = false;
+      });
+    }
+    window.addEventListener('scroll', onScroll, {passive: true});
+    onScroll();
+
+    window.addEventListener('keydown', function(e){
+      if (e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return;
+      var t = (e.target && e.target.tagName) || '';
+      if (t === 'INPUT' || t === 'TEXTAREA' || t === 'SELECT') return;
+      var d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+      if (!d) return;
+      var i = cur + d;
+      if (i < 0 || i >= secs.length) return;
+      e.preventDefault();
+      secs[i].scrollIntoView({behavior: 'smooth', block: 'start'});
+    });
+  })();
 })();
 </script>
 </body>

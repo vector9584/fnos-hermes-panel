@@ -119,6 +119,10 @@ window.Archive = (function () {
       folderOpen: { d: ['M3 10V8a2 2 0 0 1 2-2h3.4l1.8 2H19a2 2 0 0 1 2 2v1',
                         'M3 10h18l-2.1 7.4A2 2 0 0 1 17 19H5.1a2 2 0 0 1-2-1.7z'] },
       file: { d: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5'] },
+      /* 实心系列（2026-11-15 统一）：和对话左栏 PwTree 的文件夹图标是同一个 path，
+         折叠/展开只让箭头转、不换图标——那正是对话那边看着更利落的原因。 */
+      folderFill: { fill: true, d: ['M2.6 6.4A2.4 2.4 0 0 1 5 4h3.7c.64 0 1.25.25 1.7.7L11.9 6.1H19a2.4 2.4 0 0 1 2.4 2.4v9.1A2.4 2.4 0 0 1 19 20H5a2.4 2.4 0 0 1-2.4-2.4z'] },
+      fileFill: { fill: true, d: ['M6.6 3h6.6l4.8 4.8V21H6.6z'] },
       chevron: { d: ['M9.5 6.5 15 12l-5.5 5.5'] },
       info: { d: ['M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z', 'M12 11v5.4', 'M12 7.6h.01'] },
       tag: { d: ['M3 12.4V4h8.4L21 13.6 12.6 22z', 'M7.2 7.2h.01'] },
@@ -132,11 +136,17 @@ window.Archive = (function () {
     var s = document.createElementNS(ns, 'svg');
     s.setAttribute('viewBox', '0 0 24 24');
     s.setAttribute('width', String(px)); s.setAttribute('height', String(px));
-    s.setAttribute('fill', 'none');
-    s.setAttribute('stroke', 'currentColor');
-    s.setAttribute('stroke-width', px <= 14 ? '1.8' : '1.7');
-    s.setAttribute('stroke-linecap', 'round');
-    s.setAttribute('stroke-linejoin', 'round');
+    if (def.fill) {
+      /* 实心图标：与对话树一致（描边细线那套在 16px 下看不清） */
+      s.setAttribute('fill', 'currentColor');
+      s.setAttribute('stroke', 'none');
+    } else {
+      s.setAttribute('fill', 'none');
+      s.setAttribute('stroke', 'currentColor');
+      s.setAttribute('stroke-width', px <= 14 ? '1.8' : '1.7');
+      s.setAttribute('stroke-linecap', 'round');
+      s.setAttribute('stroke-linejoin', 'round');
+    }
     s.setAttribute('aria-hidden', 'true');
     s.classList.add('arc-svg');
     list.forEach(function (d) {
@@ -315,16 +325,12 @@ window.Archive = (function () {
       newBtn.onclick = function () { askNew(st); };
       tools.append(newBtn);
     }
-    /* 目录开关单独一个节点，不塞进 tools：手机上它要排在搜索框左边 */
-    var railBtn = el('button', null, 'arc-icon-btn arc-rail-toggle');
-    railBtn.append(svgIcon('menu'), el('span', '目录', 'arc-label'));
-    railBtn.title = '展开/收起资料目录';
-    railBtn.dataset.arc = 'rail';
-
-    /* 顺序对齐案例 toolbar：标题 → 视图页签 → 新增笔记 → 目录 → 搜索框（margin-left:auto 居右） */
+    /* 目录抽屉（2026-11-15 用户要求）：不再自造 ☰ 和「目录」按钮。
+       手机上复用顶栏那颗共用的 #sidebarToggle —— 对话页它开会话树，档案页它开资料树，
+       同一个位置、同一颗按钮、同一套抽屉动效。桌面端左栏常驻，本来就不需要按钮。 */
     head.append(titleWrap);
     if (views) head.append(views);
-    head.append(tools, railBtn, box);
+    head.append(tools, box);
 
     var shell = el('div', null, 'arc-shell');
     var rail = el('aside', null, 'arc-rail');
@@ -332,7 +338,7 @@ window.Archive = (function () {
     var main = el('section', null, 'arc-main');
     /* 遮罩放进 shell 里：手机上它只该盖住文档区，不能连页头一起盖（先前是 fixed inset:0，整页发黑） */
     var scrim = el('div', null, 'arc-scrim');
-    scrim.onclick = function () { shell.classList.remove('rail-open'); };
+    scrim.onclick = function () { closeRailDrawer(); };
     shell.append(rail, scrim, main);
 
     /* 页面底部状态条（案例 statusbar）：左来源 / 中路径 / 右生效状态 */
@@ -348,8 +354,6 @@ window.Archive = (function () {
     };
 
     page.append(head, st.nodes.status, shell, footbar);
-
-    railBtn.onclick = function () { shell.classList.toggle('rail-open'); };
 
     var saved = readView(pageId);
     if (saved && cfg.views.some(function (v) { return v[0] === saved; })) st.view = saved;
@@ -650,6 +654,8 @@ window.Archive = (function () {
       if (ev.key === 'Escape') {
         var open = document.querySelector('.arc-search.show');
         if (open) { ev.preventDefault(); if (modules.search) modules.search.close(st); return; }
+        /* 抽屉开着先收抽屉——和对话那边 Esc 收会话树的习惯一致 */
+        if (st.nodes.shell.classList.contains('rail-open')) { ev.preventDefault(); closeRailDrawer(); return; }
       }
       if (st.view !== 'doc' || !modules.doc) return;
       if (meta && key === 's') {
@@ -660,7 +666,7 @@ window.Archive = (function () {
         modules.doc.toggleEdit(st);
       } else if (meta && key === 'b') {
         ev.preventDefault();
-        st.nodes.shell.classList.toggle('rail-open');
+        toggleRailDrawer();
       }
     });
   }
@@ -732,13 +738,52 @@ window.Archive = (function () {
 
   function register(name, module) { modules[name] = module; }
 
+  /* ── 资料树抽屉：和对话的会话树共用顶栏那颗 #sidebarToggle ──
+     对话那边见 new-dialog.js 的 toggleRail()：手机上它开的是会话树抽屉。
+     这里只提供「当前档案页 + 开/关/同步按钮状态」三件事，谁调都行。 */
+  function activeState() {
+    var id = document.body.dataset.arcPage;
+    var st = id ? states[id] : null;
+    return st && st.nodes && st.nodes.shell ? st : null;
+  }
+  function railDrawerOpen() {
+    var st = activeState();
+    return !!(st && st.nodes.shell.classList.contains('rail-open'));
+  }
+  function syncRailButton() {
+    var btn = document.getElementById('sidebarToggle');
+    var st = activeState();
+    if (!btn || !st) return;
+    var open = st.nodes.shell.classList.contains('rail-open');
+    btn.title = open ? '收起资料目录' : '展开资料目录';
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  /* 返回 true = 这件事归档案页处理了，调用方（toggleRail）就此打住 */
+  function toggleRailDrawer() {
+    var st = activeState();
+    if (!st) return false;
+    st.nodes.shell.classList.toggle('rail-open');
+    syncRailButton();
+    return true;
+  }
+  function closeRailDrawer() {
+    Object.keys(states).forEach(function (id) {
+      var st = states[id];
+      if (st && st.nodes && st.nodes.shell) st.nodes.shell.classList.remove('rail-open');
+    });
+    syncRailButton();
+  }
+
   /* 切换到本页时：刷新一次目录（60 秒节流在 loadCatalog 里） */
   document.addEventListener('hermes:page', function (ev) {
     var page = ev.detail && ev.detail.page;
-    if (!PAGES[page]) return;
+    /* 记住「现在停在哪个档案页」：顶栏按钮靠它决定开哪棵树 */
+    if (PAGES[page]) document.body.dataset.arcPage = page;
+    else if (document.body.dataset.arcPage) { delete document.body.dataset.arcPage; }
+    if (!PAGES[page]) { closeRailDrawer(); return; }
     mount(page);
     var st = states[page];
-    if (st) { renderView(st); loadCatalog(page, false); }
+    if (st) { renderView(st); loadCatalog(page, false); syncRailButton(); }
   });
   /* 挂载由 archive-boot.js 在脚本末尾同步触发：这样紧随其后的
      panel-library-reviews-ui.js 才能把「整理草稿」按钮塞进新建的页头。 */
@@ -803,6 +848,8 @@ window.Archive = (function () {
     el: el, svgIcon: svgIcon, rowsOf: rowsOf, sourceOf: sourceOf,
     paintStatus: paintStatus, foot: foot, apiBag: apiBag, writeFold: writeFold,
     catColor: catColor, colorOf: colorOf, isLight: isLight,
+    toggleRailDrawer: toggleRailDrawer, closeRailDrawer: closeRailDrawer,
+    railDrawerOpen: railDrawerOpen, syncRailButton: syncRailButton,
     fm: { split: fmSplit, join: fmJoin, uniqTags: uniqTags }
   };
 })();

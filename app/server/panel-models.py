@@ -10,7 +10,7 @@ FIELDS=('providers','custom_providers','model','fallback_providers','fallback_mo
 MODES=('chat_completions','codex_responses','anthropic_messages')
 def revision(value):return checksum(semantic(value).encode())
 def subset(data):return {key:data[key] for key in FIELDS if key in data}
-from panel_model_catalog import enabled,entries,model_rows,model_ids,available_models,credential_fields,CREDENTIAL_FIELDS,provider_fields
+from panel_model_catalog import enabled,entries,model_rows,model_ids,available_models,credential_fields,CREDENTIAL_FIELDS,provider_fields,REQUEST_EXTRA_BLOCKED
 from panel_model_credentials import inspect as inspect_credentials
 
 def effective_chain(data):
@@ -45,6 +45,7 @@ def public_provider(identifier,entry,legacy=None):
   'credential_source':'配置密钥优先，环境变量回退' if origin=='custom_providers' and credentials['api_key'] and credentials['key_env'] else '环境变量优先，配置密钥回退' if credentials['api_key'] and credentials['key_env'] else '环境变量' if credentials['key_env'] or credentials['api_key'].startswith('${') else '配置密钥' if credentials['api_key'] else '无密钥',
   'header_keys':list(item.get('extra_headers',{})) if isinstance(item.get('extra_headers',{}),dict) else [],
   'extra':{key:item[key] for key in ('context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify') if key in item},
+  'request_extra':dict(item.get('extra_body')) if isinstance(item.get('extra_body'),dict) else {},
   'note':str(item.get('note') or '')}
 
 def catalog(data,legacy=None):
@@ -56,6 +57,7 @@ def catalog(data,legacy=None):
  return {'ok':True,'revision':revision(subset(data)),'providers':providers,'primary':current,'fallbacks':chain,
   'active_provider':next((p['name'] for p in providers if p['id']==route_id(current['provider'])),current['provider']),
   'fallback_providers':[next((p['name'] for p in providers if p['id']==route_id(item['provider'])),item['provider']) for item in chain],
+  'request_extra_rules':{'blocked':list(REQUEST_EXTRA_BLOCKED)},
   'hermes_configured':bool(current['provider'] and current['model'])}
 
 MOA_NAME=re.compile(r'[A-Za-z0-9_-]{1,40}')
@@ -155,8 +157,37 @@ def destination(value):
   u=urlsplit(value);return u.scheme,u.hostname,u.port
  except ValueError:raise ConfigError('模型服务地址格式不正确')
 
+def request_extra(value):
+ # Generic per-provider extra request-body params. The kernel copies
+ # providers.<id>.extra_body straight into the outgoing body, so whatever lands
+ # here reaches the provider verbatim — no kernel key list to validate against,
+ # which is exactly why the envelope keys are blocked above and the rest is only
+ # checked for shape and size.
+ if not isinstance(value,dict):raise ConfigError('请求扩展参数需为对象')
+ if len(value)>64:raise ConfigError('请求扩展参数最多 64 项')
+ for key in value:
+  if not isinstance(key,str) or not re.fullmatch(r'[A-Za-z0-9_.-]{1,64}',key):raise ConfigError('参数名不正确：'+str(key)[:40])
+  if key.lower() in REQUEST_EXTRA_BLOCKED:raise ConfigError('该参数会覆盖请求结构，面板不放行：'+key)
+ def walk(node,depth):
+  if depth>4:raise ConfigError('请求扩展参数嵌套过深（最多 4 层）')
+  if isinstance(node,dict):
+   for key,child in node.items():
+    if not isinstance(key,str) or not key or len(key)>64:raise ConfigError('嵌套参数名不正确')
+    walk(child,depth+1)
+  elif isinstance(node,list):
+   if len(node)>200:raise ConfigError('请求扩展参数列表过长（最多 200 项）')
+   for child in node:walk(child,depth+1)
+  elif node is None or isinstance(node,(bool,int,float)):
+   pass
+  elif isinstance(node,str):
+   if len(node)>8000:raise ConfigError('请求扩展参数文本过长')
+  else:raise ConfigError('请求扩展参数只接受 JSON 可表示的值')
+ walk(value,1)
+ if len(json.dumps(value,ensure_ascii=False))>16000:raise ConfigError('请求扩展参数体积过大')
+ return copy.deepcopy(value)
+
 def patch(old,changes,origin='providers',legacy=None):
- if not isinstance(changes,dict) or set(changes)-{'name','base_url','api_mode','default_model','models','credential','headers','note','context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify','headers_json'}:raise ConfigError('模型服务修改字段不正确')
+ if not isinstance(changes,dict) or set(changes)-{'name','base_url','api_mode','default_model','models','credential','headers','note','context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify','headers_json','request_extra'}:raise ConfigError('模型服务修改字段不正确')
  new=copy.deepcopy(old)
  if 'base_url' in changes:
   url=text(changes['base_url'],'模型服务地址',2000);u=urlsplit(url)
@@ -194,6 +225,10 @@ def patch(old,changes,origin='providers',legacy=None):
    elif operation.get('action')!='keep':raise ConfigError('请求头操作不正确')
   if headers:new['extra_headers']=headers
   else:new.pop('extra_headers',None)
+ if 'request_extra' in changes:
+  extra=changes['request_extra']
+  if extra is None:new.pop('extra_body',None)
+  else:new['extra_body']=request_extra(extra)
  if not old and (not new.get('name') or not new.get('base_url')):raise ConfigError('新服务需填写名称与服务地址')
  # Advanced per-provider knobs. Only keys the kernel recognizes are accepted; anything else
  # would be silently dropped by the runtime, so it is rejected here instead of stored as decoration.
@@ -246,8 +281,13 @@ def patch(old,changes,origin='providers',legacy=None):
     value=copy.deepcopy(value) if isinstance(value,dict) else {'id':value};value['enabled']=False;updated.append(value)
   new['models']={m['id']:{k:v for k,v in m.items() if k!='id'} for m in updated} if isinstance(old.get('models'),dict) else updated
  if 'default_model' in changes:
-  for key in ('model','default_model','defaultModel'):new.pop(key,None)
-  new['model' if origin=='custom_providers' else 'default_model']=text(changes['default_model'],'服务默认模型',500)
+  target='model' if origin=='custom_providers' else 'default_model'
+  # 2026-11-15：原来是先 pop 再赋值，键会被挪到 dict 末尾 —— 结果「打开配置页什么都不改
+  # 直接保存」也会让 config.yaml 的键顺序整体位移，diff 一片红。这里先赋值（键已存在就原地
+  # 更新、保持位置），再清掉同义别名。
+  new[target]=text(changes['default_model'],'服务默认模型',500)
+  for key in ('model','default_model','defaultModel'):
+   if key!=target:new.pop(key,None)
  default=provider_fields(new,origin)['model']
  if (not old or any(key in changes for key in ('default_model','models'))) and (not default or default not in available_models(new,origin)):raise ConfigError('服务默认模型必须在启用的模型列表中')
  return new
@@ -279,6 +319,11 @@ def execute(body,path,state,var_root=None):
    return output
   action=body.get('action')
   if action=='read':return view(data)
+  # 2026-11-15：能力实验室。只读动作，不写配置、不碰 revision——
+  # 上面所有写动作都要先过 revision 校验，这里提前返回，避免"测一下能力"被并发锁挡住。
+  if action in ('cap_matrix','cap_run'):
+   from panel_model_caps import run as run_capability
+   return run_capability({**body,'cap':'matrix' if action=='cap_matrix' else body.get('cap')},data,Path(path).parent)
   if action=='moa_read':return {**moa_view(data),'candidates':moa_candidates(data,legacy)}
   if action=='moa_save':
    if body.get('revision')!=moa_revision(data):raise ConfigError('MOA 配置已被其他页面修改，请重新核对',409)

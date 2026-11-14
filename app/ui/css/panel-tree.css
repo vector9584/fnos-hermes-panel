@@ -76,7 +76,7 @@
 .pw-tree-body>.pw-tree-inner{overflow:hidden;min-height:0}
 
 /* 子级缩进 + 引导线；父级自身不因开合而移动 */
-.pw-tree-kids{margin-left:10px;padding-left:6px}
+.pw-tree-kids{margin-left:10px;padding-left:8px;border-left:1px dashed var(--pw-tree-guide)}
 
 /* 叶子行（会话条目）与树行基线对齐 */
 .pw-tree-node>.pw-tree-body .pw-tree-kids>.session-item{border-radius:7px}

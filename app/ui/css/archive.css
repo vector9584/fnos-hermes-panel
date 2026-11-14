@@ -94,7 +94,6 @@ body.theme-dark {
 .arc-icon-btn:hover { border-color: var(--accent); color: var(--accent); }
 .arc-burger { font-size: 15px; line-height: 1; }
 .arc-icon-btn svg { flex: 0 0 auto; }
-.arc-rail-toggle { display: none; }
 
 /* ── 视图页签：容器化的分段控件（案例 .tabs/.tab），不是整行通栏 ── */
 .arc-views {
@@ -964,13 +963,16 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
      这里必须用 grid 而不是 flex + order —— order 只能调先后，不能强制换行，
      之前 order:3 让搜索框独占一行、☰ 和「新建」挤在页签右边（2026-11-14 用户驳回）。
      选择器带上 .page-header 是为了压过第 29 行那条 0,3,0 的 display:flex。 */
+  /* 页头在手机上两行：第一行「标题 + 工具」，第二行「视图页签 + 搜索框」。
+     搜索框紧跟页签后面（2026-11-15 用户要求），不再单独占一行；
+     目录入口不再自造一颗 ☰ —— 手机上一律用顶栏那颗 #sidebarToggle（对话页开会话树、
+     档案页开资料树），同一个位置、同一个抽屉动效。 */
   .arc-page .arc-head.page-header {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr) auto;
     grid-template-areas:
-      "title  title  title"
-      "views  views  views"
-      "rail   search tools";
+      "title  title  tools"
+      "views  search search";
     gap: 8px; padding: 8px 12px; align-items: center;
   }
   .arc-title { grid-area: title; }
@@ -982,12 +984,11 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
      空行会被 row-gap 撑出 8px，页头平白多一条缝。重新声明 area 即可去掉。 */
   .arc-page .arc-head.page-header.arc-no-views {
     grid-template-areas:
-      "title  title  title"
-      "rail   search tools";
+      "title  title  tools"
+      "search search search";
   }
-  .arc-rail-toggle { grid-area: rail; display: inline-flex; }
-  /* ☰ 在左、搜索框吃满中间、新建在右 */
-  .arc-searchbox { grid-area: search; display: flex; max-width: none; height: 34px; min-width: 0; overflow: hidden; }
+  /* 页签在左、搜索框吃满右边（不再有 ☰ 占位） */
+  .arc-searchbox { grid-area: search; display: flex; margin-left: 0; max-width: none; height: 34px; min-width: 0; overflow: hidden; }
   .arc-tools { grid-area: tools; margin-left: 0; }
   /* 375 下这一行是 ☰ / 搜索框 / 新增笔记 三样。搜索框内容（输入 + ⌘K + 搜索钮）
      最小宽度顶到 300px，会直接压到「新增笔记」底下——实测三者重叠 107px：
@@ -1002,16 +1003,16 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
      用户看到的就成了「整个页面都被盖住」（2026-11-14 用户驳回）。 */
   .arc-rail {
     position: absolute; top: 0; bottom: 0; left: 0; z-index: 12;
-    width: min(86vw, 330px); background: var(--card);
+    width: min(84vw, 280px); background: var(--card);
     border-right: 1px solid var(--border2);
     transform: translateX(-102%); transition: transform .24s cubic-bezier(.32, .72, 0, 1);
-    box-shadow: 12px 0 40px rgba(0, 0, 0, .28);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, .15);
   }
   .arc-shell.rail-open .arc-rail { transform: translateX(0); }
   /* 遮罩跟着进 shell，只压暗文档区；常驻 + opacity 过渡，别用 display 硬切 */
   .arc-scrim {
     display: block; position: absolute; inset: 0; z-index: 11;
-    background: rgba(4, 8, 14, .5);
+    background: rgba(0, 0, 0, .35);
     opacity: 0; pointer-events: none; transition: opacity .24s ease;
   }
   .arc-shell.rail-open .arc-scrim { opacity: 1; pointer-events: auto; }
@@ -1058,11 +1059,9 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   .arc-footbar { padding: 0 12px; gap: 10px; }
 }
 @media (max-width: 560px) {
-  /* 窄屏上「知识库」这个标题和左边导航重复，藏掉把宽度让给页签和工具 */
-  .arc-page .arc-head .arc-title { display: none; }
+  /* 窄屏不再藏标题：页头第一行现在只有标题和工具，藏了会空出一整行 */
+  .arc-page .arc-head .arc-title h1 { font-size: 13.5px; }
   .arc-tools .arc-icon-btn span { display: none; }
-  /* 目录钮已经不在 tools 里了，得单独藏字，否则 32px 方框里挤「目录」两个字 */
-  .arc-rail-toggle .arc-label { display: none; }
   .arc-icon-btn { width: 32px; padding: 0; justify-content: center; }
   .arc-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .arc-dialog { width: 100vw; max-height: 92vh; border-radius: 14px 14px 0 0; margin: auto 0 0; }

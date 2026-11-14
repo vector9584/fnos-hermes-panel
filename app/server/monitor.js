@@ -1313,7 +1313,86 @@ function purgeArchivedSession(id) {
   const f = archivedSessionFile(id);
   if (!existsSync(f)) throw Object.assign(new Error("归档会话不存在"), {status: 404});
   unlinkSync(f);
+  purgeCompressedArchives(id); // 会话没了，它压缩时留下的原文也没必要留着
   return true;
+}
+
+// ── 压缩原文归档（2026-11-15）──────────────────────────────────────────────
+// 会话压缩时被换成摘要的原文落在 `${CHAT_DIR}/compressed/<sid>/<ts>.json`。
+// 刻意和「已归档会话」共用同一套归档体系（同一个 CHAT_DIR 根、同一个面板弹窗、
+// 同一条彻底删除路径），不再另造一套：压缩 = 把原文从会话里移进归档区。
+// 归档原文里有私密对话，只经 monitor API（带 token）读，不做静态文件暴露。
+const COMPRESSED_ARCHIVE_DIR = `${CHAT_DIR}/compressed`;
+function compressedSessionDir(id) { safeId(id); return `${COMPRESSED_ARCHIVE_DIR}/${id}`; }
+function _safeBatchFile(file) {
+  const f = String(file || "");
+  if (!/^[0-9A-Za-z._-]+\.json$/.test(f) || f === "index.json") throw Object.assign(new Error("批次文件名不合法"), {status: 400});
+  return f;
+}
+function _compressedBatchMeta(dir, f) {
+  try {
+    const b = readJSON(`${dir}/${f}`);
+    return { file: f, at: b.at || 0, removed: b.removed || 0, kept: b.kept || 0,
+      before_tokens: b.before_tokens || 0, after_tokens: b.after_tokens || 0,
+      focus: b.focus || "", messages: Array.isArray(b.messages) ? b.messages.length : (b.removed || 0) };
+  } catch { return null; }
+}
+function _scanCompressedDir(dir) {
+  const rows = [];
+  try {
+    for (const f of readdirSync(dir)) {
+      if (!f.endsWith(".json") || f === "index.json") continue;
+      const m = _compressedBatchMeta(dir, f);
+      if (m) rows.push(m);
+    }
+  } catch {}
+  return rows.sort((a, b) => b.at - a.at);
+}
+function _writeCompressedIndex(dir, rows) {
+  try { atomicWriteJSON(`${dir}/index.json`, rows.map(r => ({...r}))); } catch {}
+}
+function listCompressedArchives() {
+  let ids = [];
+  try { ids = readdirSync(COMPRESSED_ARCHIVE_DIR, {withFileTypes: true}).filter(d => d.isDirectory()).map(d => d.name); }
+  catch { return []; }
+  const arch = _buildArchivedMetaMap();
+  const live = new Map(listSessions().map(m => [m.id, m]));
+  const out = [];
+  for (const sid of ids) {
+    const dir = `${COMPRESSED_ARCHIVE_DIR}/${sid}`;
+    // index.json 只是缓存：以目录里真实的批次文件为准，索引丢了/多写了都不会骗前端
+    const rows = _scanCompressedDir(dir);
+    if (!rows.length) continue;
+    const meta = live.get(sid) || arch.get(sid) || null;
+    let title = (meta && meta.title) || "";
+    if (!title) { try { title = (getSession(sid) || getArchivedSession(sid) || {}).title || ""; } catch {} }
+    out.push({
+      id: sid, title: title || sid, archived: !!arch.get(sid), batches: rows,
+      total_removed: rows.reduce((n, r) => n + (r.removed || 0), 0),
+      latest_at: rows[0] ? rows[0].at : 0,
+    });
+  }
+  return out.sort((a, b) => b.latest_at - a.latest_at);
+}
+function readCompressedBatch(id, file) {
+  const f = _safeBatchFile(file);
+  const p = `${compressedSessionDir(id)}/${f}`;
+  if (!existsSync(p)) throw Object.assign(new Error("这一批原文已经不在了"), {status: 404});
+  return readJSON(p);
+}
+function deleteCompressedBatch(id, file) {
+  const f = _safeBatchFile(file);
+  const dir = compressedSessionDir(id);
+  const p = `${dir}/${f}`;
+  if (!existsSync(p)) throw Object.assign(new Error("这一批原文已经不在了"), {status: 404});
+  unlinkSync(p);
+  const left = _scanCompressedDir(dir);
+  if (!left.length) { try { rmSync(dir, {recursive: true, force: true}); } catch {} }
+  else _writeCompressedIndex(dir, left);
+  return { left: left.length };
+}
+function purgeCompressedArchives(id) {
+  try { rmSync(compressedSessionDir(id), {recursive: true, force: true}); return true; } catch { return false; }
 }
 
 // ── 会话同步签名：多窗口/多端消息同步（前端轮询几十字节的签名，变化才拉全量）──
@@ -8469,6 +8548,28 @@ function _saveChannelChanges(id, body){
     const results = ids.map(id => { try { purgeArchivedSession(id); return {id, ok: true}; } catch (e) { return {id, ok: false, error: e.message || "删除失败"}; } });
     const purged = results.filter(r => r.ok).length;
     return new Response(JSON.stringify({ok: purged > 0, purged, failed: results.length - purged, results}), {headers: jsonHeaders()});
+  }
+
+  // 压缩原文归档：跟「已归档会话」同一个弹窗、同一条彻底删除路径（先于 /api/sessions/:id）
+  if (path === "/api/sessions/compressed" && req.method === "GET") {
+    return new Response(JSON.stringify({ ok: true, sessions: listCompressedArchives() }), { headers: jsonHeaders() });
+  }
+  if (path === "/api/sessions/compressed/batch" && req.method === "GET") {
+    const q = new URL(req.url, "http://127.0.0.1").searchParams;
+    try { return new Response(JSON.stringify({ ok: true, batch: readCompressedBatch(q.get("id") || "", q.get("file") || "") }), { headers: jsonHeaders() }); }
+    catch (e) { return new Response(JSON.stringify({ error: e.message || "读取失败" }), { status: e.status || 500, headers: jsonHeaders() }); }
+  }
+  if (path === "/api/sessions/compressed/delete" && req.method === "POST") {
+    let b = {};
+    try { b = await req.json(); } catch { return new Response(JSON.stringify({ error: "invalid body" }), { status: 400, headers: jsonHeaders() }); }
+    try { const r = deleteCompressedBatch(String(b.id || ""), String(b.file || "")); return new Response(JSON.stringify({ ok: true, ...r }), { headers: jsonHeaders() }); }
+    catch (e) { return new Response(JSON.stringify({ error: e.message || "删除失败" }), { status: e.status || 500, headers: jsonHeaders() }); }
+  }
+  if (path === "/api/sessions/compressed/purge" && req.method === "POST") {
+    let b = {};
+    try { b = await req.json(); } catch { return new Response(JSON.stringify({ error: "invalid body" }), { status: 400, headers: jsonHeaders() }); }
+    try { purgeCompressedArchives(String(b.id || "")); return new Response(JSON.stringify({ ok: true }), { headers: jsonHeaders() }); }
+    catch (e) { return new Response(JSON.stringify({ error: e.message || "删除失败" }), { status: e.status || 500, headers: jsonHeaders() }); }
   }
 
   // 匹配 /api/sessions/:id

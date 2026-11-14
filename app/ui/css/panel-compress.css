@@ -1,0 +1,172 @@
+/* panel-compress.css — 上下文压缩：会话头阈值配色 + 归档原文查看器
+ * 2026-11-15。对应 panel-compress-ui.js 的归档查看器与 chat/new-dialog.js 的副标题。
+ * 阈值：≥75% 黄、≥90% 红、超窗（>100%）红并带「超窗」标；点百分比 = 压缩预览。
+ */
+
+/* ── 会话头：上下文百分比（可点）────────────────────────────────────── */
+#chatSubtitle .sub-ctx {
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0 3px;
+  transition: background .15s ease, color .15s ease;
+}
+#chatSubtitle .sub-ctx:hover { background: var(--hover, rgba(127, 127, 127, .12)); }
+#chatSubtitle .sub-ctx:focus-visible { outline: 2px solid var(--accent, #3b82f6); outline-offset: 1px; }
+#chatSubtitle .sub-ctx.pct-warn { color: #d97706; font-weight: 600; }
+#chatSubtitle .sub-ctx.pct-warn .sub-tok { color: inherit; opacity: .8; }
+#chatSubtitle .sub-ctx.pct-crit { color: #ef4444; font-weight: 600; }
+#chatSubtitle .sub-ctx.pct-crit .sub-tok { color: inherit; opacity: .8; }
+
+/* 归档入口：有归档才出现 */
+#chatSubtitle .sub-arch {
+  border: 1px solid var(--border, rgba(127, 127, 127, .28));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+  padding: 0 7px;
+  margin-left: 2px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background .15s ease, border-color .15s ease;
+}
+#chatSubtitle .sub-arch:hover { background: var(--hover, rgba(127, 127, 127, .12)); border-color: var(--accent, #3b82f6); }
+
+/* ── 归档原文查看器 ──────────────────────────────────────────────── */
+.arch-overlay .arch-modal {
+  max-width: 760px;
+  width: 100%;
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2, #fff);
+  border: 1px solid var(--border, rgba(127, 127, 127, .2));
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .28);
+}
+.arch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border, rgba(127, 127, 127, .18));
+  font-size: 14px;
+}
+.arch-close {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: .6;
+  padding: 0 4px;
+}
+.arch-close:hover { opacity: 1; }
+.arch-body { padding: 12px 16px 16px; overflow: auto; overscroll-behavior: contain; }
+.arch-note { font-size: 12.5px; opacity: .8; line-height: 1.7; margin-bottom: 10px; }
+.arch-note b { opacity: 1; }
+
+.arch-list { display: flex; flex-direction: column; gap: 8px; }
+.arch-item {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-align: left;
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border, rgba(127, 127, 127, .2));
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  transition: border-color .15s ease, background .15s ease;
+}
+.arch-item:hover { border-color: var(--accent, #3b82f6); background: var(--hover, rgba(127, 127, 127, .08)); }
+.arch-item .ai-when { font-weight: 600; }
+.arch-item .ai-main { opacity: .8; }
+.arch-item .ai-focus { opacity: .62; font-size: 11.5px; }
+
+.arch-back {
+  border: 0;
+  background: transparent;
+  color: var(--accent, #3b82f6);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  padding: 0 0 10px;
+}
+.arch-sum { margin-bottom: 12px; font-size: 12.5px; }
+.arch-sum summary { cursor: pointer; opacity: .8; }
+.arch-sum pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg3, rgba(127, 127, 127, .1));
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.65;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.arch-msgs { display: flex; flex-direction: column; gap: 10px; }
+.arch-msg {
+  border-left: 2px solid var(--border, rgba(127, 127, 127, .3));
+  padding-left: 10px;
+}
+.arch-meta { display: flex; align-items: center; gap: 8px; font-size: 11.5px; opacity: .8; margin-bottom: 3px; }
+.arch-role { font-weight: 600; letter-spacing: .02em; }
+.arch-role.r-user { color: #2563eb; }
+.arch-role.r-assistant { color: #059669; }
+.arch-role.r-tool { color: #b45309; }
+.arch-role.r-system { color: #7c3aed; }
+.arch-ts, .arch-idx { opacity: .72; }
+.arch-pre {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--bg3, rgba(127, 127, 127, .09));
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+  line-height: 1.6;
+  max-height: 300px;
+  overflow: auto;
+}
+.arch-msg details summary { cursor: pointer; font-size: 12px; opacity: .75; margin: 4px 0; }
+
+@media (max-width: 768px) {
+  .arch-overlay .arch-modal { max-height: 92vh; border-radius: 12px; }
+  .arch-body { padding: 10px 12px 12px; }
+  #chatSubtitle .sub-arch { font-size: 10.5px; padding: 0 5px; }
+}
+
+/* ── 压缩原文归档：并入「已归档」弹窗（2026-11-15 二次）───────────────── */
+.pw-arch-compressed{display:flex;align-items:center;gap:12px;justify-content:space-between;
+  padding:10px 12px;margin-bottom:10px;border:1px solid var(--border,#2b3444);border-radius:8px;
+  background:var(--bg-soft,rgba(255,255,255,.03))}
+.pw-arch-compressed-txt{font-size:12.5px;line-height:1.5;color:var(--text,#d8dee9)}
+.pw-arch-compressed-txt b{color:var(--accent,#4ea1ff)}
+.pw-arch-compressed-txt em{display:block;font-style:normal;font-size:11.5px;color:var(--text-dim,#8b96a5)}
+.pw-arch-compressed.is-empty .pw-arch-compressed-txt{color:var(--text-dim,#8b96a5)}
+
+.arch-row{display:flex;align-items:stretch;gap:8px;margin-bottom:6px}
+.arch-row .arch-item{flex:1;margin-bottom:0}
+.arch-item-sess .ai-main{font-weight:600}
+.arch-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;
+  position:sticky;top:0;z-index:2;padding:6px 0 8px;background:var(--bg,#1b2130)}
+.arch-del{border:1px solid var(--danger,#e05353);color:var(--danger,#e05353);background:transparent;
+  border-radius:6px;padding:6px 10px;font-size:12px;cursor:pointer;white-space:nowrap}
+.arch-del:hover{background:rgba(224,83,83,.12)}
+.arch-del.is-armed{background:var(--danger,#e05353);color:#fff;border-color:var(--danger,#e05353)}
+.arch-del:disabled{opacity:.55;cursor:default}
+.arch-del-sm{padding:0 10px;font-size:11.5px}
+.arch-foot{margin-top:12px;padding-top:10px;border-top:1px dashed var(--border,#2b3444);display:flex;justify-content:flex-end}
+.arch-foot .arch-del{font-size:12px}

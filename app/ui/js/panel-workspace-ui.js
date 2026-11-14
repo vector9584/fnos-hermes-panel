@@ -66,12 +66,23 @@ window.pwRailHTML=function(){
 window.pwArchivedSessions=async function(){
  try{
   var out=await api('/api/sessions/archived','GET'),rows=(out&&out.sessions)||[];
-  var body=rows.length?'<div class="pw-archived">'+rows.map(function(s){
+  /* 2026-11-15：压缩掉的原文也归这个归档区管（同一个 chat/compressed 目录树、
+     同一个弹窗、同一条彻底删除），所以这里给一个直达入口，不再单开一个归档系统。 */
+  var compRows=[];
+  try{var comp=await api('/api/sessions/compressed','GET');compRows=(comp&&comp.sessions)||[];}catch(e){}
+  var compBatches=compRows.reduce(function(n,s){return n+((s.batches||[]).length);},0);
+  var compRemoved=compRows.reduce(function(n,s){return n+(s.total_removed||0);},0);
+  var compBar=compRows.length
+    ?'<div class="pw-arch-compressed"><div class="pw-arch-compressed-txt">压缩原文 <b>'+compBatches+'</b> 批 · '
+      +compRows.length+' 个会话 · 累计压掉 '+compRemoved+' 条<em>压缩不会删你的话，只是把早段换成了摘要，原文都在这儿</em></div>'
+      +'<button type="button" class="btn" data-compressed>查看 / 彻底删除</button></div>'
+    :'<div class="pw-arch-compressed is-empty"><div class="pw-arch-compressed-txt">压缩原文<em>还没有会话被压缩过</em></div></div>';
+  var body=compBar+(rows.length?'<div class="pw-archived">'+rows.map(function(s){
     return '<div class="pw-archived-row pw-arch-pick">'
       +'<input type="checkbox" class="pw-arch-cb" data-id="'+E(s.id)+'" aria-label="选择该会话">'
       +'<div class="pw-archived-main"><span class="pw-archived-title">'+E(s.title||'新会话')+'</span><span class="pw-archived-meta">'+E(fmtDateTime(s.updated_at))+(s.message_count?' · '+s.message_count+' 条消息':' · 0 条消息')+'</span></div>'
       +'<button type="button" class="btn pw-archived-act" data-restore="'+E(s.id)+'">恢复</button></div>';
-   }).join('')+'</div>':'<div class="pw-hint">没有已归档会话。</div>';
+   }).join('')+'</div>':'<div class="pw-hint">没有已归档会话。</div>');
   var foot=rows.length
     ?'<label class="pw-arch-all"><input type="checkbox" id="pwArchAll">全选</label>'
      +'<button type="button" class="btn" data-dismiss>关闭</button>'
@@ -90,6 +101,8 @@ window.pwArchivedSessions=async function(){
   cbs.forEach(function(c){c.onchange=sync;});
   if(allCb)allCb.onchange=function(){cbs.forEach(function(c){c.checked=allCb.checked;});sync();};
   if(dismiss)dismiss.onclick=function(){close();};
+  var compBtn=d.querySelector('[data-compressed]');
+  if(compBtn)compBtn.onclick=function(){close();if(window.openCompressArchive)window.openCompressArchive();};
   d.querySelectorAll('[data-restore]').forEach(function(btn){btn.onclick=async function(){
     btn.disabled=true;
     try{var r=await api('/api/sessions/'+encodeURIComponent(btn.dataset.restore)+'/restore','POST',{});if(!r.ok)throw Error(r.error||'恢复失败');await loadSessions();close();openTab(btn.dataset.restore);toast('会话已恢复');}

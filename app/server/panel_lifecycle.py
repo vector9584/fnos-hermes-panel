@@ -6,7 +6,10 @@ start ticks before every signal. All bookkeeping is confined to application VAR.
 import fcntl,http.client,json,os,pwd,signal,socket,stat,struct,subprocess,sys,time
 from pathlib import Path
 
+sys.path.insert(0,str(Path(__file__).resolve().parents[1]/'python'))
+
 from panel_drain_store import locked_record,write_record,DrainStoreError
+from panel_drain_bridge import _live_stop_owner
 
 class LifecycleError(Exception):pass
 
@@ -157,9 +160,19 @@ class Lifecycle:
    with locked_record(path) as lease:
     if expected is not None and (lease.get('id') if lease else None)!=expected['drain_id']:raise LifecycleError('等待期间排空操作已改变，未停止应用')
     if lease is None:return
+    # 墓碑记录（已取消 / 窗口已过期）且没有任何在跑的停止者时，它不代表「还有一次
+    # 重启要执行」，只代表「别急着恢复接单」。以前这里一律抛错，结果 11-14 22:13 那次
+    # 面板重启被取消后留下的 cancelled 记录，把之后每一次应用中心停止/重启都顶成
+    # 10350 停止失败 —— 这正是「停止失败」的真身。判定口径与 panel_drain_bridge 一致。
+    now=time.time()*1000;expires=lease.get('expires_at')
+    if (lease.get('phase')=='cancelled' or (type(expires) in (int,float) and expires<=now)) and not _live_stop_owner(lease.get('stop_owner')):
+     try:Path(path).unlink()
+     except OSError:pass
+     return
+    if lease.get('phase')!='dispatched':raise LifecycleError('另一次重启正在暂停接收消息，请稍后重试')
     gateway=self.identity(lease.get('pid'),'service')
     if not gateway or gateway[1]!=str(lease.get('start')):return
-    now=time.time()*1000;created=lease.get('created_at');expires=lease.get('expires_at')
+    created=lease.get('created_at')
     if lease.get('version')!=1 or lease.get('action')!='drain' or lease.get('phase')!='dispatched' or type(created) not in (int,float) or type(expires) not in (int,float) or not created<=now+5000 or not now+1000<expires<=created+60000:
      raise LifecycleError('排空期限已失效，未停止应用；请核对运行状态后重新发起重启')
     own_start=Path('/proc/self/stat').read_text().rsplit(')',1)[1].split()[19]
