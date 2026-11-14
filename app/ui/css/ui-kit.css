@@ -221,8 +221,8 @@ textarea.uikit-input {
   pointer-events:none;max-width:calc(100vw - 32px)}
 .hz-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;box-sizing:border-box;
   min-width:220px;max-width:min(400px,calc(100vw - 32px));padding:12px 13px;border-radius:11px;
-  background:#22262f;border:1px solid rgba(255,255,255,.10);border-left:3px solid #4a90e2;color:#e7e9ee;
-  box-shadow:0 14px 36px rgba(0,0,0,.52),0 0 0 1px rgba(255,255,255,.04);font-size:13px;line-height:1.55;
+  background:var(--toast-bg,#22262f);border:1px solid var(--toast-border,rgba(255,255,255,.10));border-left:3px solid #4a90e2;color:var(--toast-fg,#e7e9ee);
+  box-shadow:var(--toast-shadow,0 14px 36px rgba(0,0,0,.52));font-size:13px;line-height:1.55;
   opacity:0;transform:translateY(8px) scale(.985);
   transition:opacity .18s ease,transform .22s cubic-bezier(.34,1.16,.64,1)}
 .hz-toast.in{opacity:1;transform:none}
@@ -231,7 +231,7 @@ textarea.uikit-input {
 .hz-toast.is-warning{border-left-color:#e8b04a}
 .hz-toast.is-error{border-left-color:#e05b5b}
 .hz-toast.is-info{border-left-color:#5aa9ff}
-.hz-toast__ico{flex:0 0 16px;height:16px;margin-top:1.5px;color:#9aa4b2;display:flex;pointer-events:none;opacity:.95}
+.hz-toast__ico{flex:0 0 16px;height:16px;margin-top:1.5px;color:var(--text3,#9aa4b2);display:flex;pointer-events:none;opacity:.95}
 .hz-toast.is-success .hz-toast__ico{color:#7ed07a}
 .hz-toast.is-warning .hz-toast__ico{color:#e8b04a}
 .hz-toast.is-error .hz-toast__ico{color:#f07373}
@@ -241,10 +241,10 @@ textarea.uikit-input {
 .hz-toast__text{margin:0;white-space:pre-wrap;word-break:break-word;color:inherit;opacity:.92}
 .hz-toast__title[hidden],.hz-toast__acts[hidden]{display:none}
 .hz-toast__acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:9px;justify-content:flex-end}
-.hz-toast__btn{flex:0 0 auto;padding:5px 12px;border-radius:8px;border:1px solid rgba(255,255,255,.16);
-  background:rgba(255,255,255,.06);color:#e7e9ee;font-size:12px;line-height:1.5;cursor:pointer;
+.hz-toast__btn{flex:0 0 auto;padding:5px 12px;border-radius:8px;border:1px solid var(--toast-btn-border,rgba(255,255,255,.16));
+  background:var(--toast-btn-bg,rgba(255,255,255,.06));color:var(--toast-fg,#e7e9ee);font-size:12px;line-height:1.5;cursor:pointer;
   transition:background .14s ease,border-color .14s ease}
-.hz-toast__btn:hover{background:rgba(255,255,255,.13)}
+.hz-toast__btn:hover{background:var(--toast-btn-hover,rgba(255,255,255,.13))}
 .hz-toast__btn.is-primary{background:#3d6fe0;border-color:#3d6fe0;color:#fff;font-weight:600}
 .hz-toast__btn.is-primary:hover{background:#4c7eee;border-color:#4c7eee}
 /* 主按钮跟随类型色：红提示配蓝按钮，一张卡里四种色相太吵（2026-11-14 视觉复核意见） */

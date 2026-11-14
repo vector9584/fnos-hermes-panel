@@ -51,7 +51,12 @@
   --select-border-dark: #4b5563;
   /* ── 外部模块引用但此前未定义（补定义，值取原 fallback） ── */
   --text-muted: #9aa6b2;
-  --surface: #191c24;
+  --surface: #ffffff;
+  /* 提交热力图 5 档（浅色） */
+  --heat-0:#ebedf0; --heat-1:#d7dbf9; --heat-2:#adb3f5; --heat-3:#7d84ef; --heat-4:#5e64f3;
+  /* 通知卡（浅色） */
+  --toast-bg:#ffffff; --toast-fg:#1f2937; --toast-border:rgba(15,23,42,.12);
+  --toast-shadow:0 12px 32px rgba(15,23,42,.16); --toast-btn-bg:rgba(15,23,42,.05); --toast-btn-border:rgba(15,23,42,.14); --toast-btn-hover:rgba(15,23,42,.10);
   /* ── 遮罩 / 阴影色 ── */
   --shade-strong: #0008;
   --shade: #0009;
@@ -65,6 +70,10 @@
       color-scheme:dark;
       --bg0:#12171d; --bg1:#181f27; --bg2:#202933; --bg3:#29343f;
       --card:#202933; --muted:#a3afbc;
+      --surface:#191c24;
+      --heat-0:#1c2530; --heat-1:#20403c; --heat-2:#25645a; --heat-3:#3fa78e; --heat-4:#71dbc0;
+      --toast-bg:#22262f; --toast-fg:#e7e9ee; --toast-border:rgba(255,255,255,.10);
+      --toast-shadow:0 14px 36px rgba(0,0,0,.52); --toast-btn-bg:rgba(255,255,255,.06); --toast-btn-border:rgba(255,255,255,.16); --toast-btn-hover:rgba(255,255,255,.13);
       --border:#3d4c5b; --border2:#687b8c;
       --text:#e5ebf0; --text2:#c0ccd7; --text3:#a3afbc;
       --accent:#71dbc0; --accent-h:#8ce8cf; --accent-bg:#203d37;
