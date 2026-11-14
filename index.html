@@ -358,38 +358,20 @@
 
 <section style="border-bottom:none">
   <div class="wrap">
-    <div class="sec-head"><div class="num">10</div><h2>怎么装上</h2></div>
-    <p class="sub">NAS、Windows、Mac、纯命令行 —— 同一套东西，四个入口。</p>
+    <div class="sec-head"><div class="num">10</div><h2>近期发布</h2></div>
+    <p class="sub">还在收尾。发布那天这里会换成能点的地址。</p>
 
-    <div class="cards" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr))">
-      <div class="card">
-        <h3>只想看一眼</h3>
-        <p>直接打开这个页面往下翻，上面的截图都是真的。
-          想动手就克隆仓库，前端是纯静态文件，起个服务就能跑。</p>
-      </div>
-      <div class="card">
-        <h3>装在 NAS 上 <span style="opacity:.55;font-size:.8em">已验证</span></h3>
-        <p>飞牛 OS 应用中心装 fpk 包，开机自启，手机在外面也能连回来。
-          这条是跑得最熟的一条路。</p>
-      </div>
-      <div class="card">
-        <h3>Windows / Mac / Linux <span style="opacity:.55;font-size:.8em">Mac 已实测</span></h3>
-        <p>Mac 上跑通了：一条命令起服务，浏览器打开就是上面这些界面。
-          本来就是 Node 加一堆静态文件，路径全部能配，不依赖 NAS。
-          Windows 和 Linux 走同一套代码，还没逐台验过。</p>
-      </div>
-      <div class="card">
-        <h3>纯命令行</h3>
-        <p>不要界面也行。装完本体，终端里敲 <code>hermes</code> 就能直接对话，
-          面板只是同一个后端上多出来的一层。</p>
+    <div class="body-copy" style="max-width:52em">
+      <p>代码已经开在 GitHub 上了 —— README 写清怎么跑，改造历程里记了它是怎么一步步变成现在这样的，
+        还有一节专门列<b>没做完的部分</b>，没有藏着。</p>
+      <p>正式发布时会一起给三样东西：<strong>一份拿下来就能跑的包、一份把自己数据搬进去的说明、
+        还有一页记着它踩过的坑</strong> —— 上面那些「它能做什么」，都是从这些坑里长出来的。</p>
+      <p>在那之前，这一页里每一张图都是从正在运行的界面截的，不是画的。</p>
+      <div class="say">
+        现在能看的：<a href="https://github.com/vector9584/fnos-hermes-panel">github.com/vector9584/fnos-hermes-panel</a>
+        <span>仓库公开，代码就在那儿</span>
       </div>
     </div>
-
-    <pre><code># 面板 + 本体，从零开始
-git clone https://github.com/vector9584/fnos-hermes-panel.git
-cd fnos-hermes-panel
-# 装依赖 → 填模型 key → 起服务 → 浏览器打开
-# 详细步骤见 README</code></pre>
   </div>
 </section>
 
