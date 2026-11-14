@@ -1,495 +1,399 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>fnos-hermes-panel — 把 NAS 变成能自己动手改的 AI 控制台</title>
-<meta name="description" content="Hermes Agent 在 fnOS 上的控制面板工程化重构：658 KB 单文件拆成 79 个模块，638 个全局符号零差异，0 像素偏差。">
-<meta name="theme-color" content="#0b0e14">
-<meta property="og:title" content="fnos-hermes-panel">
-<meta property="og:description" content="把一台 NAS 变成能自己动手改的 AI 控制台。658 KB 单文件 → 79 个模块，逐字节等价。">
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Hermes 面板 — 你机器上的 AI，真的会干活</title>
+<meta name="description" content="装在自己机器上的 AI 助手。能读文件、敲命令、开网页、到点自己做事，还记得上次停在哪。所有能力都能单独关掉，所有配置都是你能改的纯文本。">
+<meta property="og:title" content="Hermes 面板 — 你机器上的 AI，真的会干活">
+<meta property="og:description" content="装在自己机器上的 AI 助手。不是聊天框，是真能动手的那一种。">
 <meta property="og:type" content="website">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🐋</text></svg>">
 <style>
-:root{
-  --bg:#0b0e14;
-  --bg-soft:#111621;
-  --bg-card:#141a26;
-  --line:#1f2836;
-  --line-soft:#182030;
-  --fg:#e6edf7;
-  --fg-dim:#8b9bb4;
-  --fg-faint:#7a8ba5;
-  --accent:#38bdf8;
-  --accent-2:#5eead4;
-  --warn:#f59e0b;
-  --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
-  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
-  --r:14px;
-}
-*{box-sizing:border-box;margin:0;padding:0}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
-body{
-  background:var(--bg);color:var(--fg);font-family:var(--sans);
-  line-height:1.7;font-size:16px;
-  -webkit-font-smoothing:antialiased;
-  overflow-x:hidden;
-}
-body::before{
-  content:"";position:fixed;inset:0;z-index:-1;pointer-events:none;
-  background:
-    radial-gradient(900px 500px at 15% -10%, rgba(56,189,248,.13), transparent 60%),
-    radial-gradient(700px 420px at 88% 5%, rgba(94,234,212,.09), transparent 62%),
-    radial-gradient(800px 600px at 50% 110%, rgba(56,189,248,.05), transparent 65%);
-}
-.wrap{max-width:1080px;margin:0 auto;padding:0 24px}
+  :root{
+    --bg:#0b0e14; --bg-soft:#111621; --bg-card:#141a26;
+    --line:#1f2836; --line-soft:#182030;
+    --fg:#e6edf7; --fg-dim:#8b9bb4; --fg-faint:#7a8ba5;
+    --accent:#38bdf8; --accent-dim:#0e7490; --warn:#f59e0b; --good:#34d399;
+    --r:14px; --max:1080px;
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0; background:var(--bg); color:var(--fg);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+    line-height:1.75; -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:var(--max); margin:0 auto; padding:0 24px}
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
 
-/* ---------- nav ---------- */
-nav{
-  position:sticky;top:0;z-index:50;
-  backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
-  background:rgba(11,14,20,.72);
-  border-bottom:1px solid var(--line-soft);
-}
-nav .wrap{display:flex;align-items:center;gap:20px;height:60px}
-.brand{display:flex;align-items:center;gap:9px;font-weight:650;letter-spacing:-.01em;font-size:15px;color:var(--fg);text-decoration:none}
-.brand .dot{width:9px;height:9px;border-radius:50%;background:var(--accent-2);box-shadow:0 0 12px var(--accent-2)}
-nav .links{margin-left:auto;display:flex;gap:22px;font-size:14px}
-nav .links a{color:var(--fg-dim);text-decoration:none;transition:color .18s}
-nav .links a:hover{color:var(--fg)}
-@media(max-width:680px){nav .links{gap:14px;font-size:13px}nav .links a:nth-child(n+4){display:none}}
+  /* ---------- 首屏 ---------- */
+  .hero{padding:88px 0 56px; border-bottom:1px solid var(--line-soft)}
+  .kicker{
+    display:inline-block; font-size:13px; letter-spacing:.08em; color:var(--accent);
+    border:1px solid var(--accent-dim); border-radius:999px; padding:3px 12px; margin-bottom:26px;
+  }
+  h1{
+    font-size:clamp(32px,5.2vw,54px); line-height:1.22; margin:0 0 22px;
+    letter-spacing:-.02em; font-weight:700;
+  }
+  h1 em{font-style:normal; color:var(--accent)}
+  .lede{font-size:clamp(16px,2vw,19px); color:var(--fg-dim); max-width:44em; margin:0 0 16px}
+  .lede strong{color:var(--fg); font-weight:600}
+  .cta{display:flex; flex-wrap:wrap; gap:12px; margin:34px 0 0}
+  .btn{
+    display:inline-block; padding:11px 22px; border-radius:10px; font-size:15px; font-weight:600;
+    border:1px solid var(--line); color:var(--fg); background:var(--bg-card);
+  }
+  .btn:hover{text-decoration:none; border-color:var(--accent-dim)}
+  .btn.primary{background:var(--accent); color:#04121c; border-color:var(--accent)}
+  .btn.primary:hover{background:#7dd3fc}
 
-/* ---------- hero ---------- */
-header{padding:88px 0 56px;text-align:center}
-.eyebrow{
-  display:inline-flex;align-items:center;gap:8px;
-  font-size:12.5px;font-family:var(--mono);letter-spacing:.06em;
-  color:var(--accent-2);border:1px solid rgba(94,234,212,.24);
-  background:rgba(94,234,212,.06);padding:6px 14px;border-radius:99px;
-  margin-bottom:26px;
-}
-header h1{
-  font-size:clamp(30px,5.4vw,54px);line-height:1.18;letter-spacing:-.03em;
-  font-weight:750;margin-bottom:20px;
-}
-header h1 .grad{
-  background:linear-gradient(100deg,var(--accent) 0%,var(--accent-2) 62%);
-  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
-}
-header .lede{
-  font-size:clamp(15px,1.9vw,18px);color:var(--fg-dim);
-  max-width:660px;margin:0 auto 34px;
-}
-header .lede b{color:var(--fg);font-weight:600}
-.cta{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
-.btn{
-  display:inline-flex;align-items:center;gap:8px;
-  padding:12px 24px;border-radius:10px;font-size:14.5px;font-weight:600;
-  text-decoration:none;border:1px solid transparent;transition:.18s;
-}
-.btn-primary{background:var(--accent);color:#06222e;box-shadow:0 6px 24px -8px rgba(56,189,248,.6)}
-.btn-primary:hover{background:#7dd3fc;transform:translateY(-1px)}
-.btn-ghost{border-color:var(--line);color:var(--fg);background:rgba(255,255,255,.02)}
-.btn-ghost:hover{border-color:#2c3a4e;background:rgba(255,255,255,.05);transform:translateY(-1px)}
-.btn small{font-weight:400;opacity:.7;font-size:12px}
+  /* ---------- 截图 ---------- */
+  figure{margin:0}
+  .shot{
+    margin:52px 0 0; border:1px solid var(--line); border-radius:var(--r);
+    overflow:hidden; background:var(--bg-soft); box-shadow:0 20px 60px -30px #000;
+  }
+  .shot img{display:block; width:100%; height:auto}
+  figcaption{font-size:13px; color:var(--fg-faint); padding:11px 16px; border-top:1px solid var(--line-soft)}
 
-/* ---------- metrics ---------- */
-.metrics{
-  display:grid;grid-template-columns:repeat(4,1fr);gap:1px;
-  background:var(--line-soft);border:1px solid var(--line-soft);
-  border-radius:var(--r);overflow:hidden;margin:56px 0 20px;
-}
-.metric{background:var(--bg-soft);padding:24px 18px;text-align:center}
-.metric .v{
-  font-family:var(--mono);font-size:clamp(20px,3vw,30px);font-weight:700;
-  letter-spacing:-.02em;color:var(--fg);line-height:1.2;
-}
-.metric .v .unit{font-size:.5em;color:var(--fg-faint);font-weight:500;margin-left:3px}
-.metric .v .cut{color:var(--accent-2)}
-.metric .k{font-size:12.5px;color:var(--fg-faint);margin-top:7px;letter-spacing:.02em}
-@media(max-width:720px){.metrics{grid-template-columns:repeat(2,1fr)}}
+  /* ---------- 章节 ---------- */
+  section{padding:72px 0; border-bottom:1px solid var(--line-soft)}
+  .sec-head{display:flex; align-items:baseline; gap:16px; margin-bottom:14px}
+  .num{
+    font-size:13px; font-weight:700; color:var(--accent); letter-spacing:.14em;
+    padding-top:6px; flex:none;
+  }
+  h2{font-size:clamp(23px,3.2vw,32px); line-height:1.3; margin:0; letter-spacing:-.01em}
+  .sub{color:var(--fg-dim); font-size:16px; max-width:46em; margin:0 0 30px}
 
-/* ---------- section ---------- */
-section{padding:70px 0}
-.sec-head{margin-bottom:38px}
-.sec-head .tag{
-  font-family:var(--mono);font-size:12px;letter-spacing:.14em;
-  color:var(--accent);text-transform:uppercase;margin-bottom:12px;
-}
-.sec-head h2{font-size:clamp(22px,3.4vw,32px);letter-spacing:-.025em;font-weight:700;line-height:1.25}
-.sec-head p{color:var(--fg-dim);margin-top:12px;max-width:680px;font-size:15.5px}
+  .two{display:grid; grid-template-columns:1fr 1fr; gap:34px; align-items:start}
+  @media(max-width:860px){ .two{grid-template-columns:1fr; gap:24px} }
 
-/* ---------- problem cards ---------- */
-.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
-@media(max-width:820px){.cards{grid-template-columns:1fr}}
-.card{
-  background:var(--bg-card);border:1px solid var(--line);
-  border-radius:var(--r);padding:26px 22px;transition:.2s;
-}
-.card:hover{border-color:#2b3a50;transform:translateY(-2px)}
-.card .ic{font-size:20px;margin-bottom:14px;display:block}
-.card h3{font-size:16px;font-weight:650;margin-bottom:10px;letter-spacing:-.01em}
-.card p{font-size:14px;color:var(--fg-dim);line-height:1.75}
-.card p code{
-  font-family:var(--mono);font-size:12.5px;background:rgba(56,189,248,.09);
-  color:var(--accent);padding:1.5px 5px;border-radius:4px;
-}
+  .body-copy p{margin:0 0 15px; color:var(--fg-dim)}
+  .body-copy p:last-child{margin-bottom:0}
+  .body-copy strong{color:var(--fg); font-weight:600}
 
-/* ---------- layer diagram ---------- */
-.layers{display:flex;flex-direction:column;gap:10px;margin-top:8px}
-.layer{
-  display:grid;grid-template-columns:150px 1fr;gap:20px;align-items:center;
-  background:var(--bg-card);border:1px solid var(--line);
-  border-radius:12px;padding:18px 22px;border-left:3px solid var(--lc,var(--accent));
-}
-.layer .nm{font-family:var(--mono);font-size:13.5px;font-weight:600;color:var(--lc,var(--accent))}
-.layer .nm small{display:block;font-family:var(--sans);font-size:12px;color:var(--fg-faint);font-weight:400;margin-top:3px;letter-spacing:0}
-.layer .ds{font-size:13.8px;color:var(--fg-dim)}
-.layer .ds b{color:var(--fg);font-weight:600}
-@media(max-width:620px){.layer{grid-template-columns:1fr;gap:8px}}
+  .say{
+    border-left:2px solid var(--accent-dim); padding:2px 0 2px 16px; margin:18px 0;
+    color:var(--fg); font-size:15px;
+  }
+  .say span{color:var(--fg-faint); font-size:13px; display:block; margin-top:4px}
 
-/* ---------- verify ---------- */
-.verify{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-top:6px}
-@media(max-width:820px){.verify{grid-template-columns:1fr}}
-.vstep{
-  background:linear-gradient(180deg,rgba(56,189,248,.05),transparent);
-  border:1px solid var(--line);border-radius:var(--r);padding:24px 22px;position:relative;
-}
-.vstep .n{
-  font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--accent);
-  border:1px solid rgba(56,189,248,.3);border-radius:5px;
-  padding:2px 8px;display:inline-block;margin-bottom:14px;
-}
-.vstep h4{font-size:15px;font-weight:650;margin-bottom:9px}
-.vstep p{font-size:13.5px;color:var(--fg-dim);line-height:1.72}
-.vstep .num{
-  font-family:var(--mono);font-size:19px;font-weight:700;color:var(--accent-2);
-  margin-top:12px;display:block;
-}
+  /* ---------- 卡片 ---------- */
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:18px; margin-top:8px}
+  @media(max-width:860px){ .cards{grid-template-columns:1fr} }
+  .card{
+    background:var(--bg-card); border:1px solid var(--line); border-radius:var(--r);
+    padding:22px 20px;
+  }
+  .card h3{margin:0 0 9px; font-size:16px; font-weight:600}
+  .card p{margin:0; font-size:14.5px; color:var(--fg-dim); line-height:1.7}
 
-/* ---------- code block ---------- */
-pre{
-  background:#080b11;border:1px solid var(--line);border-radius:var(--r);
-  padding:18px 20px;overflow-x:auto;font-family:var(--mono);font-size:13px;
-  line-height:1.85;color:#a9b8cf;margin-top:18px;
-}
-pre .c{color:#74879f}
-pre .g{color:var(--accent-2)}
-pre .b{color:var(--accent)}
-pre .w{color:var(--warn)}
+  ul.plain{list-style:none; padding:0; margin:0}
+  ul.plain li{
+    padding:13px 0 13px 26px; border-bottom:1px solid var(--line-soft);
+    position:relative; color:var(--fg-dim); font-size:15.5px;
+  }
+  ul.plain li:last-child{border-bottom:none}
+  ul.plain li::before{
+    content:""; position:absolute; left:4px; top:22px;
+    width:7px; height:7px; border-radius:2px; background:var(--accent-dim);
+  }
+  ul.plain li strong{color:var(--fg); font-weight:600}
 
-/* ---------- debt table ---------- */
-.tbl{width:100%;border-collapse:collapse;font-size:13.8px;margin-top:6px}
-.tbl th{
-  text-align:left;padding:11px 14px;font-weight:600;font-size:12px;
-  letter-spacing:.05em;color:var(--fg-faint);text-transform:uppercase;
-  border-bottom:1px solid var(--line);
-}
-.tbl td{padding:13px 14px;border-bottom:1px solid var(--line-soft);color:var(--fg-dim);vertical-align:top}
-.tbl td:first-child{color:var(--fg);font-weight:500}
-.tbl tr:last-child td{border-bottom:0}
-.tbl .mono{font-family:var(--mono);font-size:12.5px;color:var(--accent-2)}
+  code{
+    background:#0d1420; border:1px solid var(--line-soft); border-radius:5px;
+    padding:1px 6px; font-size:13.5px; color:#9fd5f0;
+    font-family:ui-monospace,SFMono-Regular,Menlo,monospace;
+  }
+  pre{
+    background:#0d1420; border:1px solid var(--line); border-radius:10px;
+    padding:16px 18px; overflow-x:auto; margin:18px 0 0;
+  }
+  pre code{background:none; border:none; padding:0; font-size:13.5px; line-height:1.65}
 
-/* ---------- footer ---------- */
-footer{
-  border-top:1px solid var(--line-soft);padding:52px 0 64px;margin-top:40px;
-  font-size:13.5px;color:var(--fg-faint);
-}
-footer .cols{display:grid;grid-template-columns:1.4fr 1fr 1fr;gap:36px;margin-bottom:40px}
-@media(max-width:720px){footer .cols{grid-template-columns:1fr;gap:26px}}
-footer h5{font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:var(--fg-dim);margin-bottom:14px;font-weight:600}
-footer a{color:var(--fg-dim);text-decoration:none;display:block;padding:4px 0;transition:color .16s}
-footer a:hover{color:var(--accent-2)}
-footer .sig{
-  padding-top:26px;border-top:1px solid var(--line-soft);
-  display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap;
-}
-footer .sig code{font-family:var(--mono);font-size:12px}
+  .honest{border-left:2px solid var(--warn); padding-left:20px}
+  .honest li::before{background:var(--warn)}
 
-/* ---------- hero tweaks ---------- */
-header .lede-2{margin-top:14px;margin-bottom:34px}
-header .lede:last-of-type{margin-bottom:34px}
-.metric .k{font-size:13px}
-.metric-hero{background:linear-gradient(180deg,rgba(94,234,212,.07),rgba(94,234,212,.02))}
-.metric-hero .k{color:var(--accent-2)}
-
-/* ---------- table scroll (mobile) ---------- */
-.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:6px;
-  border:1px solid var(--line-soft);border-radius:var(--r)}
-.tbl-wrap .tbl{margin-top:0;min-width:660px}
-@media(max-width:700px){
-  .tbl-wrap{border:0;border-radius:0;margin:0 -24px;padding:0 24px}
-  .tbl-wrap .tbl{min-width:600px}
-  .tbl th,.tbl td{padding:11px 12px;font-size:13px}
-}
+  footer{padding:56px 0 80px; color:var(--fg-faint); font-size:14px}
+  footer a{color:var(--fg-dim)}
+  .foot-links{display:flex; flex-wrap:wrap; gap:22px; margin-bottom:18px}
 </style>
 </head>
 <body>
 
-<nav>
+<header class="hero">
   <div class="wrap">
-    <a class="brand" href="#top"><span class="dot"></span>fnos-hermes-panel</a>
-    <div class="links">
-      <a href="#why">为什么做</a>
-      <a href="#compare">定位</a>
-      <a href="#panels">能力面</a>
-      <a href="#verify">怎么验</a>
-      <a href="#deploy">部署</a>
-      <a href="https://github.com/vector9584/fnos-hermes-panel">GitHub</a>
-    </div>
-  </div>
-</nav>
-
-<header id="top">
-  <div class="wrap">
-    <div class="eyebrow">AGENT HARNESS · 自托管 · GPL-3.0</div>
-    <h1>一副你能<span class="grad">拆开看</span>的<br>Agent harness</h1>
+    <div class="kicker">装在你自己机器上</div>
+    <h1>你机器上的 AI，<br>这次是<em>真的会干活</em></h1>
     <p class="lede">
-      模型换来换去，决定一个 Agent 好不好用的其实是外面那层壳：上下文怎么裁、工具怎么挂、跑崩了怎么退、错了怎么回滚。
-      这层壳不该只长在别人的云上，也不该装好就关死。
+      不是聊天框。你跟它说一句话，它会真的去翻你的文件、改你的代码、开浏览器点按钮、
+      敲命令看进程 —— <strong>做完再回来跟你汇报</strong>。
     </p>
-    <p class="lede lede-2">
-      这里是<b>一套完整的 harness，跑在你自己的机器里</b>——79 个前端模块，56 条后端责任链，改哪条都能查。
+    <p class="lede" style="font-size:17px">
+      中间每一步你都看得见：它调了什么工具、改了哪个文件、哪一步错了重试了几次。
+      觉得不对，随时喊停。
     </p>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/vector9584/fnos-hermes-panel">GitHub 仓库</a>
-      <a class="btn btn-ghost" href="#deploy">怎么装</a>
+      <a class="btn primary" href="https://github.com/vector9584/fnos-hermes-panel">GitHub 仓库</a>
+      <a class="btn" href="#what">看它长什么样</a>
     </div>
 
-    <div class="metrics">
-      <div class="metric"><div class="v">12</div><div class="k">运行时面板</div></div>
-      <div class="metric"><div class="v">56</div><div class="k">后端责任链</div></div>
-      <div class="metric"><div class="v">6</div><div class="k">对话渠道</div></div>
-      <div class="metric metric-hero"><div class="v"><span class="cut">0</span></div><div class="k">字节出域 · 数据只在你机器上</div></div>
-    </div>
+    <figure class="shot">
+      <img src="promo/img/chat.jpg" alt="面板对话界面：左侧按项目分组的会话列表，右侧是一次真实任务的执行记录">
+      <figcaption>左边是它的记忆（162 个会话，按项目分好），右边是一次真活的执行过程</figcaption>
+    </figure>
   </div>
 </header>
 
-<section id="why">
+<section id="what">
   <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">2026 的行业共识</div>
-      <h2>分水岭已经不在模型，在 harness</h2>
-      <p>
-        这一年模型的差距被拉平，行业口径出奇地一致：提示词工程退场，<b>harness 工程</b>上场。
-        差别不在你把哪句话写得漂亮，而在上下文怎么管、工具怎么接、多步怎么编排、失败怎么重来。
-      </p>
+    <div class="sec-head"><div class="num">01</div><h2>你说一句，它跑十几步</h2></div>
+    <p class="sub">大多数人用过的 AI，是「问一句答一句」。这个不一样：它会一路做到底。</p>
+
+    <div class="body-copy" style="max-width:52em">
+      <p>你跟它说「把相册里那批照片按日期分好，重复的挑出来」，它不会反问你「请问您想要什么格式」。</p>
+      <p>它会自己去列目录、写一个脚本、跑一遍、发现有几张同名冲突、换个办法再跑，
+        最后跟你说：分完了，按月份进了几个文件夹，找到几组重复的，原图都留着没删。</p>
+      <p><strong>这中间它调了二三十次工具。</strong>每次调用都摊在你眼前 —— 你能看到它打开了哪个目录、
+        执行了什么命令、哪一步报错、怎么绕过去的。</p>
+      <div class="say">
+        「回复中，可输入消息纠偏」
+        <span>它干活的时候你能随时插话，它听得见</span>
+      </div>
+      <p>这也意味着它能做危险的事 —— 删文件、改配置、跑系统命令。所以第 05 节那件事很重要：
+        <strong>每一样能力都能单独关掉。</strong></p>
     </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">02</div><h2>一个人不够，就叫专家开会</h2></div>
+    <p class="sub">同一个问题，让不同角色分别看一遍，再放到一张桌上吵。</p>
+
+    <div class="two">
+      <figure class="shot" style="margin:0">
+        <img src="promo/img/collab.jpg" alt="专家库界面：315 位不同专业的角色卡片">
+      </figure>
+      <div class="body-copy">
+        <p>里面备着 <strong>315 位不同专业的角色</strong>：程序员、产品经理、法务、财务、营养师、翻译、运营、心理咨询……
+          从写代码到看病历到算账，各有一批。</p>
+        <p>每个人不是一句「你是律师」的提示词，而是一整套职责边界和工作方法。
+          <strong>技能和工具是共用的</strong> —— 律师也能读文件、查资料、写文档。</p>
+        <p>你要做一件有点复杂的事，可以让它们开一场会：产品说该做、法务说这么做有风险、程序员说工期不够，
+          你在旁边看他们吵，最后你拍板。</p>
+        <div class="say">
+          一个人问 AI，得到的是一个答案<br>
+          一群人问 AI，得到的是不同立场上的争执
+          <span>后者更接近真实决策的样子</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">03</div><h2>说个时间，它自己排、自己跑</h2></div>
+    <p class="sub">不用你记着。它记着。</p>
+
+    <div class="two">
+      <div class="body-copy">
+        <p>「每周日凌晨两点重建索引」「每天早上八点把天气和新闻推给我」「每月一号提醒我交房租」——
+          说一遍就行。</p>
+        <p>到点它<strong>开一个干净的会话</strong>去干活，不会把上一件事的上下文带进来。
+          干完把结果发到指定地方：微信、邮件、这个面板、或者只存本地。</p>
+        <p>没干成会重试，重试还不行会告诉你哪一步卡住了。
+          每个任务可以随时暂停、恢复、或者立刻手动跑一次看看效果。</p>
+        <div class="say">
+          正在跑的任务：<br>
+          ⏰ NAS 全量索引每周重建 · <code>0 2 * * 0</code> · 下次 11/15 02:00
+          <span>它自己的调度台，你不用守着</span>
+        </div>
+      </div>
+      <figure class="shot" style="margin:0">
+        <img src="promo/img/cron.jpg" alt="定时任务列表：Cron 表达式、下次执行时间、上次执行时间">
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">04</div><h2>它的性格和记忆，是你能改的记事本</h2></div>
+    <p class="sub">这一节的图里没有按钮 —— 那些全是文章，你打开就能改。</p>
+
+    <div class="two">
+      <figure class="shot" style="margin:0">
+        <img src="promo/img/archive.jpg" alt="档案页：SOUL、MEMORY、AGENTS 等文本文件与 358 个技能">
+      </figure>
+      <div class="body-copy">
+        <p>别的 AI 产品，你只能通过「提示词」求它听话。这里不一样：
+          <strong>它就是几个文本文件。</strong></p>
+        <ul class="plain" style="margin:8px 0 16px">
+          <li><strong>SOUL.md</strong> — 它是什么样的人。说话什么调、什么脾气、什么时候该收着</li>
+          <li><strong>MEMORY.md</strong> — 它记住的关于你的事，以及它自己踩过的坑</li>
+          <li><strong>AGENTS.md</strong> — 它必须守的规矩。比如「改文件前先备份」</li>
+        </ul>
+        <p>不喜欢它的语气，改 SOUL 里那两行，立刻生效。
+          它记错了什么，直接去 MEMORY 里划掉。</p>
+        <p>还有 <strong>358 个技能</strong> —— 每个技能就是一个文件夹，里面写着「这类活怎么干」。
+          这些都是纯文本，你能读、能改、能自己加一个。</p>
+        <div class="say">
+          改坏了也不要紧，都是 git 里的文件，回滚就行
+          <span>这一条对后面所有内容都成立</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">05</div><h2>上网、开浏览器、敲命令，每个都能单独关</h2></div>
+    <p class="sub">能力给出去就收不回，是这类产品最大的问题。这里反过来做。</p>
+
+    <div class="two">
+      <div class="body-copy">
+        <p>它会的事情列在「能力」页，一项一行，后面一个开关：
+          <strong>联网搜索、浏览器自动化、终端命令、读写文件、执行代码、看图、看视频、语音合成……</strong></p>
+        <p>不放心就关掉。关掉之后它是真的碰不到，不是「被要求不要碰」。</p>
+        <p>如果你只是想要个能聊天的助手，把终端和文件关掉，它就变成一个干净的对话窗口。
+          如果你要它帮你管服务器，全开，再配上「改之前先说一声」那条规矩。</p>
+        <div class="say">
+          权限是开关，不是承诺
+          <span>这一条决定了你敢不敢把它放在自己的机器上</span>
+        </div>
+      </div>
+      <figure class="shot" style="margin:0">
+        <img src="promo/img/tools.jpg" alt="能力页：每一项能力后面对应一个启用开关">
+      </figure>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">06</div><h2>花了多少、跑得多稳，一页看完</h2></div>
+    <p class="sub">它花的是你自己的 token，所以账目摊开给你看。</p>
+
+    <div class="two">
+      <figure class="shot" style="margin:0">
+        <img src="promo/img/health.jpg" alt="维护页：服务状态、运行时长、内存、日志">
+      </figure>
+      <div class="body-copy">
+        <p>这一页回答三个问题：<strong>它现在是活的吗、刚才干了什么、这个月花了多少钱。</strong></p>
+        <p>服务状态、跑了多久、占多少内存、日志按级别和组件筛（只看报错、只看某一次任务的）。
+          用量统计能看到每次会话烧了多少 token、用的哪个模型、贵在哪。</p>
+        <p>用哪家的模型也是你定 —— 便宜的、聪明的、国内的、本地的，都能接。
+          一家限流或者欠费了，自动换下一家，你不用管。</p>
+        <div class="say">
+          一个数字都不藏：不是「AI 服务」，是你自己的账单
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <div class="sec-head"><div class="num">07</div><h2>还有三件小事，但它决定了你会不会一直用它</h2></div>
 
     <div class="cards">
       <div class="card">
-        <span class="ic">◇</span>
-        <h3>大厂都在往这层收口</h3>
-        <p>
-          Workday 的 Agent Harness、Salesforce 的 Trusted Enterprise AI Harness、AWS 的 AgentCore Managed Harness
-          —— 今年先后把产品重心从"模型"挪到"包在模型外面的那层"。
-        </p>
+        <h3>它记得上次聊到哪</h3>
+        <p>162 个会话按项目分好组：NAS 管理、文件处理、进程管理、网络修复……
+          三天后回来接着说，不用从头讲一遍。</p>
       </div>
       <div class="card">
-        <span class="ic">◇</span>
-        <h3>但给的都是一模一样的盒子</h3>
-        <p>
-          装好、配完、关上门。你能调的是它给你的选项，不是它的行为。
-          想换模型先看支持列表，想改一步流程先提工单，想看一眼日志先申请权限。
-        </p>
+        <h3>在哪儿都能找到它</h3>
+        <p>网页、手机、微信、QQ、Discord、飞书。你在地铁上用微信说一句，
+          回家打开电脑，活已经干完了。</p>
       </div>
       <div class="card">
-        <span class="ic">◇</span>
-        <h3>所以有了这个</h3>
-        <p>
-          同样的能力面——渠道、记忆、知识、技能、定时、用量、进程守护——但<b>每一条都摆在你面前</b>，
-          跑在你自己的 NAS 或 Mac 上，改完有工具告诉你有没有改坏。
-        </p>
+        <h3>东西不出你家门</h3>
+        <p>装在你自己的 NAS 或电脑上，模型 key 是你自己的。
+          对话记录、文件、记忆全在本机，没有经过任何第三方服务器。</p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="compare">
+<section>
   <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">定位对照</div>
-      <h2>三种 harness，你只能改其中一种</h2>
-      <p>不是替谁下判断，是三种东西本来就服务不同的诉求。你要的是哪种，看这张表就够。</p>
-    </div>
+    <div class="sec-head"><div class="num">08</div><h2>它不是个黑盒 App</h2></div>
+    <p class="sub">上面每一个面板背后，都是一个你能读、能改的文件。</p>
 
-    <div class="tbl-wrap"><table class="tbl">
-      <thead>
-        <tr>
-          <th style="width:22%"></th>
-          <th>托管 Harness<br><span style="font-weight:400;text-transform:none;letter-spacing:0">Salesforce / Workday / AWS</span></th>
-          <th>SaaS 办公 Agent<br><span style="font-weight:400;text-transform:none;letter-spacing:0">WorkBuddy 一类</span></th>
-          <th style="color:var(--accent-2)">这个</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr><td>跑在哪</td><td>厂商的云</td><td>厂商的云</td><td class="mono">你的 NAS / 你的 Mac</td></tr>
-        <tr><td>对话与日志</td><td>出域，进他们的合规体系</td><td>出域</td><td class="mono">不出门</td></tr>
-        <tr><td>换模型</td><td>厂商支持清单内</td><td>绑定自家生态</td><td class="mono">改一行 config.yaml</td></tr>
-        <tr><td>Harness 内部</td><td>黑盒</td><td>黑盒</td><td class="mono">79 前端模块 + 56 责任链</td></tr>
-        <tr><td>改坏了怎么知道</td><td>不知道</td><td>不知道</td><td class="mono">lint / 探针 / 部署对账</td></tr>
-        <tr><td>谁替你运维</td><td>厂商</td><td>厂商</td><td class="mono">面板自己管（进程守护·配置事务·重启编排）</td></tr>
-        <tr><td>花什么钱</td><td>席位费</td><td>席位费</td><td class="mono">电费，和你自己的 token</td></tr>
-      </tbody>
-    </table></div>
+    <div class="body-copy">
+      <p>很多自建 AI 面板，用起来像在用一个别人的产品：界面改不了、行为调不了、
+        想知道它为什么这么干，只能猜。</p>
+      <p>这一套是从源码长出来的 —— 不是套了个开源外壳再换层皮。
+        后端怎么调模型、怎么存会话、怎么发通知，前端每一页的每个按钮，全部在仓库里。
+        <strong>你想给「对话」加个按钮、给「任务」换个调度方式、把深色改成浅色，都行。</strong></p>
+      <p>而且改完能验 —— 它自带一套结构门禁，改坏了会报错，不会等到线上才发现。</p>
+      <div class="say">
+        一个能拆开的工具，和一个只能用的工具，差别在三年后你还能不能让它顺手
+      </div>
+    </div>
   </div>
 </section>
 
-<section id="panels">
+<section>
   <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">能力面</div>
-      <h2>12 个面板，覆盖 Agent 运行时的全部关节</h2>
-      <p>
-        不是一个聊天框加一圈设置项。模型接入、渠道收发、记忆读写、知识检索、技能装配、定时调度、
-        用量归因、进程守护——每一块都有自己的面板和自己的后端。
-      </p>
-    </div>
+    <div class="sec-head"><div class="num">09</div><h2>还没做完的部分，写在明面上</h2></div>
+    <p class="sub">省得你装上才发现。</p>
+
+    <ul class="plain honest">
+      <li>移动端能用，但还有几页在打磨。手机上的手感不如桌面</li>
+      <li>多人协作只做到了「一台机器多个入口」，真正的团队权限和成员管理还没做</li>
+      <li>技能市场没有。358 个技能是自己一台台攒出来的，装到别人机器上不会自动同步</li>
+      <li>文档偏技术，面向的是想改代码的人。只想用、不想改的人会觉得话太多</li>
+      <li>升级要手动。应用中心装完，新版本得自己下包覆盖，还没有自动更新</li>
+    </ul>
+  </div>
+</section>
+
+<section style="border-bottom:none">
+  <div class="wrap">
+    <div class="sec-head"><div class="num">10</div><h2>怎么装上</h2></div>
+    <p class="sub">三种用法，从「只想看看」到「装在自己服务器上」。</p>
 
     <div class="cards">
-      <div class="card"><span class="ic">◈</span><h3>overview · 总览</h3><p>进程、端口、渠道、模型的活死状态，一屏看完。不靠 <code>ps</code> 猜。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>assistant · 助手</h3><p>对话、子代理、后台任务，同一副记忆贯穿。会话断了能接着跑。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>models · 模型</h3><p>多 provider 并存，密钥与模型解耦，带连通性检查——不是填完就当通。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>channels · 渠道</h3><p>QQ、微信、飞书、Discord、Telegram、本地面板，六个入口一套上下文。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>memory · 记忆</h3><p>长期记忆的读写、压缩与审计。谁写进去的、什么时候被压掉的，查得到。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>learning · 知识</h3><p>知识库索引与检索。沉淀是靠流程，不是靠模型的记性。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>extensions · 扩展</h3><p>技能库、MCP 服务器、专家角色。装新的不动主程序。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>cron · 定时</h3><p>周期任务、钩子、历史回放。跑过的每一次都有回执可对。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>workspace · 工作区</h3><p>项目和产物的落盘位置、部署账本、逐文件对账。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>terminal · 终端</h3><p>面板里直接开 shell，不用为了看一眼日志再开一个 SSH。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>usage · 用量</h3><p>token 花在哪个会话、哪个模型、哪一天，按归因拆开算。</p></div>
-      <div class="card"><span class="ic">◈</span><h3>tunnel · 隧道</h3><p>外网入口与穿透状态。打没打通，这里说了算。</p></div>
-    </div>
-
-    <p style="margin-top:26px;font-size:14px;color:var(--fg-dim);max-width:760px">
-      后端不是一个巨型 router。会话、渠道、配置事务、重启编排、队列、语音、库、模型、运维——
-      按职责切成 56 条责任链，平均 64 行。<b style="color:var(--fg)">改一条不会连坐其它</b>，这也是它敢让你自己动手的原因。
-    </p>
-  </div>
-</section>
-
-<section id="verify">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">工程保障</div>
-      <h2>能改的前提，是改完还知道对不对</h2>
-      <p>
-        开源一个能改的东西不难，难的是让"改了"这件事可验证。所以这里有三级探针，
-        而不是一句"我看过了没问题"。
-      </p>
-    </div>
-
-    <div class="verify">
-      <div class="vstep">
-        <span class="n">LEVEL 01</span>
-        <h4>符号级等价</h4>
-        <p>拆模块前先把全局符号拍成快照，拆完逐个比对定义位置和引用关系。</p>
-        <span class="num">638 函数 + 314 对象 · 零差异</span>
+      <div class="card">
+        <h3>只想看一眼</h3>
+        <p>直接打开这个页面往下翻，上面的截图都是真的。
+          想动手就克隆仓库，前端是纯静态文件，起个服务就能跑。</p>
       </div>
-      <div class="vstep">
-        <span class="n">LEVEL 02</span>
-        <h4>样式级等价</h4>
-        <p>拿 <code>getComputedStyle</code> 把关键元素的计算值全量导出，新旧两版 diff。</p>
-        <span class="num">key 顺序也纳入比对</span>
+      <div class="card">
+        <h3>装在自己机器上</h3>
+        <p>NAS（飞牛 OS）用户在应用中心装 fpk 包；其他 Linux 机器按 README 里的步骤跑。
+          需要 Python 3.11+ 和一个模型 API key。</p>
       </div>
-      <div class="vstep">
-        <span class="n">LEVEL 03</span>
-        <h4>像素级等价</h4>
-        <p>Playwright 在真实视口截图，逐像素算偏差，超阈值直接判红。</p>
-        <span class="num">1440×1000 / 390×844 · 0 像素</span>
+      <div class="card">
+        <h3>接到现有环境</h3>
+        <p>微信、QQ、Discord、飞书的机器人可以对接到自己的账号。
+          模型随便换 —— 主流服务都能接，哪家便宜用哪家，填个地址和 key 就行。</p>
       </div>
     </div>
 
-    <div class="layers" style="margin-top:34px">
-      <div class="layer" style="--lc:#38bdf8"><div class="nm">core<small>加载顺序就是依赖顺序</small></div><div class="ds">状态、路由、请求、主题——<b>12 个模块，最底层，谁都不许反向依赖它</b></div></div>
-      <div class="layer" style="--lc:#5eead4"><div class="nm">chat<small>会话域</small></div><div class="ds">消息流、输入、附件、语音条、断流恢复 —— <b>6 个模块</b></div></div>
-      <div class="layer" style="--lc:#a78bfa"><div class="nm">panels<small>业务域</small></div><div class="ds">12 个主面板，各自成域，<b>互相之间只通过 core 通信</b></div></div>
-      <div class="layer" style="--lc:#f59e0b"><div class="nm">panel-*<small>横切能力</small></div><div class="ds">36 个可复用片段：鉴权、门禁、拖拽、悬浮、树、斜杠、提示……<b>谁需要谁引</b></div></div>
-      <div class="layer" style="--lc:#94a3b8"><div class="nm">archive<small>冷路径</small></div><div class="ds">归档、草稿、评审 —— <b>不参与首屏，按需加载</b></div></div>
-    </div>
-  </div>
-</section>
-
-<section id="deploy">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">三种跑法</div>
-      <h2>NAS 上、Mac 上，或者只看看前端</h2>
-      <p>它原本是 fnOS 上的一个应用包，但面板这一层不依赖 fnOS——单独跑起来也能用。</p>
-    </div>
-
-<pre><span class="c"># 1. 完整安装（fnOS 应用包）</span>
-<span class="b">git</span> clone https://github.com/vector9584/fnos-hermes-panel
-<span class="b">cd</span> fnos-hermes-panel
-<span class="b">bash</span> build-slim.sh          <span class="c"># 产出 fpk</span>
-<span class="c"># 应用中心 → 手动安装 → 选刚生成的 fpk</span>
-
-<span class="c"># 2. 只要面板前端（不碰生产）</span>
-<span class="b">python3</span> -m http.server 8080 <span class="c">--directory</span> app/ui
-<span class="c"># 打开 http://localhost:8080 —— 静态预览，接口走 mock</span>
-
-<span class="c"># 3. 只要源码包</span>
-<span class="b">bash</span> dev/make-release.sh
-<span class="g">→ dist/fnos-hermes-panel-&lt;sha&gt;.zip   15.6 MB / 1074 文件</span></pre>
-
-    <p style="margin-top:22px;font-size:14px;color:var(--fg-dim)">
-      源码包用 <code style="font-family:var(--mono);color:var(--accent)">git archive</code> 出，
-      只认已提交内容——<code style="font-family:var(--mono);color:var(--accent)">.env</code>、构建产物、回滚快照天然进不去，
-      打完还会再查一遍。
-    </p>
-  </div>
-</section>
-
-<section id="debt">
-  <div class="wrap">
-    <div class="sec-head">
-      <div class="tag">诚实清单</div>
-      <h2>没做完的部分，写在明面上</h2>
-      <p>一个项目最该被看见的不是它做完了什么，是它知道自己还差什么。</p>
-    </div>
-
-    <div class="tbl-wrap"><table class="tbl">
-      <thead><tr><th style="width:34%">项</th><th style="width:14%">状态</th><th>说明</th></tr></thead>
-      <tbody>
-        <tr><td>架构 lint 存量违规</td><td class="mono" style="color:var(--warn)">103 条</td><td>存量与新增分开计数，新增必须为 0，存量按域逐步还</td></tr>
-        <tr><td>测试覆盖</td><td class="mono" style="color:var(--warn)">部分</td><td>等价性与部署对账有自动化探针，业务逻辑单测还不成体系</td></tr>
-        <tr><td>i18n</td><td class="mono">中文</td><td>界面文案目前只有中文，没有做多语言抽取</td></tr>
-        <tr><td>移动端</td><td class="mono" style="color:var(--accent-2)">可用</td><td>390 宽做了适配与真机验收，但复杂表格仍是横滑</td></tr>
-        <tr><td>多用户</td><td class="mono">单实例</td><td>一个面板服务一个 agent 实例，没有做租户隔离</td></tr>
-      </tbody>
-    </table></div>
+    <pre><code>git clone https://github.com/vector9584/fnos-hermes-panel.git
+cd fnos-hermes-panel
+# 详细步骤见 README：装依赖 → 填模型 key → 起网关 → 打开面板</code></pre>
   </div>
 </section>
 
 <footer>
   <div class="wrap">
-    <div class="cols">
-      <div>
-        <h5>fnos-hermes-panel</h5>
-        <p style="font-size:13.5px;line-height:1.75">
-          一个自托管的 Agent harness 面板。<br>
-          从 fnOS 应用中心里的一个 658 KB 单文件界面，拆成 79 个模块、56 条责任链，
-          再把每一处改动都变成可验证的。
-        </p>
-      </div>
-      <div>
-        <h5>文档</h5>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/README.md">README</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/JOURNEY.md">改造历程</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/app/ui/ARCHITECTURE.md">架构约定</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/UPDATE-LOG.md">更新日志</a>
-      </div>
-      <div>
-        <h5>项目</h5>
-        <a href="https://github.com/vector9584/fnos-hermes-panel">源码</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/issues">问题</a>
-        <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/LICENSE">GPL-3.0</a>
-      </div>
+    <div class="foot-links">
+      <a href="https://github.com/vector9584/fnos-hermes-panel">GitHub 仓库</a>
+      <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/README.md">README</a>
+      <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/JOURNEY.md">改造历程</a>
+      <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/LICENSE">GPL-3.0</a>
     </div>
-    <div class="sig">
-      <span>上游 Hermes Agent 由 Nous Research 开发，本项目是它在一个真实 NAS 上的长期改造。</span>
-      <code>GPL-3.0 · 2026</code>
-    </div>
+    <p style="margin:0">基于 Hermes Agent 二次开发。界面里的截图都是真机截的，数据做了脱敏。</p>
   </div>
 </footer>
 
