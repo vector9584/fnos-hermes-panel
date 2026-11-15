@@ -301,9 +301,10 @@ window.Archive.register('tree', (function () {
       nav.append(group);
     });
 
-    /* 左栏底部特殊入口（案例 tree-group）：密码本不是页签，是这里的独立一行。 */
+    /* 左栏底部特殊入口：密码本就这一行，别再给它套 section/分组/分隔线——
+       2026-11-15 用户第三次点明「密码本只有一个，你弄那么大空间干嘛」。
+       直接当树里最后一个普通行，高度、字体、hover 全跟文件夹行一致。 */
     (st.cfg.specials || []).forEach(function (sp) {
-      var group = A.el('section', null, 'arc-group arc-group-special');
       var on = st.view === sp.view;
       var row = A.el('button', null, 'arc-row arc-special' + (on ? ' on' : ''));
       row.type = 'button';
@@ -315,8 +316,7 @@ window.Archive.register('tree', (function () {
         A.closeRailDrawer();
         A.setView(st, sp.view);
       };
-      group.append(row);
-      nav.append(group);
+      nav.append(row);
     });
 
     if (!nav.children.length) {

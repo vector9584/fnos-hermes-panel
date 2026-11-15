@@ -920,12 +920,12 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
    结果这条入口悬在中间，上下都不挨着（2026-11-15 视觉复核点出的最别扭留白）。
    margin-top:auto 把它压到底，sticky 保证树滚动时它仍在视野里。 */
 .arc-rail-scroll > * { flex: 0 0 auto; }
-.arc-group-special {
-  margin-top: auto; padding-top: 6px; position: sticky; bottom: 0;
-  background: var(--bg1); border-top: 1px solid var(--border);
-}
+/* 密码本那一行：树里的普通行，不再套分组。之前给了 border-top + sticky + margin-top:auto，
+   看着像自带一个 section，用户原话「密码本只有一个，你弄那么大空间干嘛」。 */
+.arc-rail-scroll > * { flex: 0 0 auto; }
 .arc-special {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px;
+  margin-top: 2px;
   font: inherit; font-size: 12.5px; color: var(--text2); text-align: left;
   background: transparent; border: 0; border-radius: 7px; cursor: pointer;
 }
