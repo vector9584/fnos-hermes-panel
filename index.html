@@ -90,8 +90,6 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
 .lab-h .t{font:10px var(--mono);letter-spacing:.18em;color:var(--acc)}
 .lab-h .s{font:9px var(--mono);letter-spacing:.12em;color:var(--faint);margin-left:auto}
 .lab-b{padding:15px 14px}
-.lab-h,.lab-b{display:none}
-section[data-ch] .console{display:none}
 section[data-ch] .stage{grid-template-columns:1fr}
 #end .console{display:flex;align-items:center;justify-content:center;background:transparent}
 #end .console img{height:clamp(300px,38vw,460px);width:auto;display:block;opacity:.92}
@@ -340,7 +338,16 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>会话列表</span><span>27 组工具</span><span>随时插话</span></div>
       <div class="hint"><i>↘</i> 一条会话，一段来龙去脉</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">最近的会话</span><span class="s" id="s1">0 / 5 展开</span></div>
+      <div class="lab-b">
+        <div class="prog" id="prog1"></div>
+        <div class="grid g5" id="nodes1"></div>
+        <div class="row" style="margin:12px 0"><button class="btn on" id="auto1">全部展开 ↻</button><button class="btn" id="reset1">收起</button></div>
+        <div class="out" id="out1"><span class="mut">点上面任一条，看它当时做了什么。</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -353,7 +360,20 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>每步可见</span><span>随时插话</span><span>危险动作先问你</span></div>
       <div class="hint"><i>↘</i> 每一步都摊开在页面上</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">看它做一件事</span><span class="s" id="s2">还没开始</span></div>
+      <div class="lab-b">
+        <div class="row">
+          <button class="btn on" id="go2">跑一次 ↻</button>
+          <button class="btn" id="cut2" disabled>插一句：别删原图</button>
+          <button class="btn" id="reset2">复位</button>
+        </div>
+        <div class="slider"><label>播放速度</label><input type="range" id="spd2" min="60" max="520" value="300"><span class="v" id="spdv2">300</span><span style="font:9px var(--mono);color:var(--faint)">ms / 帧</span></div>
+        <div class="row" id="approve2" style="display:none"><button class="btn" data-ap="yes">确认删除</button><button class="btn" data-ap="no">保留原图</button><span style="font:10px var(--mono);color:var(--acc-hi);align-self:center">⏸ 等待人确认</span></div>
+        <div class="out" id="out2" style="min-height:150px"><span class="mut">还没开始。点「跑一次」。</span></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -366,7 +386,31 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>八个入口</span><span>单手够得着</span><span>不卡</span></div>
       <div class="hint"><i>↘</i> 一只手，全都够得着</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">手机预览 · 可以直接点</span><span class="s" id="s3">点一下导航试试</span></div>
+      <div class="lab-b">
+        <div class="row">
+          <button class="btn on" data-phone="nav">逛一遍导航</button>
+          <button class="btn" data-phone="modal">发消息要确认</button>
+          <button class="btn" data-phone="stream">长回复不卡</button>
+        </div>
+        <div class="phone" id="phone3">
+          <div class="scr">
+            <div class="top" id="pTop"><span class="on">对话</span><span>协作</span><span>任务</span><span>档案</span><span>能力</span><span>模型</span><span>维护</span><span>设置</span></div>
+            <div class="caps" id="pCaps"><span class="on">通用</span><span>写作</span><span>代码</span><span>翻译</span><span>分析</span></div>
+            <div class="body" id="pBody">
+              <div class="msg me">把相册按日期分好</div>
+              <div class="msg tool">正在翻你的相册</div>
+              <div class="msg" id="pLast">正在生成…</div>
+            </div>
+            <div class="input"><input id="pInput" placeholder="输入消息…" maxlength="26"><button id="pSend">↑</button><button id="pMic">🎙</button></div>
+          </div>
+          <div class="modal" id="pModal"><div class="sh">确认删除原图？</div><div class="bt" id="pYes">确认</div><div class="bt ghost" id="pNo">取消</div></div>
+        </div>
+        <div class="tip" id="pTip">八个入口横着排，点哪个进哪个；输入框跟着屏幕变宽，不用来回缩放。</div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -379,7 +423,18 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>隔天还在</span><span>断了自动接上</span><span>不重画</span></div>
       <div class="hint"><i>↘</i> 关了再开，还在原处</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">隔一天再打开</span><span class="s" id="s4">刚聊完</span></div>
+      <div class="lab-b">
+        <div class="grid g3" id="ver4"></div>
+        <div class="row" style="margin:11px 0"><button class="btn" id="reload4">关掉再打开 ↻</button><button class="btn" id="events4">断网再恢复 ↻</button></div>
+        <div class="out" id="out4" style="min-height:96px"></div>
+        <div class="divider"></div>
+        <div class="slider"><label>刷新频率</label><input type="range" id="jslide4" min="0" max="100" value="80"><span class="v" id="jval4">80</span></div>
+        <div class="jitter-wrap"><div class="jitter" id="jit4">QUEUE</div><div class="jitter-note" id="jnote4">拖到 0 = 顺序没变就不重画。<br>数值越高，列表抖得越厉害。</div></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -392,7 +447,21 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>单次</span><span>连续</span><span>简繁</span><span>说错了有兜底</span></div>
       <div class="hint"><i>↘</i> 说一遍，它就懂了</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">按住说话</span><span class="s" id="s5">单次</span></div>
+      <div class="lab-b">
+        <div class="row">
+          <button class="btn on" data-vm="once">单次</button>
+          <button class="btn" data-vm="cont">连续</button>
+          <button class="btn" data-vm="fallback">兜底</button>
+          <button class="btn" id="lang5">简体 ⇄ 繁体</button>
+        </div>
+        <div class="jitter-wrap" style="gap:14px"><div class="mic" id="mic5">🎙</div><div class="wave" id="wave5"></div></div>
+        <div class="transcript" id="tr5"><span class="mut">按住上面的麦克风，或点一下自动录一句。</span></div>
+        <div class="tip" id="tip5">识别结果落进输入框，改完再发；不直接发送。</div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -405,7 +474,17 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>不用改文件</span><span>换完立即生效</span><span>用量看得见</span></div>
       <div class="hint"><i>↘</i> 几副嗓子，随时换</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">正在用的模型</span><span class="s" id="s6">01 / 05</span></div>
+      <div class="lab-b">
+        <div class="grid g3" id="prov6"></div>
+        <div class="slider" style="margin-top:13px"><label>额度</label><input type="range" id="bud6" min="5" max="100" value="42"><span class="v" id="budv6">42</span><span style="font:9px var(--mono);color:var(--faint)">%</span></div>
+        <div class="stats" id="stats6"></div>
+        <div class="flowbar"><i id="flow6"></i></div>
+        <div class="meter"><span id="route6">数据流向：本机</span><b id="cost6">$0.00</b></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -418,7 +497,17 @@ section[data-ch] .stage{grid-template-columns:1fr}
       <div class="tags"><span>27 组工具</span><span>一组一组关</span><span>关了就真碰不到</span></div>
       <div class="hint"><i>↘</i> 看得见，改得动，留得住</div>
     </aside>
-    
+    <div class="console rv" style="--d:90ms">
+      
+      <div class="lab-h"><span class="t">工具开关</span><span class="s" id="s7">6 / 8 开启</span></div>
+      <div class="lab-b">
+        <div class="row"><button class="btn" id="all7">全开</button><button class="btn" id="none7">全关（只剩聊天）</button><button class="btn" id="default7">恢复默认</button></div>
+        <div class="grid g4" id="sw7" style="margin-bottom:12px"></div>
+        <div class="verdict" id="vd7"></div>
+        <div class="row" style="margin:12px 0 0"><button class="btn on" data-cap="do">主要能做</button><button class="btn" data-cap="not">还没做到</button><button class="btn" id="copy7">这些开关在哪 ⧉</button></div>
+        <div class="out" id="cap7" style="min-height:74px"></div>
+      </div>
+    </div>
   </div>
 </section>
 
@@ -521,6 +610,230 @@ if(reduce)rvs.forEach(function(e){e.classList.add('in')});else{
 if(!reduce){var fio=new IntersectionObserver(function(es){es.forEach(function(e){e.target.classList.toggle('in',e.isIntersecting)})},{threshold:.2});
   [].slice.call(document.querySelectorAll('.viewer')).forEach(function(f){fio.observe(f)});}
 
+/* ---- 01 对话 · 会话列表 ---- */
+var nodes=[
+ ['01 整理相册','按月份分组，重复的挑出来，原图一张没删'],
+ ['02 做周报','从这周的记录里提要点，写成三段，附上待办'],
+ ['03 算报价','把三份报价单里的数字抽出来，排成一张对照表'],
+ ['04 改英文','把摘要翻成英文，公式编号保持不变'],
+ ['05 查论文','在库里找近三年用到这套方法的文章，列成清单']
+];
+var n1=document.getElementById('nodes1'),pg1=document.getElementById('prog1'),o1=document.getElementById('out1'),st1=document.getElementById('s1');
+nodes.forEach(function(n,i){var c=document.createElement('button');c.className='cell';c.textContent=n[0];c.dataset.i=i;n1.appendChild(c);
+  var p=document.createElement('i');pg1.appendChild(p);});
+var on1=[];
+function draw1(){pg1.querySelectorAll('i').forEach(function(p,j){p.classList.toggle('on',on1.indexOf(j)>=0)});
+  n1.querySelectorAll('.cell').forEach(function(c,j){c.classList.toggle('on',on1.indexOf(j)>=0)});
+  st1.textContent=on1.length+' / 5 展开';
+  if(on1.length===5)markDone(1);}
+function patch(i){if(on1.indexOf(i)<0)on1.push(i);
+  o1.innerHTML='<span class="hi">'+nodes[i][0]+'</span>\n'+nodes[i][1]+'\n\n<span class="mut">'+(i===4?'✓ 五条都在这儿，随时回看':'下一条：'+nodes[i+1][0])+'</span>';draw1();}
+n1.addEventListener('click',function(e){var c=e.target.closest('.cell');if(c)patch(+c.dataset.i)});
+document.getElementById('auto1').addEventListener('click',function(){
+  on1=[];var i=0;o1.innerHTML='';
+  (function step(){if(i>=5){o1.innerHTML+='\n<span class="ok">✓ 五条都展开了</span>';draw1();return}
+    patch(i);i++;setTimeout(step,reduce?0:260)})();});
+document.getElementById('reset1').addEventListener('click',function(){on1=[];draw1();o1.innerHTML='<span class="mut">已收起。点上面任一条再看。</span>'});
+draw1();
+
+/* ---- 02 实时任务 ---- */
+var t2=null,cut2=false,ap2=null,speed2=300;
+var o2=document.getElementById('out2'),s2=document.getElementById('s2'),
+    go2=document.getElementById('go2'),cutB=document.getElementById('cut2'),apRow=document.getElementById('approve2');
+var L2=[
+ '<span class="mut">› 你：</span>把相册按日期分好，重复的挑出来',
+ '<span class="ok">✓</span> 看了一遍相册，1,284 张照片',
+ '<span class="ok">✓</span> 按月份分成 11 组，放在新文件夹里',
+ '<span class="bad">×</span> 挑重复时撞上两个同名文件，换了个比法',
+ '<span class="ok">✓</span> 按内容比对，找出 3 组重复',
+ '<span class="hi">!</span> 下一步要删文件，<span class="hi">停下来问你一句</span>'
+];
+function finish2(txt){if(t2){clearTimeout(t2);t2=null}s2.textContent=txt;go2.disabled=false;go2.classList.add('on');cutB.disabled=true;markDone(2);}
+function run2(){
+  if(t2){clearTimeout(t2);t2=null}cut2=false;ap2=null;apRow.style.display='none';
+  o2.innerHTML='';s2.textContent='正在做';go2.disabled=true;go2.classList.remove('on');cutB.disabled=false;
+  var i=0;
+  (function step(){
+    if(cut2){o2.innerHTML+='\n<span class="hi">↳ 你插了一句：「别删原图」</span>\n<span class="ok">✓ 取消删除，改成只做标记</span>\n\n<span class="mut">› 它：</span>分完了，3 组重复<span class="hi">只做了标记，原图一张没动</span>。';finish2('做完了 · 已改口');return}
+    if(i>=L2.length){apRow.style.display='flex';s2.textContent='等你拍板';return}
+    o2.innerHTML+=L2[i]+'\n';i++;t2=setTimeout(step,reduce?0:speed2);
+  })();
+}
+go2.addEventListener('click',run2);
+cutB.addEventListener('click',function(){if(!cut2){cut2=true;cutB.disabled=true;s2.textContent='已插话';if(t2){clearTimeout(t2);t2=null}run2Resume()}});
+function run2Resume(){o2.innerHTML+='\n<span class="hi">↳ 你插了一句：「别删原图」</span>\n<span class="ok">✓ 取消删除，改成只做标记</span>\n\n<span class="mut">› 它：</span>分完了，3 组重复<span class="hi">只做了标记，原图一张没动</span>。';apRow.style.display='none';finish2('做完了 · 已改口');}
+apRow.addEventListener('click',function(e){var b=e.target.closest('[data-ap]');if(!b)return;
+  ap2=b.dataset.ap;apRow.style.display='none';
+  o2.innerHTML+='\n<span class="mut">› 你：</span>'+(ap2==='yes'?'确认删除':'保留原图')+'\n\n<span class="mut">› 它：</span>分完了，3 组重复，'+(ap2==='yes'?'<span class="bad">冗余副本已删</span>。':'<span class="ok">原图都留着没删</span>。');
+  finish2('做完了 · 按你说的');});
+document.getElementById('reset2').addEventListener('click',function(){if(t2){clearTimeout(t2);t2=null}cut2=false;ap2=null;apRow.style.display='none';o2.innerHTML='<span class="mut">还没开始。点「跑一次」。</span>';s2.textContent='还没开始';go2.disabled=false;go2.classList.add('on');cutB.disabled=true;});
+document.getElementById('spd2').addEventListener('input',function(){speed2=+this.value;document.getElementById('spdv2').textContent=speed2;});
+
+/* ---- 03 手机 ---- */
+var pTips={
+ nav:'八个入口横着排，点哪个进哪个；输入框跟着屏幕变宽，不用来回缩放。',
+ modal:'小屏打字时键盘会顶上来，确认和取消永远留在能点到的地方。',
+ stream:'长回复一大段往下走，屏幕不抖；往上翻的时候不会被拽回去。'
+};
+var pNames={nav:'逛导航',modal:'确认',stream:'长回复'};
+function pSetMode(m){
+  document.querySelectorAll('[data-phone]').forEach(function(b){b.classList.toggle('on',b.dataset.phone===m)});
+  document.getElementById('pTip').textContent=pTips[m];
+  document.getElementById('pModal').classList.toggle('on',m==='modal');
+  var last=document.getElementById('pLast');
+  last.textContent=m==='stream'?'正在生成… 往下走，屏幕不跳':'正在生成…';
+  last.style.color=m==='stream'?'var(--green)':'';
+  document.getElementById('s3').textContent=pNames[m]||m;
+  markDone(3);
+}
+document.querySelectorAll('[data-phone]').forEach(function(b){b.addEventListener('click',function(){pSetMode(b.dataset.phone)})});
+function pClickRow(sel){var box=document.querySelector(sel);box.addEventListener('click',function(e){var t=e.target.closest('span');if(!t)return;
+  box.querySelectorAll('span').forEach(function(s){s.classList.remove('on')});t.classList.add('on');markDone(3);});}
+pClickRow('#pTop');pClickRow('#pCaps');
+function pSend(){var inp=document.getElementById('pInput'),v=(inp.value||'').trim();if(!v)return;
+  var m=document.createElement('div');m.className='msg me';m.textContent=v;document.getElementById('pBody').appendChild(m);
+  inp.value='';var t=document.createElement('div');t.className='msg tool';t.textContent='↳ 接上了，正在做';
+  setTimeout(function(){document.getElementById('pBody').appendChild(t);document.getElementById('pBody').scrollTop=9999},reduce?0:260);
+  markDone(3);}
+document.getElementById('pSend').addEventListener('click',pSend);
+document.getElementById('pInput').addEventListener('keydown',function(e){if(e.key==='Enter')pSend()});
+document.getElementById('pMic').addEventListener('click',function(){
+  var m=document.createElement('div');m.className='msg voice';m.textContent='🎙 转好了：把重复的挑出来，原图别删';
+  document.getElementById('pBody').appendChild(m);document.getElementById('pBody').scrollTop=9999;markDone(3);});
+['pYes','pNo'].forEach(function(id){document.getElementById(id).addEventListener('click',function(){
+  document.getElementById('pModal').classList.remove('on');
+  var m=document.createElement('div');m.className='msg tool';m.textContent=id==='pYes'?'✓ 已确认删除':'✓ 已取消，原图保留';
+  document.getElementById('pBody').appendChild(m);document.getElementById('pBody').scrollTop=9999;markDone(3);});});
+
+/* ---- 04 缓存 ---- */
+var vers=[['刚聊完','在','<span class="ok">← 都在</span>','标题、每一条消息、它调过什么，全留在本机。'],
+          ['关掉网页','在','<span class="ok">← 再打开接着聊</span>','会话不是网页里的临时状态，关浏览器不影响。'],
+          ['第二天再开','在','<span class="ok">← 还能翻回去</span>','按时间排，关键词能搜，旧会话照样接着问。']];
+var g4=document.getElementById('ver4'),o4=document.getElementById('out4'),s4=document.getElementById('s4');
+vers.forEach(function(v,i){var c=document.createElement('button');c.className='cell'+(i===0?' on':'');c.textContent=v[0];c.dataset.i=i;g4.appendChild(c)});
+function setVer(i){g4.querySelectorAll('.cell').forEach(function(c,j){c.classList.toggle('on',j===i)});
+  o4.innerHTML='<span class="hi">会话</span> 整理相册 · 11 组 · 24 条消息\n<span class="hi">状态</span> 上次停在「等你确认删除」\n<span class="hi">现在</span> 打开就能接着往下说 '+vers[i][2]+'\n\n<span class="mut">'+vers[i][3]+'</span>';
+  s4.textContent=vers[i][1];markDone(4);}
+setVer(0);
+g4.addEventListener('click',function(e){var c=e.target.closest('.cell');if(c)setVer(+c.dataset.i)});
+document.getElementById('reload4').addEventListener('click',function(){
+  var v=document.getElementById('vw4');if(v){v.classList.remove('glitch');void v.offsetWidth;v.classList.add('glitch');}
+  setTimeout(function(){if(v)v.classList.remove('glitch')},900);markDone(4);});
+document.getElementById('events4').addEventListener('click',function(){
+  var E=['<span class="ok">✓</span> 页面和后台连上了','<span class="bad">×</span> 网断了（换 WiFi，或者 NAS 重启）',
+    '<span class="ok">✓</span> 自己找回地址，重新连','<span class="ok">✓</span> 断之前那条回复，接着往下收',
+    '<span class="ok">✓</span> 旧的那次自己让位，不抢','<span class="ok">✓</span> 屏幕上的列表不重画，不抖','',
+    '<span class="ok">✓ 不会一直转圈。</span>'];
+  var i=0;o4.innerHTML='';s4.textContent='RECOVERED';
+  (function step(){if(i>=E.length){markDone(4);return}o4.innerHTML+=E[i]+'\n';i++;setTimeout(step,reduce?0:190)})();});
+var jit=document.getElementById('jit4'),jt2=null,jnote=document.getElementById('jnote4');
+function setJit(v){document.getElementById('jval4').textContent=v;
+  if(jt2){clearInterval(jt2);jt2=null}
+  jit.style.animation='none';
+  if(v<8){jit.style.transform='none';jnote.innerHTML='<span class="ok">顺序没变就不重画 · 屏幕稳</span>';}
+  else{var amp=Math.round(v/9),dur=Math.max(45,420-v*3.4);
+    jnote.innerHTML='每秒重画 '+Math.round(v)+' 次 → <span class="bad">看着抖</span>';
+    if(!reduce)jt2=setInterval(function(){jit.style.transform='translate('+((Math.random()-.5)*amp)+'px,'+((Math.random()-.5)*amp*.5)+'px)'},dur);
+    else jit.style.borderColor='var(--red)';}
+  markDone(4);}
+document.getElementById('jslide4').addEventListener('input',function(){setJit(+this.value)});
+setJit(80);
+
+/* ---- 05 语音 ---- */
+var wave=document.getElementById('wave5');
+for(var q=0;q<54;q++){var s=document.createElement('i');wave.appendChild(s)}
+var vm='once',lang='简',rec=false,wt=null,vTimer=null,vIdx=0;
+var lines=['把相册里那批照片按日期分好','重复的挑出来，原图别删','每周日凌晨两点重建索引','帮我把这三份报告合成一份'];
+var trad=[['相册','相簿'],['照片','相片'],['重复','重複'],['原图','原圖'],['索引','索引'],['报告','報告'],['帮','幫'],['这','這'],['里','裡'],['挑','挑']];
+function toTrad(t){trad.forEach(function(p){t=t.split(p[0]).join(p[1])});return t}
+function waveOn(){if(wt)clearInterval(wt);
+  if(reduce){wave.querySelectorAll('i').forEach(function(s){s.style.height='14px'});return}
+  wt=setInterval(function(){wave.querySelectorAll('i').forEach(function(s){s.style.height=(3+Math.random()*30).toFixed(0)+'px';s.style.background=Math.random()>.55?'var(--acc)':'var(--acc-dim)'})},95);}
+function waveOff(){if(wt){clearInterval(wt);wt=null}wave.querySelectorAll('i').forEach(function(s){s.style.height='3px';s.style.background='var(--acc-dim)'})}
+function stopVoice(){rec=false;document.getElementById('mic5').classList.remove('rec');waveOff();
+  if(vTimer){clearTimeout(vTimer);vTimer=null}}
+function say(text){
+  var tr=document.getElementById('tr5');tr.innerHTML='';var i=0;
+  var shown=lang==='繁'?toTrad(text):text;
+  (function step(){if(i>=shown.length){tr.textContent=shown;document.getElementById('tip5').textContent='识别结果落进输入框，改完再发；不直接发送。';markDone(5);return}
+    tr.innerHTML=shown.slice(0,++i)+'<span style="color:var(--acc)">▍</span>';
+    vTimer=setTimeout(step,reduce?0:42)})();}
+var pendingText='',ptr=false;
+function beginVoice(){
+  if(vm==='fallback'){document.getElementById('tr5').innerHTML='<span class="bad">× 无系统语音服务</span>\n<span class="ok">✓ 隐藏底层异常，给出修复说明</span>\n<span class="ok">✓ 可直达远程网关检查并重试</span>';
+    document.getElementById('tip5').textContent='失败也要说人话：给修复路径，不抛堆栈。';markDone(5);return}
+  if(rec)return;rec=true;mic.classList.add('rec');waveOn();
+  pendingText=lines[vIdx%lines.length];vIdx++;
+  document.getElementById('tr5').innerHTML='<span class="mut">识别中… ▍</span>';
+  document.getElementById('tip5').textContent=vm==='cont'?'连续模式：短识别 + 自动续接，一直说一直收。':'单次模式：说完就停，结果写进输入框。';markDone(5);}
+function endVoice(){
+  if(!rec)return;rec=false;mic.classList.remove('rec');waveOff();
+  var t=pendingText;say(t);
+  if(vm==='cont'){vTimer=setTimeout(function(){if(vm==='cont'&&!rec){beginVoice();setTimeout(endVoice,reduce?0:850)}},reduce?0:1500)}}
+var mic=document.getElementById('mic5');
+mic.addEventListener('pointerdown',function(e){e.preventDefault();ptr=true;beginVoice()});
+mic.addEventListener('pointerup',function(){if(ptr)endVoice()});
+mic.addEventListener('pointercancel',function(){if(ptr)endVoice()});
+mic.addEventListener('click',function(){if(ptr){ptr=false;return}
+  if(rec)endVoice();else{beginVoice();vTimer=setTimeout(endVoice,reduce?0:850)}});
+document.querySelectorAll('[data-vm]').forEach(function(b){b.addEventListener('click',function(){
+  vm=b.dataset.vm;document.querySelectorAll('[data-vm]').forEach(function(x){x.classList.toggle('on',x===b)});
+  document.getElementById('s5').textContent=vm==='once'?'单次':vm==='cont'?'连续':'兜底';
+  stopVoice();if(vTimer){clearTimeout(vTimer);vTimer=null}
+  if(vm==='fallback'){document.getElementById('tr5').innerHTML='<span class="mut">点麦克风，看无系统语音服务时的回退。</span>';document.getElementById('tip5').textContent='兜底：给明确修复说明，不抛底层英文异常。'}
+  else if(vm==='cont'){document.getElementById('tr5').innerHTML='<span class="mut">顶部波形按钮独立入口 · 点麦克风开始连续说。</span>';document.getElementById('tip5').textContent='短识别 + 自动续接，避免长模式在部分设备报错。'}
+  else{document.getElementById('tr5').innerHTML='<span class="mut">按住麦克风，或点一下自动录一句。</span>';document.getElementById('tip5').textContent='识别结果落进输入框，改完再发；不直接发送。'}
+  markDone(5);})});
+document.getElementById('lang5').addEventListener('click',function(){lang=lang==='简'?'繁':'简';this.textContent='当前 '+lang+'体 ⇄';
+  this.classList.toggle('on',lang==='繁');
+  document.getElementById('s5').textContent=(vm==='cont'?'连续':vm==='fallback'?'兜底':'单次')+' · '+lang;
+  var t=document.getElementById('tr5').innerText.replace('▍','').trim();
+  if(t&&t.indexOf('识别')<0&&t.indexOf('无系统')<0)document.getElementById('tr5').innerHTML=lang==='繁'?toTrad(t):(function(){var x=t;trad.forEach(function(p){x=x.split(p[1]).join(p[0])});return x})();
+  markDone(5);});
+
+/* ---- 06 供应商 ---- */
+var provs=[['DeepSeek Flash',1],['DeepSeek V4 Pro',1],['Grok 4.7',1],['免费中转',1],['本地端点',0]];
+var g6=document.getElementById('prov6'),s6=document.getElementById('s6'),pi=0,bud=42;
+provs.forEach(function(p,i){var c=document.createElement('button');c.className='cell'+(i===0?' on':'');c.textContent=p[0];c.dataset.i=i;g6.appendChild(c)});
+function draw6(){var p=provs[pi],local=p[1]===0;
+  var tok=Math.round((local?0:bud*1.9)+12),hit=Math.round(local?92:38+bud*.32),cost=local?0:(bud*.0031);
+  document.getElementById('stats6').innerHTML='<div><b>'+tok+'K</b><span>本月用量</span></div><div><b>'+hit+'%</b><span>缓存命中</span></div><div><b>'+(local?'0':'1')+'</b><span>出网请求</span></div>';
+  document.getElementById('flow6').style.width=Math.min(100,bud)+'%';
+  document.getElementById('route6').textContent='走哪儿：'+(local?'本机 · 推理和文件都不出网':'你选的那个模型服务 · 凭据单独存');
+  document.getElementById('cost6').textContent=local?'$0.00':'$'+cost.toFixed(2);
+  s6.textContent=String(pi+1).padStart(2,'0')+' / 05';}
+g6.addEventListener('click',function(e){var c=e.target.closest('.cell');if(!c)return;pi=+c.dataset.i;
+  g6.querySelectorAll('.cell').forEach(function(x,j){x.classList.toggle('on',j===pi)});draw6();markDone(6);});
+document.getElementById('bud6').addEventListener('input',function(){bud=+this.value;document.getElementById('budv6').textContent=bud;draw6();markDone(6)});
+draw6();
+
+/* ---- 07 开关板 ---- */
+var caps=[['联网搜索',1],['浏览器自动化',1],['终端命令',1],['读写文件',1],['执行代码',0],['看图与视觉',1],['语音合成',1],['定时任务',0]];
+var g7=document.getElementById('sw7'),vd=document.getElementById('vd7'),s7=document.getElementById('s7');
+function draw7(){var n=0,on=[];caps.forEach(function(c,i){if(c[1]){n++;on.push(c[0])}});
+  s7.textContent=n+' / 8 开启';
+  g7.innerHTML=caps.map(function(c,i){return '<div class="sw'+(c[1]?' on':'')+'" data-i="'+i+'"><span>'+c[0]+'</span><i></i></div>'}).join('');
+  vd.innerHTML=n===0?'现在它<em>只能聊天</em>：碰不到文件、终端和网络。':
+    '现在它能：<em>'+on.slice(0,4).join(' · ')+'</em>'+(on.length>4?' 等 '+n+' 项':'')+'。<br><span style="font:10px var(--mono);color:var(--faint)">关掉的是真的碰不到，不是「被要求不要碰」。</span>';}
+g7.addEventListener('click',function(e){var d=e.target.closest('.sw');if(!d)return;var i=+d.dataset.i;caps[i][1]=caps[i][1]?0:1;draw7();markDone(7);});
+document.getElementById('all7').addEventListener('click',function(){caps.forEach(function(c){c[1]=1});draw7();markDone(7)});
+document.getElementById('none7').addEventListener('click',function(){caps.forEach(function(c){c[1]=0});draw7();markDone(7)});
+document.getElementById('default7').addEventListener('click',function(){[1,1,1,1,0,1,1,0].forEach(function(v,i){caps[i][1]=v});draw7();markDone(7)});
+draw7();
+var capData={
+ do:'<span class="ok">✓</span> 真的动手：翻文件、改代码、开浏览器、敲命令，做完回来汇报\n<span class="ok">✓</span> 随时插话：纠偏接进当前这一轮，高风险动作先过审批\n<span class="ok">✓</span> 到点自己跑：干净会话执行，结果投递到指定渠道\n<span class="ok">✓</span> 记得住：会话分组检索，性格与记忆都是纯文本文件\n<span class="ok">✓</span> 网页 / 手机 / 微信 / QQ / 飞书，共用一份对话记录\n<span class="ok">✓</span> 账目摊开：状态、日志、token、缓存命中、预估费用',
+ not:'<span class="bad">×</span> 移动端还有几页在打磨，手感不如桌面\n<span class="bad">×</span> 团队权限与成员管理还没做\n<span class="bad">×</span> 技能不自动跨机器同步\n<span class="bad">×</span> 文档偏技术，开箱即用会觉得话多\n<span class="bad">×</span> 升级要手动下包覆盖'
+};
+function setCap(k,init){document.getElementById('cap7').innerHTML=capData[k];
+  document.querySelectorAll('[data-cap]').forEach(function(b){b.classList.toggle('on',b.dataset.cap===k)});if(!init)markDone(7);}
+setCap('do',1);
+document.querySelectorAll('[data-cap]').forEach(function(b){b.addEventListener('click',function(){setCap(b.dataset.cap)})});
+document.getElementById('copy7').addEventListener('click',function(){
+  var s='打开面板左边的「模型」，进「工具集」那一栏。\n\n每一组工具一行，右边一个开关。点一下就关，点回来就开。\n\n关掉的那组，它连工具名都看不到——不是被要求别碰，是真拿不到。改完保存，下一句话就按新开关走。';
+  document.getElementById('cap7').innerHTML='<span class="hi">这些开关在哪儿</span>\n'+s.replace(/\n/g,'\n');
+  var self=this;function ok(){self.textContent='在「模型 → 工具集」';setTimeout(function(){self.textContent='这些开关在哪 ⧉'},2200)}
+  function no(){self.textContent='在「模型 → 工具集」';setTimeout(function(){self.textContent='这些开关在哪 ⧉'},2200)}
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(s).then(ok,no);else no();});
 
 tick();ready=true;
 })();
