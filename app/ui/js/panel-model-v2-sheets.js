@@ -24,6 +24,14 @@
     return ((S.catalog && S.catalog.providers) || []).filter(function (p) { return p.enabled !== false; });
   }
 
+  function fmtCtx(n) {
+    n = parseInt(n, 10);
+    if (!n || n <= 0) return '';
+    if (n >= 1000000) return (n / 1000000).toFixed(n % 1000000 ? 1 : 0).replace(/\.0$/, '') + 'M';
+    if (n >= 1000) return Math.round(n / 1000) + 'K';
+    return String(n);
+  }
+
   function nameOf(S, id) {
     var hit = providerList(S).filter(function (p) { return p.id === id; })[0];
     return hit ? hit.name : (id || '');
@@ -38,7 +46,7 @@
         var id = m && typeof m === 'object' ? m.id : m;
         if (m && typeof m === 'object' && m.enabled === false) return;
         if (!id) return;
-        rows.push({ provider: p.id, name: p.name, model: id, api_mode: p.api_mode || 'chat_completions' });
+        rows.push({ provider: p.id, name: p.name, model: id, api_mode: p.api_mode || 'chat_completions', context_window: (m && typeof m === 'object' ? m.context_window : 0) || 0 });
       });
     });
     return rows;
@@ -94,7 +102,7 @@
             opt.append(el('span', 'bo'));
             var box = el('span');
             box.append(el('span', 'bt mono', row.model));
-            box.append(el('span', 'bd', (row.api_mode || 'chat_completions') + ' · ' + group.name));
+            box.append(el('span', 'bd', (fmtCtx(row.context_window) ? fmtCtx(row.context_window) + ' · ' : '') + (row.api_mode || 'chat_completions') + ' · ' + group.name));
             opt.append(box);
             sheet.body.append(opt);
           });
@@ -433,64 +441,90 @@
 
   /* ── 5. 某个服务的模型清单 ────────────────────────── */
   M.sheets.providerModels = function (S, p) {
-    var models = (p.models || []).map(function (m) { return m.id || m; });
-    var sheet = M.sheet({ title: p.name + ' · 模型', sub: p.id + ' · ' + models.length + ' 个模型', wide: true });
+    var sheet = M.sheet({ title: '「' + p.name + '」', sub: p.id + ' · ' + (p.models || []).length + ' 个模型', wide: true });
     var host = el('div');
-    var manual = input('', '新模型名');
+
+    function cleanRows() {
+      return (p.models || []).map(function (m) {
+        if (m && typeof m === 'object') {
+          return { id: m.id || m.name, name: m.name || m.id || '', enabled: m.enabled !== false, context_window: m.context_window || 0 };
+        }
+        return { id: m, name: m, enabled: true };
+      });
+    }
 
     function paint() {
       host.replaceChildren();
-      models.forEach(function (name, index) {
+      var rows = cleanRows();
+      rows.forEach(function (m) {
         var row = el('div', 'modelrow');
-        var isDefault = name === p.model;
-        var entry = (p.models || []).filter(function (m) {
-          return (m && typeof m === 'object' ? m.id : m) === name;
-        })[0];
-        var off = entry && typeof entry === 'object' && entry.enabled === false;
-        row.append(el('span', 'mn mono', name));
+        var isDefault = m.id === p.model;
+        row.append(el('span', 'mn mono', m.id));
+        if (m.name && m.name !== m.id) row.append(el('span', 'ma', m.name));
+        if (m.context_window) row.append(el('span', 'ma ctx', fmtCtx(m.context_window)));
         if (isDefault) row.append(badge('默认', 'ok'));
-        if (off) row.append(badge('未启用', 'warn'));
-        var acts = el('span', 'ma');
-        acts.append(btn(isDefault ? '已是默认' : '设为默认', 'btn sm', function () {
+        if (!m.enabled) row.append(badge('未启用', 'warn'));
+        var acts = el('span', 'ma2');
+        acts.append(btn(isDefault ? '已是默认' : '设为主', 'btn sm', function () {
           if (isDefault) return;
           M.mutate({
             action: 'update', id: p.id,
-            changes: { default_model: name },
+            changes: { default_model: m.id },
             revision: (M.S.catalog || {}).revision
-          }, { done: '默认模型改为 ' + name });
+          }, { done: '默认模型改为 ' + m.id });
         }));
-        acts.append(btn('移除', 'btn sm danger', function () {
-          if (models.length <= 1) { M.toast('不能移除最后一个模型', '先把别的模型加进来', 'bad'); return; }
-          models = models.filter(function (m) { return m !== name; });
-          paint();
-          M.toast('已从清单移除（未写盘）', '点下面的「保存清单」才写入 config.yaml');
+        acts.append(btn('删除', 'btn sm danger', function () {
+          if (isDefault) { M.toast('它是主模型', '先换主模型再删除', 'bad'); return; }
+          if (rows.length <= 1) { M.toast('不能删除最后一个模型', '先把别的模型加进来', 'bad'); return; }
+          var keep = rows.filter(function (x) { return x.id !== m.id; });
+          M.closeSheet();
+          M.mutate({
+            action: 'update', id: p.id,
+            changes: { models: keep },
+            revision: (M.S.catalog || {}).revision
+          }, { done: '已删除模型 ' + m.id });
         }));
         row.append(acts);
         host.append(row);
       });
-      if (!models.length) host.append(el('div', 'empty', '还没有模型'));
+      if (!rows.length) host.append(el('div', 'empty', '还没有模型'));
     }
 
     sheet.body.append(host);
-    sheet.body.append(field('手动添加', manual, '填一个模型名，点添加'));
-    sheet.foot.append(btn('取消', 'btn', M.closeSheet));
-    sheet.foot.append(btn('添加', 'btn', function () {
-      var name = manual.value.trim();
-      if (!name) return;
-      if (models.indexOf(name) >= 0) { M.toast('重复模型', name + ' 已经在清单里', 'bad'); return; }
-      models.push(name);
-      manual.value = '';
-      paint();
+    sheet.body.append(btn('+ 手动添加模型', 'btn primary', function () {
+      M.closeSheet();
+      M.sheets.providerAddModel(S, p);
     }));
-    sheet.foot.append(btn('保存清单', 'btn primary', async function () {
+    sheet.foot.append(btn('关闭', 'btn', M.closeSheet));
+    paint();
+  };
+
+  /* ── 5b. 手动添加模型（独立弹层，对齐参考 modelForm）── */
+  M.sheets.providerAddModel = function (S, p) {
+    var sheet = M.sheet({ title: '添加模型', sub: p.name, wide: false });
+    var idI = input('', '模型 ID，如 deepseek-v4-pro');
+    var nameI = input('', '别名（可选）');
+
+    sheet.body.append(field('模型 ID', idI, '必填，服务商 API 里的模型标识', true));
+    sheet.body.append(field('别名', nameI, '可选，列表里的展示名'));
+    sheet.foot.append(btn('取消', 'btn', M.closeSheet));
+    sheet.foot.append(btn('保存', 'btn primary', async function () {
+      var id = idI.value.trim();
+      if (!id) { M.toast('模型 ID 必填', '填一个模型 ID 再保存', 'bad'); return; }
+      var rows = (p.models || []).map(function (m) {
+        if (m && typeof m === 'object') return { id: m.id || m.name, name: m.name || m.id || '', enabled: m.enabled !== false };
+        return { id: m, name: m, enabled: true };
+      });
+      if (rows.some(function (x) { return x.id === id; })) { M.toast('模型 ID 重复', id + ' 已经在清单里', 'bad'); return; }
+      var name = nameI.value.trim();
+      rows.push({ id: id, name: name || id, enabled: true });
       M.closeSheet();
       await M.mutate({
         action: 'update', id: p.id,
-        changes: { models: models, default_model: models.indexOf(p.model) >= 0 ? p.model : models[0] },
+        changes: { models: rows },
         revision: (M.S.catalog || {}).revision
-      }, { done: p.name + ' 模型清单已保存' });
+      }, { done: '已添加模型 ' + id });
     }));
-    paint();
   };
 
   /* ── 6. 编辑服务 ──────────────────────────────────── */
@@ -568,6 +602,95 @@
   };
 
   /* ── 8. 换来源 ────────────────────────────────────── */
+  /* 能力后端 · 内联表单（方案 1 完全内联）：每张卡直接展开 provider+model+参数，不弹 sheet */
+  M.sheets.backendInlineForm = function (S, d) {
+    var voice = S.voice || {};
+    var box = el('div', 'backend-form');
+
+    if (d.write_via === 'config') {
+      var opts = [['', '不指定（内核默认）']].concat((d.options || []).filter(function (o) { return o !== ''; }).map(function (o) { return [o, o]; }));
+      var sel = select(opts, d.provider);
+      box.append(field('来源', sel));
+      var saveBtn = btn('保存', 'btn sm primary', async function () {
+        saveBtn.disabled = true;
+        saveBtn.textContent = '写入中…';
+        await M.mutate({ action: 'save_backend', domain: d.key, provider: sel.value, revision: (S.backends || {}).revision },
+          { done: d.label + ' 来源已改为 ' + (sel.value || '默认'), body: '写入 ' + d.path });
+      });
+      box.append(saveBtn);
+
+    } else if (d.write_via === 'voice') {
+      var section = d.key;
+      var v = voice[section] || {};
+      var vopts = (v.options || []).map(function (o) { return [o[0], o[1]]; });
+      var vsel = select(vopts, v.provider);
+      box.append(field('提供方', vsel));
+      var langI = null;
+      if (d.key === 'stt') {
+        langI = input(v.language || '', '识别语言（如 zh，留空自动）');
+        box.append(field('识别语言', langI));
+      }
+      var vsave = btn('保存', 'btn sm primary', async function () {
+        vsave.disabled = true;
+        vsave.textContent = '写入中…';
+        var changes = { provider: vsel.value };
+        if (d.key === 'stt') changes.language = (langI.value || '').trim();
+        await M.voiceMutate({ section: section, revision: voice.revision, changes: changes },
+          { done: d.label + ' 已保存', body: '写入 ' + d.path });
+      });
+      box.append(vsave);
+      if (d.key === 'tts') {
+        var emoModel = (v && v.emo_model) || 'deepseek-chat';
+        box.append(el('p', 'mini', 'Windows IndexTTS 的情绪判定模型：' + emoModel + '（WINDOWS_TTS_EMO_MODEL，.env 可改）。'));
+        box.append(el('p', 'mini', 'command 提供方的命令 / 输出格式 / 超时仍在「语音」页的详细编辑里改。'));
+      }
+
+    } else if (d.write_via === 'auxiliary') {
+      var task = ((S.aux && S.aux.tasks) || []).filter(function (t) { return t.key === 'vision'; })[0];
+      if (!task) {
+        box.append(el('p', 'mini', '没找到视觉任务'));
+      } else {
+        var providers = providerList(S);
+        var psel = select([['auto', '跟随主模型（auto）']].concat(
+          providers.map(function (p) { return [p.id, p.name]; })
+        ), task.provider || 'auto');
+        var modelsFor = function (id) {
+          var hit = providers.filter(function (p) { return p.id === id; })[0];
+          return usableModels(hit);
+        };
+        var msel = select([['', '（用服务默认）']].concat(modelsFor(task.provider).map(function (m) { return [m, m]; })), task.model || '');
+        psel.onchange = function () {
+          var list = modelsFor(psel.value);
+          msel.replaceChildren();
+          var empty = el('option', null, '（用服务默认）');
+          empty.value = '';
+          msel.append(empty);
+          list.forEach(function (m) { var o = el('option', null, m); o.value = m; msel.append(o); });
+        };
+        var baseI = input(task.base_url || '', 'https://…（provider=custom 时必填）');
+        var timeoutI = input(task.timeout || '', '例如 120', 'number');
+        box.append(field('来源', psel, 'auto 表示跟主模型走'));
+        box.append(field('模型', msel));
+        box.append(field('独立端点（可选）', baseI));
+        box.append(field('超时（秒）', timeoutI));
+        var asave = btn('保存', 'btn sm primary', async function () {
+          asave.disabled = true;
+          asave.textContent = '写入中…';
+          var changes = {
+            provider: psel.value,
+            model: msel.value,
+            base_url: baseI.value.trim(),
+            timeout: timeoutI.value.trim() === '' ? '' : Number(timeoutI.value)
+          };
+          await M.auxMutate({ key: task.key, revision: task.revision, changes: changes },
+            { done: task.label + ' 已更新' });
+        });
+        box.append(asave);
+      }
+    }
+    return box;
+  };
+
   M.sheets.backendSwap = function (S, d) {
     /* 有专用编辑器的两个域：直接把人送到那个编辑器，不在这里造第二个写入口 */
     if (d.write_via === 'voice') {

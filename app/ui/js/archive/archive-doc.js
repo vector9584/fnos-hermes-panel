@@ -75,6 +75,10 @@ window.Archive.register('doc', (function () {
     var fmData = parts.data || {};
     var bodyText = parts.body;
     var lineCount = bodyText ? String(bodyText).split('\n').length : 0;
+    /* MEMORY.md / USER.md 是 § 分条的条目文件（memory_tool.py ENTRY_DELIMITER = "\n§\n"）。
+       阅读态拆成条目卡、编辑态保留原文并提示锚点：存储格式一个字不动，只是不用盯着 § 看。 */
+    var entryList = String(bodyText || '').split('\n§\n').map(function (x) { return x.trim(); }).filter(Boolean);
+    var isEntryFile = entryList.length > 1;
 
     var iconBox = A.el('div', null, 'arc-dh-icon');
     iconBox.append(A.svgIcon('file', 18));
@@ -113,6 +117,11 @@ window.Archive.register('doc', (function () {
     var createdRaw = fmData.created || fmData.date || fmData.Created;
     var created = createdRaw ? String(createdRaw).slice(0, 10) : '';
     meta.append(A.el('span', (created ? '创建 ' + created + ' · ' : '') + '更新 ' + (doc.mtime ? when(doc.mtime) : '—') + ' · ' + lineCount + ' 行', 'arc-dim'));
+    if (isEntryFile) {
+      var entryBadge = A.el('span', entryList.length + ' 条', 'arc-dim');
+      entryBadge.title = '§ 是记忆程序的分条锚点（memory_tool.py 的 ENTRY_DELIMITER），不是排版符号；删掉会把整份并成一条。';
+      meta.append(entryBadge);
+    }
     if (!doc.exists) meta.append(A.el('span', '未建立', 'arc-pill is-warn'));
     mainBox.append(pathLine, bigTitle, meta);
 
@@ -193,7 +202,9 @@ window.Archive.register('doc', (function () {
 
     var editor = A.el('div', null, 'arc-editor');
     var bar = A.el('div', null, 'arc-editor-bar');
-    var barHint = A.el('span', 'Markdown 源码 · ⌘S 保存 · Esc 放弃', 'arc-grow');
+    var barHint = A.el('span', isEntryFile
+      ? '条目源码 · § 是分条锚点（删了整份并成一条）· ⌘S 保存 · Esc 放弃'
+      : 'Markdown 源码 · ⌘S 保存 · Esc 放弃', 'arc-grow');
     var area = document.createElement('textarea');
     area.className = 'arc-area';
     area.spellcheck = false;
@@ -250,6 +261,28 @@ window.Archive.register('doc', (function () {
       footText.textContent = n + ' 行 · ' + String(area.value || '').length + ' 字符 · 编辑中';
     }
     function paintRead() {
+      /* 条目文件（MEMORY/USER）：§ 渲染成「编号 + 虚线」的条目卡，正文不再出现 § 裸字符。
+         源码不动，存回去的还是带 § 的原文。 */
+      if (isEntryFile) {
+        article.replaceChildren();
+        article.classList.add('arc-md-entries');
+        entryList.forEach(function (t, i) {
+          var box = A.el('div', null, 'arc-entry');
+          box.style.cssText = 'padding:' + (i ? '10px 0 4px' : '2px 0 4px') + (i ? ';border-top:1px dashed rgba(127,127,127,.38)' : '');
+          var no = A.el('span', ('0' + (i + 1)).slice(-2), 'arc-entry-no');
+          no.style.cssText = 'float:left;margin:3px 10px 0 0;font-size:11px;line-height:1.7;opacity:.4;font-variant-numeric:tabular-nums';
+          var inner = A.el('div', null, 'arc-entry-body');
+          inner.style.cssText = 'overflow:hidden';
+          A.modules.md.paint(inner, t);
+          box.append(no, inner);
+          article.append(box);
+        });
+        var oldE = st.nodes.shell.querySelector('.arc-outline');
+        if (oldE) { if (oldE.__cleanup) oldE.__cleanup(); oldE.remove(); }
+        outlineBox = null; outlineHas = false;
+        controls();
+        return;
+      }
       var outline = A.modules.md.paint(article, bodyText);
       A.modules.md.wireWiki(article, st, api);
       var old = st.nodes.shell.querySelector('.arc-outline');

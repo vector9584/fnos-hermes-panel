@@ -12,7 +12,7 @@ function extSwitchTab(el, key){
   if(key==='mcp') renderMcpServers();
 }
 function extSkillSubtab(el, key){
-  document.querySelectorAll('#ext-skills .skill-subtabs .ui-tab').forEach(function(t){ t.classList.remove('active'); });
+  document.querySelectorAll('#page-skills .skill-subtabs .ui-tab').forEach(function(t){ t.classList.remove('active'); });
   el.classList.add('active');
   var bar=document.getElementById('skillMarketBar');
   if(bar) bar.style.display = (key==='market') ? 'block' : 'none';

@@ -1428,12 +1428,13 @@
 .expert-card.selected{border-color:var(--accent);background:var(--accent-bg)}
 .expert-card.fav .btn.sm.active{background:var(--accent-bg);border-color:var(--accent);color:var(--accent)}
 /* 连接器激活卡片（渲染在输入区上方，Fix #3/#5/#6） */
-.connector-chip{display:flex;align-items:center;gap:8px;background:var(--accent-bg);border:1px solid var(--accent);color:var(--accent);border-radius:10px;padding:6px 10px;margin-bottom:8px;font-size:13px}
-.connector-chip .cc-ico{font-size:16px}
-.connector-chip .cc-name{font-weight:600;flex:1}
-.connector-chip .cc-btn{margin-top:0;width:auto;padding:3px 12px;font-size:12px;border-radius:7px;border:1px solid var(--accent);background:var(--accent);color:var(--white);cursor:pointer}
-.connector-chip .cc-x{margin-top:0;width:auto;padding:0 8px;font-size:14px;border:none;background:transparent;color:var(--text3);cursor:pointer}
-.connector-chip .cc-x:hover{color:var(--red)}
+.connector-chip{display:flex;align-items:center;gap:6px;background:var(--bg2);border:1px solid var(--border);color:var(--text);border-radius:8px;padding:3px 6px 3px 10px;margin-bottom:8px;font-size:12.5px}
+.connector-chip .cc-ico{font-size:14px}
+.connector-chip .cc-name{font-weight:600;flex:1;color:var(--text2)}
+.connector-chip .cc-btn{margin-top:0;width:auto;padding:4px 10px;font-size:12px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer}
+.connector-chip .cc-btn:hover{border-color:var(--accent);color:var(--accent)}
+.connector-chip .cc-x{margin-top:0;width:auto;padding:2px 7px;font-size:15px;border:none;background:transparent;color:var(--text3);cursor:pointer;border-radius:6px}
+.connector-chip .cc-x:hover{color:var(--red);background:var(--bg1)}
 
 
 /* 附件 chip：紧凑 pill 样式（参考图） */

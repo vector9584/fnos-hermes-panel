@@ -48,19 +48,6 @@ function uiMerge(){
       if(oc.indexOf("'tunnel'")>=0||oc.indexOf("'connectors'")>=0||oc.indexOf("'learning'")>=0){ b.remove(); }
     });
     var pt=document.getElementById('page-tunnel'); if(pt) pt.style.display='none';
-    // 页面路由重定向：旧入口 → 合并后的目标页
-    if(window.switchPage){
-      var _orig=window.switchPage;
-      window.switchPage=function(name){
-        var openTrajectory=name==='learning';
-        if(name==='tunnel'||name==='connectors') name='comm';   // 连接器 → 通讯（下部连接器区）
-        if(name==='learning') name='kb';                        // 轨迹 → 知识库（轨迹 Tab）
-        if(name==='flows') name='plans';                   // 旧工作流链接 → 任务方案
-        var result=_orig(name);
-        if(openTrajectory&&typeof window.panelLibraryTrajectory==='function')window.panelLibraryTrajectory();
-        return result;
-      };
-    }
   }catch(e){}
 }
 
@@ -123,26 +110,7 @@ function addRoomMemBtn(){
   }
 }
 
-/* 知识库与记忆页面统一由 panel-library-ui.js 管理。 */
-
-/* ═══ 5. 通讯页：把 v0.21 原版连接器页整体并入（上部通讯+下部连接器，版面一致） ═══ */
-function commFusionMount(){
-  var commPage=document.getElementById('page-comm');
-  var pc=document.getElementById('page-connectors');
-  if(!commPage||!pc) return;
-  var body=commPage.querySelector('.page-body');
-  if(!body) return;
-  // 已移动则跳过
-  if(pc.parentNode===body && pc.getAttribute('data-merged')==='1') return;
-  // 在通讯页内容后插入分隔标题 + 原版连接器 section
-  var sep=el30("div",'<div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)"><h2 style="font-size:16px;margin:0 0 10px">连接器</h2></div>');
-  body.appendChild(sep);
-  pc.setAttribute('data-merged','1');
-  // 保留 .page 类（选择器 #page-connectors 仍生效），用 inline 覆盖 display 与 padding
-  pc.style.cssText="display:block;margin:0;padding:0;background:transparent;box-shadow:none";
-  body.appendChild(pc);
-  // 进入通讯页时同时渲染连接器（由 boot 的 switchPage 钩子统一处理）
-}
+/* 知识库与记忆页面统一由 archive-core.js 管理。 */
 
 /* 用量页由 index.html 的统一执行账本视图负责。 */
 
@@ -896,7 +864,6 @@ window.connectRoomStream=function(id){
 /* ═══ 11. 挂载与启动 ═══ */
 function boot(){
   uiMerge();
-  commFusionMount();
   addRoomMemBtn();
   chatInputAtBind();
   roomComposeBind();
@@ -907,7 +874,7 @@ function boot(){
   roomAutoPilotBind();
   // 每 5 秒补挂载（页面可能后渲染）
   setInterval(function(){
-    commFusionMount(); addRoomMemBtn();
+    addRoomMemBtn();
     chatInputAtBind(); roomComposeBind(); roomComposeAtBind(); roomMdStyle(); roomsSideFold(); roomAutoPilotBind();
   },5000);
   // switchPage 钩子：渲染合并页/填充模型测试下拉/会话树护栏（每次切页执行）
@@ -916,7 +883,6 @@ function boot(){
     window.switchPage=function(name){
       var r=_s(name);
       railGuard(); // 群聊等非对话页硬性隐藏对话会话树；对话页显示
-      if(name==='comm') setTimeout(function(){ try{ if(typeof renderConnectors==='function') renderConnectors(); }catch(e){} },100);
       // v0.21.147：移动端房间列表默认隐藏由 CSS 兜底（任何进入方式生效），无需 JS 折叠；
       // 切走群聊页时收起浮层，避免残留遮挡
       if((name==='rooms'||name==='room')===false){

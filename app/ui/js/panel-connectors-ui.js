@@ -13,7 +13,8 @@
     var box=document.getElementById('connectorChip');if(!box){box=node('div');box.id='connectorChip';box.className='connector-chip';comp.prepend(box);}
     box.replaceChildren();box.hidden=!_selectedConnector;box.style.display=_selectedConnector?'flex':'none';if(!_selectedConnector)return;
     var connector=catalog.find(function(c){return c.kind===_selectedConnector;});
-    var label=node('span',(connector?connector.name:_selectedConnector)+' · 本轮连接器');label.className='cc-name';box.append(label);
+    var ico=node('span','🔌');ico.className='cc-ico';ico.setAttribute('aria-hidden','true');box.append(ico);
+    var label=node('span',connector?connector.name:_selectedConnector);label.className='cc-name';label.title='本轮连接器';box.append(label);
     var settings=node('button','查看配置');settings.type='button';settings.className='cc-btn';settings.onclick=function(){openConnectorModal(_selectedConnector);};box.append(settings);
     var clear=node('button','×');clear.type='button';clear.className='cc-x';clear.setAttribute('aria-label','清除本轮连接器');clear.onclick=window.clearConnectorChip;box.append(clear);
   };
@@ -23,7 +24,7 @@
     var dialog=node('dialog');dialog.className='navigation-dialog connector-picker';dialog.setAttribute('aria-label','本轮连接器');
     dialog.append(node('h2','本轮连接器'),node('p','选择后将随本轮消息说明连接器意图；实际调用由可用工具决定。'));
     var list=node('div'),status=node('p','正在读取配置…');status.setAttribute('role','status');dialog.append(status,list);
-    var manage=node('button','管理连接器');manage.onclick=function(){dialog.close();switchPage('comm');setTimeout(function(){document.getElementById('page-connectors')?.scrollIntoView({block:'start'});},100);};
+    var manage=node('button','管理连接器');manage.onclick=function(){dialog.close();switchPage('connectors');setTimeout(function(){document.getElementById('page-connectors')?.scrollIntoView({block:'start'});},100);};
     var close=node('button','关闭');close.className='navigation-close';close.onclick=function(){dialog.close();};dialog.append(manage,close);dialog.addEventListener('close',function(){dialog.remove();document.getElementById('btnConnector').focus();});document.body.append(dialog);dialog.showModal();
     async function populate(){
       status.textContent='正在读取配置…';list.replaceChildren();

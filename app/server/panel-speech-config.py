@@ -278,6 +278,7 @@ def tts_view(data):
         'edge_voice': plain((section.get('edge') or {}).get('voice')) if isinstance(section.get('edge'), dict) else '',
         'options': [list(pair) for pair in TTS_KNOWN],
         'formats': list(FORMATS),
+        'emo_model': os.environ.get('WINDOWS_TTS_EMO_MODEL', 'deepseek-chat').strip(),
     }
 
 

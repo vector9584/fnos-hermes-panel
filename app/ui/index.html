@@ -14,16 +14,16 @@
   <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-maid-192.png?v=f79af7d4">
   <link rel="apple-touch-icon" sizes="180x180" href="images/favicon-maid-180.png?v=b8637e2c">
   <meta name="theme-color" content="#141518">
-  <link rel="stylesheet" href="css/base.css?v=112afbb1">
+  <link rel="stylesheet" href="css/base.css?v=5ed0051a">
 <script src="scripts/marked.min.js?v=606c428a"></script>
 <script src="scripts/purify.min.js?v=fd4f07a2"></script>
 <script src="scripts/qrcode.min.js?v=b86b6879"></script>
 <link rel="stylesheet" href="css/panel-tree.css?v=7fe0d941">
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
 <link rel="stylesheet" href="css/panel-workspace.css?v=559864a4">
-    <link rel="stylesheet" href="css/panel-maintenance.css?v=22a9662a">
+    <link rel="stylesheet" href="css/panel-maintenance.css?v=717b66ef">
     <link rel="stylesheet" href="css/archive.css?v=d038ed07">
-<link rel="stylesheet" href="css/panel-model-ref.css?v=23d8c115">
+<link rel="stylesheet" href="css/panel-model-ref.css?v=d0249242">
 <link rel="stylesheet" href="css/ui-kit.css?v=343723a8">
 </head>
 <body class="theme-dark">
@@ -404,72 +404,46 @@
           <div class="page-header"><h1>能力后端</h1><div class="mv2-acts"></div></div>
           <div class="page-body"><div class="mv2-root" data-domain="backends"></div></div>
         </section>
-        <section class="page models-page" id="page-models-toolsets">
-          <div class="page-header"><h1>工具集</h1><div class="mv2-acts"></div></div>
-          <div class="page-body"><div class="mv2-root" data-domain="toolsets"></div></div>
-        </section>
         <section class="page models-page" id="page-models-config">
           <div class="page-header"><h1>配置</h1><div class="mv2-acts"></div></div>
           <div class="page-body"><div class="mv2-root" data-domain="config"></div></div>
         </section>
 
-        <!-- 扩展页 -->
-        <section class="page" id="page-extensions">
-          <div class="page-header"><h1>扩展</h1></div>
+        <!-- 工具集页（能力开关，复用 model-v2 的 toolsets 域 = platform_toolsets 权威数据源） -->
+        <section class="page models-page" id="page-toolsets">
+          <div class="page-header"><h1>工具集</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="toolsets"></div></div>
+        </section>
+
+        <!-- 技能页（操作手册） -->
+        <section class="page" id="page-skills">
+          <div class="page-header"><h1>技能</h1></div>
           <div class="page-body">
-            <div class="ch-filterbar ext-tabs" id="extTabs">
-  <button class="ui-tab active" onclick="extSwitchTab(this,'tools')">工具</button>
-  <button class="ui-tab" onclick="extSwitchTab(this,'skills')">技能</button>
-  <button class="ui-tab" onclick="extSwitchTab(this,'memory')">记忆</button>
-  <button class="ui-tab" onclick="extSwitchTab(this,'experts')">专家</button>
-  <button class="ui-tab" onclick="extSwitchTab(this,'mcp')">MCP</button>
-</div>
-<div class="ext-panes">
-  <div class="ext-pane active" id="ext-tools"><div id="toolsetFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div><div class="toolset-list" id="toolsetList"></div></div>
-  <div class="ext-pane" id="ext-skills">
-    <div class="ch-filterbar skill-subtabs">
-      <button class="ui-tab active" onclick="extSkillSubtab(this,'local')">本地技能</button>
-      <button class="ui-tab" onclick="extSkillSubtab(this,'native')">内置技能</button>
-      <button class="ui-tab" onclick="extSkillSubtab(this,'market')">技能市场</button>
-    </div>
-    <div id="skillMarketBar" style="display:none;margin-bottom:10px">
-      <div style="display:flex;gap:8px">
-        <input type="text" id="skillMarketSearch" placeholder="搜索 SkillHub 海量技能（高德 / 知乎 / Notion / 股票...）" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode!==229)searchSkillMarket()" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg1);font-size:13px;color:var(--text);outline:none;font-family:inherit">
-        <button class="btn secondary" onclick="searchSkillMarket()">🔍 搜索</button>
-        <button class="btn secondary" onclick="renderSkillMarketCatalog()">📚 精选目录</button>
-      </div>
-      <div class="ch-filterbar" style="margin-top:8px">
-        <button class="ch-filter active" id="smFilterAll" onclick="setSkillMarketFilter(this,'all')">全部</button>
-        <button class="ch-filter" id="smFilterInstalled" onclick="setSkillMarketFilter(this,'installed')">已安装</button>
-        <button class="ch-filter" id="smFilterOfficial" onclick="setSkillMarketFilter(this,'official')">官方认证</button>
-      </div>
-    </div>
-    <div id="skillFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div>
-    <div class="skill-grid" id="skillGrid"></div>
-  </div>
-  <div class="ext-pane" id="ext-memory">
-    <div class="setting-row"><div><div class="label">启用长期记忆</div><div class="desc">跨会话保留关键上下文</div></div><button type="button" class="toggle" id="memToggle" role="switch" aria-checked="false" aria-label="启用长期记忆" onclick="toggleMemory()"></button></div>
-    <div class="field"><label>记忆字符上限</label><input type="range" id="memLimit" min="500" max="8000" step="100" value="2200" oninput="updateMemLimit(this.value)"><span id="memLimitVal">2200</span></div>
-  </div>
-  <div class="ext-pane" id="ext-experts">
-    <div class="selected-expert-bar" id="selectedExpertBar" style="display:none"></div>
-    <div class="exp-search"><input type="text" id="expSearch" placeholder="搜索专家..." oninput="renderExperts()"></div>
-    <div class="exp-count" id="expCount"></div>
-    <div class="exp-depts" id="expDepts"></div>
-    <div class="expert-grid" id="expertGrid"></div>
-  </div>
-  <div class="ext-pane" id="ext-mcp">
-    <div class="section-head"><h2>MCP 服务器</h2><button class="ov-actbtn" onclick="openMcpModal(null)">+ 添加服务器</button></div>
-    <div class="wf-intro" style="margin-bottom:12px">通过 MCP（模型上下文协议）将 Hermes 连接到外部工具服务器。支持 Stdio（本地子进程）和 HTTP（远程端点）两种模式。修改后统一重启应用生效。</div>
-    <div class="mcp-server-list" id="mcpServerList"><div class="empty-state">加载中…</div></div>
-  </div>
-</div>
+            <div class="ch-filterbar skill-subtabs">
+              <button class="ui-tab active" onclick="extSkillSubtab(this,'local')">本地技能</button>
+              <button class="ui-tab" onclick="extSkillSubtab(this,'native')">内置技能</button>
+              <button class="ui-tab" onclick="extSkillSubtab(this,'market')">技能市场</button>
+            </div>
+            <div id="skillMarketBar" style="display:none;margin-bottom:10px">
+              <div style="display:flex;gap:8px">
+                <input type="text" id="skillMarketSearch" placeholder="搜索 SkillHub 海量技能（高德 / 知乎 / Notion / 股票...）" onkeydown="if(event.key==='Enter' && !event.isComposing && event.keyCode!==229)searchSkillMarket()" style="flex:1;padding:8px 12px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--bg1);font-size:13px;color:var(--text);outline:none;font-family:inherit">
+                <button class="btn secondary" onclick="searchSkillMarket()">🔍 搜索</button>
+                <button class="btn secondary" onclick="renderSkillMarketCatalog()">📚 精选目录</button>
+              </div>
+              <div class="ch-filterbar" style="margin-top:8px">
+                <button class="ch-filter active" id="smFilterAll" onclick="setSkillMarketFilter(this,'all')">全部</button>
+                <button class="ch-filter" id="smFilterInstalled" onclick="setSkillMarketFilter(this,'installed')">已安装</button>
+                <button class="ch-filter" id="smFilterOfficial" onclick="setSkillMarketFilter(this,'official')">官方认证</button>
+              </div>
+            </div>
+            <div id="skillFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div>
+            <div class="skill-grid" id="skillGrid"></div>
           </div>
         </section>
 
         <!-- 通讯页 -->
         <section class="page" id="page-comm">
-          <div class="page-header"><h1>通讯</h1></div>
+          <div class="page-header"><h1>消息渠道</h1></div>
           <div class="page-body">
             <div class="ch-filterbar">
   <button class="ch-filter active" onclick="setChFilter(this,'all')">全部</button>
@@ -557,14 +531,16 @@
 
         <!-- connectors -->
         <section class="page" id="page-connectors">
-          <div class="page-header"><h1>连接器</h1></div>
+          <div class="page-header"><h1>外接工具</h1></div>
           <div class="page-body">
+            <div class="wf-intro" style="margin-bottom:12px">预置连接器（腾讯新闻 / 百度地图 / 腾讯文档等，开箱即用）与自定义 MCP 服务器（Stdio 本地子进程 / HTTP 远程端点）。修改后统一重启应用生效。</div>
             <div class="ch-filterbar">
               <button class="ch-filter active" onclick="setConnFilter(this,'all')">全部</button>
               <button class="ch-filter" onclick="setConnFilter(this,'configured')">已配置</button>
               <button class="ch-filter" onclick="setConnFilter(this,'unconfigured')">未配置</button>
             </div>
             <div class="channel-grid" id="connectorGrid"></div>
+            <div id="mcpServers" style="margin-top:20px"></div>
             <dialog id="connectorModal" class="panel-connector-dialog" aria-labelledby="connModalTitle">
               <div class="modal-head"><h3 id="connModalTitle">连接器配置</h3><button class="modal-close" aria-label="关闭">×</button></div>
               <div class="modal-body" id="connModalBody"></div>
@@ -650,8 +626,7 @@
 
         <!-- 知识库页：来源(知识库/记忆/记录) + 多级笔记树 + 阅读/编辑 -->
         <section class="page" id="page-kb">
-          <!-- 2026-11-13：资料 = 知识库 + 笔记 + 密码本。顶部那条由 js/panels/assistant.js 在
-               library 组件挂载后插入（mount() 会把非 header 的子节点全删掉，静态写在这里会被吃掉）。 -->
+          <!-- 知识库页顶部 header 由 js/archive/archive-core.js 挂载时填充。 -->
           <div class="page-header"></div>
         </section>
 
@@ -663,6 +638,8 @@
               <div class="setting-row"><div><div class="label">名称与头像</div><div class="desc">设置你的署名与默认助手身份，历史消息保留原署名。</div></div><button class="ov-actbtn" onclick="pwIdentity()">编辑身份</button></div>
               <div class="setting-row"><div><div class="label">朗读声音</div><div class="desc">选择 Windows 语音、系统回退与音色，并试听实际合成。</div></div><button class="ov-actbtn" onclick="openVoiceSettings()">设置声音</button></div>
               <div class="setting-row"><div><label class="label" for="settingsToolsMode">工具记录默认显示</label><div class="desc">折叠时可手动展开；隐藏只影响显示，执行记录仍会保存。</div></div><select id="settingsToolsMode" disabled><option value="collapsed">折叠摘要</option><option value="expanded">展开记录</option><option value="hidden">隐藏记录</option></select></div>
+              <div class="setting-row"><div><div class="label">启用长期记忆</div><div class="desc">跨会话保留关键上下文</div></div><button type="button" class="toggle" id="memToggle" role="switch" aria-checked="false" aria-label="启用长期记忆" onclick="toggleMemory()"></button></div>
+              <div class="setting-row"><div><div class="label">记忆字符上限</div><div class="desc">超过上限自动压缩旧记忆</div></div><input type="range" id="memLimit" min="500" max="8000" step="100" value="2200" oninput="updateMemLimit(this.value)" style="flex:1;max-width:220px"><span id="memLimitVal" style="min-width:44px;text-align:right">2200</span></div>
             </div>
             <div id="settingsFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div>
             <button class="ov-actbtn" id="settingsRetry" hidden>重新读取设置</button>
@@ -737,12 +714,12 @@
 <script src="js/chat/new-dialog.js?v=90e471e0"></script>
 <script src="js/chat/compose.js?v=3a526c93"></script>
 <script src="js/core/mini-popup.js?v=f59e5f7f"></script>
-<script src="js/core/router.js?v=0c5d0815"></script>
+<script src="js/core/router.js?v=b117c07c"></script>
 <script src="js/panels/tunnel.js?v=1e1aca8c"></script>
 <script src="js/core/theme.js?v=c726d6fb"></script>
 <script src="js/panels/overview.js?v=fbe49f30"></script>
 <script src="js/panels/models.js?v=61a55fc1"></script>
-<script src="js/panels/extensions.js?v=ff2d23d7"></script>
+<script src="js/panels/extensions.js?v=3bf55b2d"></script>
 <script src="js/panels/cron.js?v=fea600a5"></script>
 <!-- 2026-11-14：js/panels/memory.js 已移除。它只服务 page-memory 里那三个 textarea
      （memSoul/memMemory/memNotes）和 saveAllMemory()，这些 DOM 已随档案板块改版删掉，
@@ -753,14 +730,14 @@
 <script src="js/panels/channels.js?v=c4cd8baa"></script>
 <script src="js/core/init.js?v=575e30bc"></script>
 
-<script src="js/fusion-v030.js?v=5a013301"></script>
+<script src="js/fusion-v030.js?v=97afa3a0"></script>
 
 <!-- BUILT v17 single-file UI | sources: preview_v17/{index.html,styles.css,data.js,app.js,js/ao_workflow_presets.js} | libs external: scripts/{marked,purify,qrcode}.min.js, js/personas_library.js -->
 <script src="js/core/boot-mask.js?v=4a6c5c45"></script>
 <script src="js/panel-workspace-ui.js?v=1b13b3e6"></script>
 <script src="js/panel-compress-ui.js?v=ed61d9c5"></script>
 <script src="js/panel-slash.js?v=222b6180"></script>
-<link rel="stylesheet" href="css/panel-durable.css?v=214a325d">
+<link rel="stylesheet" href="css/panel-durable.css?v=e3c38973">
 <script src="js/panel-durable.js?v=3690cd86"></script>
 <script src="js/panel-tooltip.js?v=2726db9d"></script>
 <script src="js/panel-cron-editor.js?v=742c2739"></script>
@@ -772,14 +749,14 @@
 <link rel="stylesheet" href="css/panel-chat-avatar.css?v=e87cba5d">
 <script src="js/panel-rooms-ui.js?v=840e27e9"></script>
 <script src="js/panel-experts-ui.js?v=2a3291a8"></script>
-<script src="js/panel-model-v2.js?v=6b4b47f2"></script>
-<script src="js/panel-model-v2-pages.js?v=4c1efde8"></script>
-<script src="js/panel-model-v2-sheets.js?v=99e3729e"></script>
-<script src="js/panel-connectors-ui.js?v=7bbcbc2f"></script>
+<script src="js/panel-model-v2.js?v=4e5ec9af"></script>
+<script src="js/panel-model-v2-pages.js?v=4c8c7a38"></script>
+<script src="js/panel-model-v2-sheets.js?v=03b49a89"></script>
+<script src="js/panel-connectors-ui.js?v=ea84fb72"></script>
 <script src="js/panel-auth-ui.js?v=a792fab9"></script>
 <script src="js/panel-files-ui.js?v=4b940c73"></script>
 <script src="js/panel-runtime-ui.js?v=5d33d54e"></script>
-<script src="js/panel-mcp-ui.js?v=b8f10ebc"></script>
+<script src="js/panel-mcp-ui.js?v=7e3a9bc1"></script>
 <link rel="stylesheet" href="css/panel-channels.css?v=874f95db">
 <link rel="stylesheet" href="css/panel-slash.css?v=212726b3">
 <link rel="stylesheet" href="css/panel-clarify.css?v=7a80bb23">
@@ -795,11 +772,11 @@
 <script src="js/panel-library-drafts.js?v=f1279a85"></script>
 <!-- 档案三页：提示词 / 知识库 / 留痕录（2026-11-14 替换 panel-library-ui 与 panels/assistant）
      顺序要紧：core 定义命名空间 → 各视图模块注册 → boot 同步挂载 → reviews-ui 往新页头塞「整理草稿」。 -->
-<script src="js/archive/archive-core.js?v=66e8b288"></script>
+<script src="js/archive/archive-core.js?v=fa5f9026"></script>
 <script src="js/archive/archive-tree.js?v=c1e4ecec"></script>
 <script src="js/archive/archive-search.js?v=d794933e"></script>
 <script src="js/archive/archive-md.js?v=26fec538"></script>
-<script src="js/archive/archive-doc.js?v=9b247a06"></script>
+<script src="js/archive/archive-doc.js?v=bbca3f8f"></script>
 <script src="js/archive/archive-info.js?v=67af34d1"></script>
 <script src="js/archive/archive-arch.js?v=6df10aca"></script>
 <script src="js/archive/archive-graph.js?v=2b5fbbc9"></script>
@@ -807,7 +784,7 @@
 <script src="js/archive/archive-vault.js?v=71eb1bb7"></script>
 <script src="js/archive/archive-boot.js?v=43ffdda0"></script>
 <script src="js/panel-library-reviews-ui.js?v=4939c059"></script>
-<script src="js/panel-navigation.js?v=49fe9073"></script>
+<script src="js/panel-navigation.js?v=91227e23"></script>
 <script src="js/panel-chat-avatar.js?v=ed52ec92"></script>
 <script src="js/panel-chat-tail.js?v=8ea31e46"></script>
 <script src="js/panel-clarify.js?v=add6c1e9"></script>

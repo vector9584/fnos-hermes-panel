@@ -25,7 +25,7 @@
   /* 域 → 一级路由页 id 双向映射（2026-11-15 二改：页内按钮切换改成一页一域） */
   var DOMAIN_PAGE = {
     home: 'models-home', select: 'models-select', providers: 'models-providers',
-    backends: 'models-backends', toolsets: 'models-toolsets', config: 'models-config'
+    backends: 'models-backends', toolsets: 'toolsets', config: 'models-config'
   };
   var PAGE_DOMAIN = {};
   DOMAINS.forEach(function (row) { PAGE_DOMAIN[DOMAIN_PAGE[row[0]]] = row[0]; });
@@ -208,7 +208,7 @@
     var tag = el('label', 'lb', label);
     if (required) tag.append(el('span', 'req', '*'));
     box.append(tag, control);
-    if (hint) box.append(el('span', 'ph', hint));
+    if (hint) box.append(el('span', 'fh', hint));
     return box;
   }
 
@@ -224,26 +224,20 @@
     return box;
   }
 
-  /* ── toast：参考稿右下角浮层（图标 + 标题 + 正文 + 按钮）── */
+  /* ── 通知：复用站内统一通知条（core/utils.js 的 window.toast / hzToast）。
+     老调用全是 toast(title, body, tone) 三参，这里统一转成 hzToast 对象签名：
+     右下角 + 类型色板 + 「知道了」按钮，跟面板其它通知完全一致，不再自研 createElement。── */
   function toast(title, body, tone) {
-    var node = document.getElementById('mv2Toast');
-    if (node && node.parentNode) node.parentNode.removeChild(node);
-    node = el('div', 'toast show' + (tone === 'bad' ? ' err' : ''));
-    node.id = 'mv2Toast';
-    var icon = el('span', 'badge ' + (tone === 'bad' ? 'err' : 'info'));
-    icon.textContent = tone === 'bad' ? '!' : 'i';
-    var wrap = el('div');
-    wrap.append(el('b', null, title || ''));
-    if (body) wrap.append(el('div', 'mini', body));
-    node.append(icon, wrap);
-    var act = btn('知道了', 'btn sm', function () { node.remove(); });
-    node.append(act);
-    var x = btn('×', 'sheet-x', function () { node.remove(); });
-    node.append(x);
-    document.body.append(node);
-    clearTimeout(node._timer);
-    node._timer = setTimeout(function () { if (node.parentNode) node.remove(); }, tone === 'bad' ? 6000 : 3600);
-    return node;
+    var T = window.toast || window.__hzToast;
+    if (!T) return null;
+    var bad = tone === 'bad';
+    return T({
+      type: bad ? 'error' : 'success',
+      title: title || '',
+      message: body || '',
+      duration: bad ? 6000 : 3000,
+      actions: [{ label: '知道了', primary: true, onClick: 'close' }]
+    });
   }
 
   /* ── 弹层：参考稿 overlay > sheet > (sheet-h + sheet-b + sheet-f) ── */
@@ -279,7 +273,7 @@
     box.append(head, body, foot);
     overlay.append(box);
     overlay.onclick = function (event) { if (event.target === overlay) closeSheet(); };
-    document.body.append(overlay);
+    (document.querySelector('.models-page.active') || document.body).append(overlay);
     sheetNode = overlay;
 
     var first = body.querySelector('input,select,textarea,button');
@@ -526,7 +520,7 @@
     if (typeof orig === 'function' && !orig.__mv2Wrapped) {
       var wrapped = function (name) {
         var out = orig.apply(this, arguments);
-        if (name === 'models' || /^models-/.test(name)) {
+        if (name === 'models' || /^models-/.test(name) || name === 'toolsets') {
           setTimeout(function () {
             boot().catch(function (error) { if (window.console) console.error('[MV2]', error); });
           }, 0);

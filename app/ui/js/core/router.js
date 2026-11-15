@@ -12,15 +12,15 @@ function pageFromPath(p){
      2026-11-13 之前 rooms 和 8 个 models-* 页就是这样「页面存在但打不开」的。 */
   var map = {
     overview:'overview', chat:'chat', sessions:'chat', files:'chat', dashboard:'chat',
-    experts:'experts', extensions:'extensions', comm:'comm', tunnel:'tunnel', kb:'kb',
+    experts:'experts', extensions:'connectors', comm:'comm', tunnel:'tunnel', kb:'kb',
     /* 2026-11-14：提示词页的页面 id 一直是 assistant，但白名单漏了它，
        #/assistant 直达会被当成未知路径弹回 chat。 */
     assistant:'assistant',
-    connectors:'connectors', cron:'cron', memory:'memory', learning:'learning',
+    connectors:'connectors', mcp:'connectors', toolsets:'toolsets', skills:'skills', cron:'cron', memory:'memory', learning:'learning',
     usage:'usage', updates:'updates', settings:'settings', rooms:'rooms',
     models:'models-home',
     'models-home':'models-home', 'models-select':'models-select', 'models-providers':'models-providers',
-    'models-backends':'models-backends', 'models-toolsets':'models-toolsets', 'models-config':'models-config',
+    'models-backends':'models-backends', 'models-toolsets':'toolsets', 'models-config':'models-config',
     'models-general':'models-home', 'models-api':'models-home', 'models-aux':'models-home',
     'models-checks':'models-home', 'models-jev':'models-home', 'models-moa':'models-home',
     'models-stt':'models-home', 'models-tts':'models-home'
@@ -49,7 +49,7 @@ function switchPage(name){
   var p=document.getElementById('page-'+name); if(p) p.classList.add('active');
   var rail=document.getElementById('chatRail');
   if(rail) rail.classList.toggle('hidden', name!=='chat');
-  if(name==='connectors') renderConnectors();
+  if(name==='connectors'){ renderConnectors(); renderMcpServers(); }
   if(name==='comm') renderChannels();
   if(name==='tunnel') renderTunnelPage();
   if(name==='cron') renderCronJobs();
@@ -59,11 +59,11 @@ function switchPage(name){
   if(name==='learning') renderLearning();
   if(name==='usage') renderUsagePage();
   if(name==='overview') renderOverview();
-  if(name==='extensions') renderExtensions();
+  if(name==='skills') renderSkills('local');
   if(name==='experts') renderExpertsPage();
   if(name==='rooms'){ ensurePersonasLibrary(mbtiInject); renderRoomsPage(); }
   if(name==='updates' && window.renderMaintenancePage){ renderMaintenancePage(); }
-  if(name==='settings') renderSettings();
+  if(name==='settings'){ renderSettings(); renderMemory(); }
 
   document.dispatchEvent(new CustomEvent('hermes:page',{detail:{page:name}}));
   if(name!=='chat'){ hideScrollBtn(); if(_channelViewActive){ _channelViewActive=false; var _rb=document.getElementById('chReturnBtn'); if(_rb) _rb.style.display='none'; } }
@@ -77,4 +77,4 @@ function switchPage(name){
    3) 其余 kbRenderTree/kbToggleDir/kbViewNote/kbFindNotePath/kbEditNote/kbSaveNote/
       kbCancelEdit/kbDeleteNote/kbLoadBacklinks 仅被上面这些死函数互相调用。
    旧代码 12 个函数 + 4 个全局变量共 8,955 字节，实际不可达，已删除。
-   现行实现：panel-library-ui.js（来源下拉 + 文件夹列表 + 文档编辑 + 关系图）。 */
+   现行实现：js/archive/archive-core.js（三页统一外壳，见 archive-core.js 顶部说明）。 */

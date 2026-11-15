@@ -88,7 +88,7 @@ def execute(body,path,state):
   if body.get('action')=='read':return catalog(data)
   action=body.get('action');name=body.get('name')
   if not isinstance(name,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}',name):raise ConfigError('服务名称仅支持字母、数字、下划线和短横线')
-  if name.startswith('conn-'):raise ConfigError('此服务由连接器管理，请到连接器页面修改',409)
+  if name.startswith('conn-'):raise ConfigError('此服务由上方预置连接器统一管理，请在连接器卡片中配置',409)
   servers=data.get('mcp_servers',{})
   if not isinstance(servers,dict):raise ConfigError('MCP配置不是映射，原文件已保留',503)
   old=servers.get(name)

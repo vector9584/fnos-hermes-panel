@@ -39,6 +39,42 @@
     return node;
   }
 
+  /* 参考稿图标库：完整 SVG 内层（path/rect/circle），stroke 风格，viewBox 0 0 24 24 */
+  function svgIcon(inner, size) {
+    var node = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    node.setAttribute('viewBox', '0 0 24 24');
+    node.setAttribute('fill', 'none');
+    node.setAttribute('stroke', 'currentColor');
+    node.setAttribute('stroke-width', '1.8');
+    node.setAttribute('stroke-linecap', 'round');
+    node.setAttribute('stroke-linejoin', 'round');
+    node.setAttribute('width', size || 15);
+    node.setAttribute('height', size || 15);
+    node.innerHTML = inner;
+    return node;
+  }
+
+  var ICONS = {
+    slots:   '<rect x="3" y="3" width="18" height="6" rx="1.5"/><rect x="3" y="10" width="8" height="11" rx="1.5"/><rect x="13" y="10" width="8" height="5" rx="1.5"/><rect x="13" y="16" width="8" height="5" rx="1.5"/>',
+    plug:    '<path d="M9 3v6M15 3v6M6 9h12v3a6 6 0 0 1-12 0z"/><path d="M12 18v3"/>',
+    cap:     '<path d="M4 5h16v14H4z"/><path d="m8 12 3 3 5-6"/>',
+    wrench:  '<path d="M14 6a4 4 0 0 0-5 5L3 17l4 4 6-6a4 4 0 0 0 5-5l-3 3-3-3z"/>',
+    mic:     '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/>',
+    globe:   '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/>',
+    star:    '<path d="m12 3 2.6 5.6 6.1.8-4.5 4.3 1.1 6.1L12 17l-5.3 2.8 1.1-6.1L3.3 9.4l6.1-.8z"/>',
+    file:    '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5"/>',
+    volume:  '<path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+    search:  '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>',
+    eye:     '<path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
+    image:   '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/>',
+    monitor: '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>'
+  };
+
+  var BACKEND_ICON = {
+    stt: 'mic', tts: 'volume', web_search: 'search', web_extract: 'globe',
+    vision: 'eye', ocr: 'file', image_gen: 'image', browser: 'monitor'
+  };
+
   var ICON = {
     grid: ['M4 4h7v7H4z', 'M13 4h7v7h-7z', 'M4 13h7v7H4z', 'M13 13h7v7h-7z'],
     server: ['M4 6h16v5H4z', 'M4 13h16v5H4z', 'M7 8.5h.01', 'M7 15.5h.01'],
@@ -127,14 +163,14 @@
     out.append(sec('四个配置对象'));
     var quick = el('div', 'quick');
     [
-      ['grid', '模型选择', '主 / 辅助 / 回退 / 组合', 'select'],
-      ['server', 'LLM 服务商', '推理端点 · 对话内能力', 'providers'],
-      ['cube', '能力后端', '语音 / 网页 / 视觉 / OCR', 'backends'],
-      ['toggle', '工具集', '开关 · 安全边界', 'toolsets']
+      ['slots', '模型选择', '主 / 辅助 / 回退 / 组合', 'select'],
+      ['plug', 'LLM 服务商', '推理端点 · 对话内能力', 'providers'],
+      ['cap', '能力后端', '语音 / 网页 / 视觉 / OCR', 'backends'],
+      ['wrench', '工具集', '开关 · 安全边界', 'toolsets']
     ].forEach(function (row) {
       var card = btn('', 'qcard', function () { M.go(row[3]); });
       var ic = el('span', 'ic');
-      ic.append(svg(ICON[row[0]], 18));
+      ic.append(svgIcon(ICONS[row[0]], 18));
       card.append(ic, el('span', 't', row[1]), el('span', 'd', row[2]), el('span', 'go', '进入 ›'));
       quick.append(card);
     });
@@ -145,14 +181,14 @@
     out.append(head);
     var cards = el('div', 'cards');
     [
-      ['arrows', 'independent', 'outbound · 推理', 'Hermes 调别人的模型', 'model / auxiliary / fallback / moa'],
-      ['cube', 'independent', 'outbound · 能力', '工具域各自的后端注册', 'stt / tts / web.backend / vision'],
-      ['plug', 'independent', 'inbound · 入口', '外部把 Hermes 当模型调', 'API server · API_SERVER_KEY']
+      ['plug', 'independent', 'outbound · 推理', 'Hermes 调别人的模型', 'model / auxiliary / fallback / moa'],
+      ['cap', 'independent', 'outbound · 能力', '工具域各自的后端注册', 'stt / tts / web.backend / vision'],
+      ['globe', 'independent', 'inbound · 入口', '外部把 Hermes 当模型调', 'API server · API_SERVER_KEY']
     ].forEach(function (row) {
       var card = el('div', 'pcard');
       var top = el('div', 'top');
       var em2 = el('span', 'emblem');
-      em2.append(svg(ICON[row[0]], 15));
+      em2.append(svgIcon(ICONS[row[0]], 15));
       top.append(em2, badge('独立配置段', 'info'));
       card.append(top, el('div', 'nm', row[2]), el('div', 'url', row[3]));
       var meta = el('div', 'meta');
@@ -534,7 +570,7 @@
 
     /* 类型筛选：用真实的三类状态，不硬造分类 */
     var filters = el('div', 'chips');
-    [['all', '全部'], ['原生可配', '原生可配'], ['专用编辑器', '专用编辑器'], ['需二改', '需二改']].forEach(function (row) {
+    [['all', '全部'], ['本页可配', '本页可配'], ['需二改', '需二改']].forEach(function (row) {
       var chipBtn = btn(row[1], 'chip' + (backendFilter === row[0] ? ' pri' : ''), function () {
         backendFilter = row[0];
         M.render();
@@ -551,10 +587,11 @@
 
     var cards = el('div', 'cards');
     shown.forEach(function (d) {
-      var card = el('div', 'pcard');
+      var card = el('div', 'pcard backend');
+      card.style.setProperty('--accent', d.writable ? '#4d7fd6' : '#bc4c3d');
       var top = el('div', 'top');
       var em = el('span', 'emblem');
-      em.append(svg(ICON[d.key === 'browser' ? 'server' : 'cube'], 15));
+      em.append(svgIcon(ICONS[BACKEND_ICON[d.key] || 'cap'], 15));
       top.append(em, badge(d.status, d.status_tone));
       card.append(top);
       card.append(el('div', 'nm', d.label));
@@ -568,16 +605,12 @@
       if (d.note) meta.append(chip(d.note));
       card.append(meta);
 
-      var foot = el('div', 'foot');
       if (d.writable) {
-        foot.append(btn('换来源', 'btn sm', function () { M.sheets.backendSwap && M.sheets.backendSwap(S, d); }));
+        var inline = M.sheets.backendInlineForm && M.sheets.backendInlineForm(S, d);
+        card.append(inline || el('p', 'mini', d.note || ''));
       } else {
-        var dead = btn('无独立开关', 'btn sm');
-        dead.disabled = true;
-        foot.append(dead);
+        card.append(el('p', 'mini', d.note || '跟随服务商原生能力，没有独立配置项'));
       }
-      foot.append(btn('详情', 'btn sm', function () { M.sheets.backendDetail && M.sheets.backendDetail(S, d); }));
-      card.append(foot);
       cards.append(card);
     });
     if (!shown.length) cards.append(el('div', 'empty', '这个筛选下没有卡'));
@@ -595,11 +628,9 @@
       out.append(chipsRow);
     }
 
-    out.append(panel('为什么只有几张卡能改', [
-      el('p', 'mini', '语音转写与语音合成有独立配置段（stt / tts），视觉理解在辅助模型里单独指定；' +
-        '这三张卡的写入口在各自的编辑器里，这里点「换来源」直接送过去，不另开第二套写路径。'),
-      el('p', 'mini', '文字识别与图像生成在内核里没有独立后端配置项：OCR 走服务商原生能力，生图走 image_gen 工具集开关。' +
-        '硬塞一个下拉框只会误导。'),
+    out.append(panel('每个域怎么改', [
+      el('p', 'mini', '来源直接在本页选、保存即写入 config.yaml；语音（stt/tts）与视觉（vision）也内联在这里，不再跳专属编辑器。'),
+      el('p', 'mini', '文字识别（OCR）可选白描（账密在「密钥」页）或 DeepSeek（复用其 API key）；生图走 image_gen 工具集开关，没有独立 provider。'),
       el('p', 'mini', '入站接口（把本机当模型给别的程序调）不在这里，状态由语音配置服务统一读取，见概览页的「入站接口」链路。')
     ]));
     return out;

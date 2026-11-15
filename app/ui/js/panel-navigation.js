@@ -8,7 +8,7 @@
        一级组叫「档案」统住三者：怎么写、知道什么、做过什么。
        页面 id 保持 kb/memory 不变，深链 #/kb、#/memory 不断。 */
     {id:'materials',title:'档案',icon:'kb',pages:[['assistant','提示词'],['kb','知识库'],['memory','留痕录']]},
-    {id:'capabilities',title:'能力',icon:'extensions',pages:[['extensions','技能与工具'],['comm','渠道与连接器']]},
+    {id:'capabilities',title:'能力',icon:'extensions',pages:[['comm','消息渠道'],['connectors','外接工具'],['toolsets','工具集'],['skills','技能']]},
     // 2026-11-12：模型服务原来是单页 + 页内 .ui-tabs 八分区（两套导航语言，与协作页对不上）。
     // 现在八个分区就是八个真页面，顶部页签直接列八项，页内底槽撤掉。
     /* 2026-11-15 二改（用户定）：模型板块六个域就是六个真页面（一级路由），
@@ -16,7 +16,7 @@
        各自 #page-models-*，由 panel-model-v2.js 按 data-domain 渲染。 */
     {id:'models',title:'模型',icon:'models',pages:[
       ['models-home','概览'],['models-select','模型选择'],['models-providers','服务商'],
-      ['models-backends','能力后端'],['models-toolsets','工具集'],['models-config','配置']
+      ['models-backends','能力后端'],['models-config','配置']
     ]},
     {id:'maintenance',title:'维护',icon:'overview',pages:[['overview','运行状态'],['usage','用量统计'],['updates','本地版本']]},
     {id:'settings',title:'设置',icon:'settings',pages:[['settings','偏好设置']]},
@@ -24,7 +24,7 @@
   var activePage='chat',sidebar,secondary,mobile,moreDialog,last={},_pressTarget=null;
   // models 是老入口（斜杠命令、工作台按钮、#/models 深链都还这么调），统一落到模型板块第一个子页「概览」；
   // 重构前那九个旧页签 id 也一并落到这里，旧书签不至于 404。
-  var aliases={connectors:'comm',tunnel:'comm',learning:'kb',flows:'plans',
+  var aliases={extensions:'connectors',mcp:'connectors','models-toolsets':'toolsets',tunnel:'comm',learning:'kb',flows:'plans',
     models:'models-home','models-general':'models-home','models-api':'models-home','models-aux':'models-home','models-moa':'models-home',
     'models-jev':'models-home','models-stt':'models-home','models-tts':'models-home','models-checks':'models-home','models-caps':'models-home'};
   function groupFor(page){return groups.find(function(group){return group.pages.some(function(item){return item[0]===page;});})||groups[0];}

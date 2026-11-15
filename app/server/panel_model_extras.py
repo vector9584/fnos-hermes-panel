@@ -37,7 +37,7 @@ DOMAINS = (
     ('web_search', '联网搜索', 'web.search_backend', ('', 'tavily', 'brave', 'searxng', 'deepseek', 'exa'), True, 'config'),
     ('web_extract', '网页提取', 'web.extract_backend', ('', 'tavily', 'exa', 'deepseek', 'firecrawl'), True, 'config'),
     ('vision', '视觉理解', 'auxiliary.vision.provider', ('',), True, 'auxiliary'),
-    ('ocr', '文字识别', '', (), False, 'none'),
+    ('ocr', '文字识别', 'ocr.provider', ('', 'baimiao', 'deepseek'), True, 'config'),
     ('image_gen', '图像生成', '', (), False, 'none'),
     ('browser', '浏览器', 'browser.engine', ('auto', 'chromium', 'camofox'), True, 'config'),
 )
@@ -140,6 +140,10 @@ def keys_view(data, path):
             cred = credential_fields(holder, 'providers')
             note(cred.get('key_env'), label)
 
+    # 白描 OCR 凭据（.env 里的 BAIMIAO_USER / BAIMIAO_PASS，config 未引用，显式登记）
+    note('BAIMIAO_USER', '文字识别（白描）')
+    note('BAIMIAO_PASS', '文字识别（白描）')
+
     return {'ok': True, 'keys': sorted(rows.values(), key=lambda row: (row['source'] != 'env', row['name'])),
             'env_file': str(Path(path).parent / '.env'), 'env_count': len(env)}
 
@@ -238,10 +242,8 @@ def backends_view(data):
             detail['model'] = str(vision.get('model') or '')
             detail['base_url'] = str(vision.get('base_url') or '')
             detail['provider'] = str(vision.get('provider') or '')
-        if writable and write_via == 'config':
-            status, status_tone = '原生可配', 'ok'
-        elif write_via in ('voice', 'auxiliary'):
-            status, status_tone = '专用编辑器', 'info'
+        if writable:
+            status, status_tone = '本页可配', 'ok'
         else:
             status, status_tone = '需二改', 'warn'
         rows.append({'key': key, 'label': label, 'provider': current, 'options': list(options),
