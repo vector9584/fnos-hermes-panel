@@ -235,25 +235,45 @@
     try { window.panelRuntimeRefresh?.(); } catch (_) {}
   }
 
-  /* 写操作统一走这里：revision 冲突自动重读，不让用户对着旧表单反复失败。 */
+  /* 每种写动作对应哪一份 revision。跨域连续操作时，上一笔写会把整份配置的
+     指纹改掉，还拿着旧指纹提交就会 409；这里按动作取对应那本账。 */
+  function revisionFor(action) {
+    if (action === 'moa_save') return (S.moa || {}).moa_revision || '';
+    if (action === 'save_backend') return (S.backends || {}).revision || '';
+    if (action === 'save_toolsets') return (S.toolsets || {}).revision || '';
+    return (S.catalog || {}).revision || '';
+  }
+
+  /* 写操作统一走这里：409 先重读再用最新指纹重提一次，不让用户对着旧表单反复失败。 */
   async function mutate(body, options) {
     options = options || {};
-    try {
-      var out = await post(body);
-      if (out.changed === false) toast(options.unchanged || '没有变化');
-      else toast(options.done || '已保存');
-      if (out.changed !== false) pending();
-      await load(options.reload || null);
-      return out;
-    } catch (error) {
-      if (error.status === 409) {
-        toast('配置刚在别处改过，已刷新，请再操作一次', true);
-        await load();
-        return null;
+    var attempt = 0;
+    while (attempt < 2) {
+      try {
+        var out = await post(body);
+        if (out.changed === false) toast(options.unchanged || '没有变化');
+        else toast(options.done || '已保存');
+        if (out.changed !== false) pending();
+        await load(options.reload || null);
+        return out;
+      } catch (error) {
+        if (error.status === 409 && attempt === 0) {
+          attempt++;
+          await load();
+          body = Object.assign({}, body, { revision: revisionFor(body.action) });
+          toast('配置刚在别处变过，已用最新版本重试一次');
+          continue;
+        }
+        if (error.status === 409) {
+          toast('配置连续被改动，已刷新；请再点一次', true);
+          await load();
+          return null;
+        }
+        toast(error.message, true);
+        throw error;
       }
-      toast(error.message, true);
-      throw error;
     }
+    return null;
   }
 
   async function auxMutate(body, options) {
