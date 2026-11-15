@@ -818,46 +818,47 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 }
 .arc-vault-search:focus { outline: none; border-color: var(--accent); }
 .arc-vault-pill {
-  flex: none; padding: 3px 10px; font-size: 11px; border-radius: 999px;
+  flex: none; margin-left: auto; padding: 3px 10px; font-size: 11px; border-radius: 999px;
   color: var(--accent); background: var(--accent-bg); white-space: nowrap;
 }
 
-/* 分类 chips：单行横滑，不折成三行把网格推下去 */
-.arc-vault-chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 2px; scrollbar-width: thin; }
-.arc-vault-chip {
-  display: inline-flex; align-items: center; gap: 6px; flex: none;
-  padding: 5px 10px; font: inherit; font-size: 11.5px; color: var(--text2);
-  background: var(--bg1); border: 1px solid var(--border); border-radius: 999px; cursor: pointer;
-}
-.arc-vault-chip:hover { border-color: var(--border2); color: var(--text); }
-.arc-vault-chip.on { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); font-weight: 600; }
-.arc-vault-chip-n { font-variant-numeric: tabular-nums; opacity: .7; }
-
 /* 卡片网格：案例 minmax(240px,1fr)，悬停抬 2px */
-.arc-vault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(236px, 1fr)); gap: 12px; }
-.arc-vault-card {
-  display: flex; flex-direction: column; gap: 9px; text-align: left;
-  padding: 13px 14px; font: inherit; cursor: pointer;
+.arc-vault-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+.arc-vault-item {
+  display: flex; flex-direction: column; padding: 14px;
   background: var(--card); border: 1px solid var(--border); border-radius: 11px;
   transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
 }
-.arc-vault-card:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 12px 26px rgba(0, 0, 0, .2); }
-.arc-vault-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.vi-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.arc-vault-item:hover { transform: translateY(-2px); border-color: var(--accent); box-shadow: 0 12px 26px rgba(0, 0, 0, .2); }
+.vi-top { display: flex; align-items: center; gap: 8px; min-width: 0; margin-bottom: 8px; }
 .vi-key {
-  flex: 1 1 auto; min-width: 0; font-family: ui-monospace, monospace; font-size: 12.5px; font-weight: 600;
+  flex: 1 1 auto; min-width: 0; font-family: ui-monospace, monospace; font-size: 12.5px; font-weight: 700;
   color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .vi-cat {
-  flex: none; padding: 2px 7px; font-size: 10.5px; color: var(--text2);
-  background: var(--bg1); border: 1px solid var(--border); border-radius: 999px;
+  flex: none; padding: 1px 7px; font-size: 10.5px; color: var(--text2);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 999px; white-space: nowrap;
 }
+/* 掩码值单独一个方框——这是和案例对齐的关键，光秃秃一行文字看着像没做完 */
 .vi-val {
-  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: .5px; color: var(--muted);
+  font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 1px; color: var(--muted);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.vi-foot { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--muted); }
-.vi-go { color: var(--accent); opacity: .75; }
+.vi-note { font-size: 11px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+.vi-foot { display: flex; gap: 6px; margin-top: 10px; }
+
+/* 二级弹窗（复用 ui.modal，案例 openModal 的字段排法） */
+.arc-vm-field { display: flex; flex-direction: column; gap: 5px; margin-bottom: 12px; }
+.arc-vm-field label { font-size: 11.5px; color: var(--muted); }
+.arc-vm-valrow { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.arc-vm-val {
+  width: 100%; font-family: ui-monospace, monospace; font-size: 12px; letter-spacing: 1px; color: var(--muted);
+  background: var(--bg1); border: 1px solid var(--border); border-radius: 7px; padding: 8px 10px;
+  word-break: break-all;
+}
+.arc-vm-val.is-plain { padding: 0; border: 0; background: none; }
+.arc-vm-meta { font-size: 12px; color: var(--text2); }
 
 /* 二级：详情 */
 .arc-vault-back { align-self: flex-start; }
@@ -1328,4 +1329,12 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   .arc-tagpop-list { max-height: 46vh; }
   .arc-chips-label { padding-left: 4px; }
   .arc-chips { flex-wrap: nowrap; overflow-x: auto; }
+}
+
+/* 二级弹窗：窄屏也要整块放得下，字段多了让中间滚，别把「二级口令」切在屏幕外 */
+.arc-item-modal { display: flex; flex-direction: column; max-height: min(88vh, 660px); }
+.arc-item-modal .modal-body { overflow: auto; }
+@media (max-width: 560px) {
+  .arc-item-modal { max-height: 92vh; }
+  .arc-item-modal .modal-body { padding-bottom: 4px; }
 }

@@ -22,8 +22,8 @@
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
 <link rel="stylesheet" href="css/panel-workspace.css?v=559864a4">
     <link rel="stylesheet" href="css/panel-maintenance.css?v=22a9662a">
-    <link rel="stylesheet" href="css/archive.css?v=1cae9373">
-<link rel="stylesheet" href="css/panel-model-deck.css?v=28f6880c">
+    <link rel="stylesheet" href="css/archive.css?v=3678e11d">
+<link rel="stylesheet" href="css/panel-model-ref.css?v=5f6999df">
 <link rel="stylesheet" href="css/ui-kit.css?v=343723a8">
 </head>
 <body class="theme-dark">
@@ -383,14 +383,34 @@
           </div>
         </section>
 
-        <!-- 模型页 · 六域工作台（2026-11-15 整页重构）
-             原来九个平铺 section（通用模型 / 模型 API / 辅助模型 / 组合模型 / JEV /
-             STT / TTS / 响应验证 / 能力实验室）收成一个页面。页内六个域
-             （概览 / 模型选择 / 服务商 / 能力后端 / 工具集 / 配置）由
-             panel-model-v2.js 自己渲染域切换条，不再占用顶部页签。 -->
-        <section class="page models-page" id="page-models">
-          <div class="page-header"><h1 id="mv2Title">模型</h1><div id="mv2HeadActs"></div></div>
-          <div class="page-body"><div id="mv2Root"></div></div>
+        <!-- 模型板块 · 六域一级路由（2026-11-15 二改）
+             六个域（概览 / 模型选择 / 服务商 / 能力后端 / 工具集 / 配置）不再是
+             页内按钮切换，而是各自一个真页面（#page-models-*），顶部页签条和
+             侧栏「模型」分组直接列出六项，深链 #/models-config 直达。
+             每个 .page-body 里的 .mv2-root 由 panel-model-v2.js 按 data-domain 渲染。 -->
+        <section class="page models-page" id="page-models-home">
+          <div class="page-header"><h1>概览</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="home"></div></div>
+        </section>
+        <section class="page models-page" id="page-models-select">
+          <div class="page-header"><h1>模型选择</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="select"></div></div>
+        </section>
+        <section class="page models-page" id="page-models-providers">
+          <div class="page-header"><h1>服务商</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="providers"></div></div>
+        </section>
+        <section class="page models-page" id="page-models-backends">
+          <div class="page-header"><h1>能力后端</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="backends"></div></div>
+        </section>
+        <section class="page models-page" id="page-models-toolsets">
+          <div class="page-header"><h1>工具集</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="toolsets"></div></div>
+        </section>
+        <section class="page models-page" id="page-models-config">
+          <div class="page-header"><h1>配置</h1><div class="mv2-acts"></div></div>
+          <div class="page-body"><div class="mv2-root" data-domain="config"></div></div>
         </section>
 
         <!-- 扩展页 -->
@@ -717,7 +737,7 @@
 <script src="js/chat/new-dialog.js?v=90e471e0"></script>
 <script src="js/chat/compose.js?v=3a526c93"></script>
 <script src="js/core/mini-popup.js?v=f59e5f7f"></script>
-<script src="js/core/router.js?v=dee2412f"></script>
+<script src="js/core/router.js?v=0c5d0815"></script>
 <script src="js/panels/tunnel.js?v=1e1aca8c"></script>
 <script src="js/core/theme.js?v=c726d6fb"></script>
 <script src="js/panels/overview.js?v=fbe49f30"></script>
@@ -752,9 +772,9 @@
 <link rel="stylesheet" href="css/panel-chat-avatar.css?v=e87cba5d">
 <script src="js/panel-rooms-ui.js?v=840e27e9"></script>
 <script src="js/panel-experts-ui.js?v=2a3291a8"></script>
-<script src="js/panel-model-v2.js?v=c14891db"></script>
-<script src="js/panel-model-v2-pages.js?v=aaf8bc34"></script>
-<script src="js/panel-model-v2-sheets.js?v=5cd0e8ce"></script>
+<script src="js/panel-model-v2.js?v=325eca2c"></script>
+<script src="js/panel-model-v2-pages.js?v=1475e708"></script>
+<script src="js/panel-model-v2-sheets.js?v=9443d1ec"></script>
 <script src="js/panel-connectors-ui.js?v=7bbcbc2f"></script>
 <script src="js/panel-auth-ui.js?v=a792fab9"></script>
 <script src="js/panel-files-ui.js?v=4b940c73"></script>
@@ -784,10 +804,10 @@
 <script src="js/archive/archive-arch.js?v=6df10aca"></script>
 <script src="js/archive/archive-graph.js?v=2b5fbbc9"></script>
 <script src="js/archive/archive-trajectory.js?v=a4ecb974"></script>
-<script src="js/archive/archive-vault.js?v=2db2f9b9"></script>
+<script src="js/archive/archive-vault.js?v=71eb1bb7"></script>
 <script src="js/archive/archive-boot.js?v=43ffdda0"></script>
 <script src="js/panel-library-reviews-ui.js?v=4939c059"></script>
-<script src="js/panel-navigation.js?v=23657952"></script>
+<script src="js/panel-navigation.js?v=49fe9073"></script>
 <script src="js/panel-chat-avatar.js?v=ed52ec92"></script>
 <script src="js/panel-chat-tail.js?v=8ea31e46"></script>
 <script src="js/panel-clarify.js?v=add6c1e9"></script>

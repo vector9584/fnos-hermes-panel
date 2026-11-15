@@ -146,7 +146,10 @@ window.Archive.register('vault', (function () {
     return card;
   }
 
-  /* ── 一级解锁后：列表 ── */
+  /* ── 一级解锁后：列表 ──
+     照案例（墨档 / renderVault）：hero + 工具条 + 卡片网格，卡片里就四行
+     键名+分类 / 掩码值（独立方框）/ 体积 / 两个按钮。案例没有搜索框、没有 chips，
+     这里也不加——档案左栏已经有一个筛选框，页里再来一个就是重复。 */
   function listView(st, bag) {
     var v = vs(st);
     var data = v.data;
@@ -180,215 +183,128 @@ window.Archive.register('vault', (function () {
       v.data = null; v.error = '';
       load(st, bag).then(function () { bag.rerender(); A.toast('已重新锁定'); });
     };
-    var pill = A.el('span', '一级已解锁', 'arc-vault-pill');
-    var search = document.createElement('input');
-    search.type = 'search';
-    search.className = 'arc-vault-search';
-    search.placeholder = '筛选键名 / 分类';
-    search.value = v.q;
-    search.setAttribute('aria-label', '筛选密码本');
-    tools.append(add, refresh, relock, search, pill);
+    var pill = A.el('span', '已解锁', 'arc-vault-pill');
+    tools.append(add, refresh, relock, pill);
 
-    /* 分类 chips：按服务端分组计数，全部在前 */
-    var chips = A.el('div', null, 'arc-vault-chips');
     var grid = A.el('div', null, 'arc-vault-grid');
-    var empty = A.el('p', '没有匹配的条目。', 'arc-empty');
+    (data.items || []).forEach(function (it) { grid.append(card(st, bag, it)); });
 
-    function paint() {
-      var q = String(v.q || '').trim().toLowerCase();
-      var items = (v.data.items || []).filter(function (it) {
-        if (v.cat !== '全部' && it.category !== v.cat) return false;
-        if (!q) return true;
-        return it.key.toLowerCase().indexOf(q) >= 0 || String(it.category).toLowerCase().indexOf(q) >= 0;
-      });
-      grid.replaceChildren();
-      items.forEach(function (it) { grid.append(card(it)); });
-      empty.hidden = items.length > 0;
-      chips.querySelectorAll('.arc-vault-chip').forEach(function (c) {
-        c.classList.toggle('on', c.dataset.cat === v.cat);
-      });
-    }
-
-    chips.append(chip('全部', v.data.count));
-    Object.keys(v.data.groups || {}).sort(function (a, b) {
-      return (v.data.groups[b] - v.data.groups[a]) || a.localeCompare(b, 'zh');
-    }).forEach(function (cat) { chips.append(chip(cat, v.data.groups[cat])); });
-
-    function chip(cat, count) {
-      var b = A.el('button', null, 'arc-vault-chip' + (v.cat === cat ? ' on' : ''));
-      b.type = 'button';
-      b.dataset.cat = cat;
-      b.append(A.el('span', cat), A.el('span', String(count), 'arc-vault-chip-n'));
-      b.onclick = function () { v.cat = cat; paint(); };
-      return b;
-    }
-
-    function card(it) {
-      var b = A.el('button', null, 'arc-vault-card');
-      b.type = 'button';
-      var top = A.el('div', null, 'vi-top');
-      top.append(A.el('span', it.key, 'vi-key'), A.el('span', it.category, 'vi-cat'));
-      var val = A.el('div', null, 'vi-val');
-      val.textContent = it.masked;
-      var foot = A.el('div', null, 'vi-foot');
-      foot.append(A.el('span', it.bytes + ' B', 'vi-bytes'), A.el('span', '查看 ›', 'vi-go'));
-      b.append(top, val, foot);
-      b.title = it.key + ' · 查看需二级口令';
-      b.onclick = function () {
-        v.key = it.key;
-        v.editing = false;
-        bag.rerender();
-      };
-      return b;
-    }
-
-    search.oninput = function () { v.q = search.value; paint(); };
-
-    root.append(hero, tools, chips, grid, empty, hint('值只在二级校验通过后按条下发；复制、编辑都要先过二级，编辑后写入 data/.env，并记一条审计。'));
-    paint();
+    root.append(hero, tools, grid,
+      hint('值只在二级校验通过后按条下发；编辑写回 data/.env，并记一条审计。'));
     return root;
   }
 
-  /* ── 二级：详情 ── */
-  function detailView(st, bag) {
+  function card(st, bag, it) {
+    var box = A.el('div', null, 'arc-vault-item');
+    var top = A.el('div', null, 'vi-top');
+    top.append(A.el('span', it.key, 'vi-key'), A.el('span', it.category || '其他', 'vi-cat'));
+    var val = A.el('div', null, 'vi-val');
+    val.textContent = it.masked || '••••••••';
+    var note = A.el('div', null, 'vi-note');
+    note.textContent = (it.bytes || 0) + ' B';
+    var foot = A.el('div', null, 'vi-foot');
+    var edit = A.el('button', '查看 / 编辑', 'arc-btn is-sm');
+    edit.type = 'button';
+    edit.onclick = function () { openItem(st, bag, it.key); };
+    var copy = A.el('button', '复制', 'arc-btn is-sm');
+    copy.type = 'button';
+    copy.onclick = function () { copyItem(st, bag, it.key); };
+    foot.append(edit, copy);
+    box.append(top, val, note, foot);
+    return box;
+  }
+
+  function copyItem(st, bag, key) {
     var v = vs(st);
-    var item = (v.data.items || []).filter(function (it) { return it.key === v.key; })[0];
-    if (!item) { v.key = ''; return listView(st, bag); }
+    if (v.revealed[key]) { copyText(v.revealed[key]); return; }
+    promptLevel2(st, bag, key, function () {
+      if (vs(st).revealed[key]) copyText(vs(st).revealed[key]);
+    });
+  }
 
-    var root = A.el('div', null, 'arc-vault-inner arc-vault-detail');
-    var back = A.el('button', null, 'arc-btn is-ghost is-sm arc-vault-back');
-    back.type = 'button';
-    back.append(A.svgIcon('back', 14), A.el('span', '返回列表'));
-    back.onclick = function () { v.key = ''; v.editing = false; bag.rerender(); };
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c];
+    });
+  }
 
-    var head = A.el('div', null, 'arc-vault-head');
-    var hico = A.el('div', null, 'arc-vault-head-ico');
-    hico.append(A.svgIcon('lock', 18));
-    var htxt = A.el('div', null, 'arc-vault-head-txt');
-    var title = A.el('h2', item.key, 'arc-vault-key');
-    var sub = A.el('div', null, 'arc-vault-head-sub');
-    sub.append(A.el('span', item.category, 'vi-cat'), A.el('span', item.bytes + ' B', 'vi-bytes'));
-    htxt.append(title, sub);
-    head.append(hico, htxt);
+  /* ── 二级：一个弹窗搞定看明文 / 改值（案例 openModal 的做法，不再单独一页） ── */
+  function openItem(st, bag, key) {
+    var v = vs(st);
+    var item = (v.data.items || []).filter(function (it) { return it.key === key; })[0] ||
+      { key: key, category: '', bytes: 0, masked: '' };
+    var dlg = window.ui.modal({
+      title: '查看 / 编辑 · ' + key,
+      width: 520,
+      className: 'arc-item-modal',
+      bodyHTML:
+        '<div class="arc-vm-field"><label>键名</label>' +
+          '<input class="arc-vault-input" value="' + escHtml(key) + '" readonly></div>' +
+        '<div class="arc-vm-field"><label>值（明文）</label>' +
+          '<div class="arc-vm-valrow"><div class="arc-vm-val" id="arcVmVal">' + escHtml(item.masked || '••••••••') + '</div></div></div>' +
+        '<div class="arc-vm-field"><label>分类 / 体积</label>' +
+          '<div class="arc-vm-meta">' + escHtml(item.category || '其他') + ' · ' + (item.bytes || 0) + ' B</div></div>' +
+        '<div class="arc-vm-field"><label>二级口令</label>' +
+          '<input id="arcVmPw" type="password" class="arc-vault-input" placeholder="查看与保存都要它" autocomplete="off"></div>' +
+        '<p class="arc-pass-feedback" id="arcVmFb"></p>',
+      actions: [
+        { text: '取消' },
+        { text: '保存', primary: true, onClick: function (close) { save(close); } }
+      ]
+    });
 
-    root.append(back, head);
+    var bodyEl = dlg.bodyEl;
+    var valBox = bodyEl.querySelector('#arcVmVal');
+    var pwIn = bodyEl.querySelector('#arcVmPw');
+    var fb = bodyEl.querySelector('#arcVmFb');
+    var ta = null;
 
-    var revealed = Object.prototype.hasOwnProperty.call(v.revealed, item.key);
-    var box = A.el('section', null, 'arc-vault-valuebox');
-
-    if (revealed && !v.editing) {
-      box.append(A.el('div', '明文', 'arc-vault-valuehead'));
-      var pre = A.el('pre', null, 'arc-vault-value');
-      pre.textContent = v.revealed[item.key] === '' ? '（空值）' : v.revealed[item.key];
-      box.append(pre);
-      var acts = A.el('div', null, 'arc-vault-acts');
-      var copy = A.el('button', null, 'arc-btn is-sm');
-      copy.type = 'button';
-      copy.append(A.svgIcon('copy', 13), A.el('span', '复制'));
-      copy.onclick = function () { copyText(v.revealed[item.key]); };
-      var edit = A.el('button', null, 'arc-btn is-sm is-primary');
-      edit.type = 'button';
-      edit.append(A.svgIcon('edit', 13), A.el('span', '编辑'));
-      edit.onclick = function () { v.editing = true; bag.rerender(); };
-      var hide = A.el('button', '隐藏', 'arc-btn is-sm is-ghost');
-      hide.type = 'button';
-      hide.onclick = function () { delete v.revealed[item.key]; delete v.grants[item.key]; bag.rerender(); };
-      acts.append(copy, edit, hide);
-      box.append(acts);
-    } else if (revealed && v.editing) {
-      box.append(A.el('div', '编辑 ' + item.key, 'arc-vault-valuehead'));
-      var ta = document.createElement('textarea');
+    function showPlain(value) {
+      valBox.replaceChildren();
+      ta = document.createElement('textarea');
       ta.className = 'arc-vault-editor';
-      ta.value = v.revealed[item.key];
-      ta.rows = 3;
-      ta.setAttribute('aria-label', '编辑值');
-      box.append(ta);
-      var eacts = A.el('div', null, 'arc-vault-acts');
-      var save = A.el('button', null, 'arc-btn is-sm is-primary');
-      save.type = 'button';
-      save.append(A.svgIcon('save', 13), A.el('span', '保存'));
-      var cancel = A.el('button', '取消', 'arc-btn is-sm is-ghost');
-      cancel.type = 'button';
-      cancel.onclick = function () { v.editing = false; bag.rerender(); };
-      var efb = A.el('span', '', 'arc-pass-feedback');
-      save.onclick = function () {
-        save.disabled = true;
-        efb.textContent = '保存中…';
-        saveValue(st, bag, item.key, ta.value, {}).then(function (res) {
-          v.revealed[item.key] = ta.value;
-          v.editing = false;
-          bag.rerender();
-          A.toast(res && res.unchanged ? '值没有变化' : '已写入 data/.env');
-          loadAudit(st, bag);
-        }).catch(function (err) {
-          save.disabled = false;
-          efb.textContent = err.message || '保存失败';
-          if (err.status === 403) promptLevel2(st, bag, item.key, function () { bag.rerender(); });
-        });
-      };
-      eacts.append(save, cancel, efb);
-      box.append(eacts);
-    } else {
-      /* 二级校验：口令框直接长在详情里，不弹一个黑框 */
-      box.append(A.el('div', '明文', 'arc-vault-valuehead'));
-      box.append(A.el('p', '这一条需要二级口令。校验通过后明文只在这一页出现，离开就清掉。', 'arc-vault-gate-desc'));
-      var form = A.el('form', null, 'arc-pass-form arc-vault-gate');
-      var input = document.createElement('input');
-      input.type = 'password';
-      input.className = 'arc-vault-input';
-      input.placeholder = '输入二级口令';
-      input.autocomplete = 'off';
-      input.setAttribute('aria-label', '二级口令');
-      var fb = A.el('p', '', 'arc-pass-feedback');
-      var go = A.el('button', '查看明文', 'arc-btn is-primary is-sm');
-      go.type = 'submit';
-      form.append(input, go, fb);
-      form.onsubmit = function (ev) {
-        ev.preventDefault();
-        var pw = String(input.value || '');
-        if (!pw) { fb.textContent = '请输入二级口令'; input.focus(); return; }
-        go.disabled = true;
-        fb.textContent = '校验中…';
-        reveal(st, bag, item.key, pw).then(function () {
-          bag.rerender();
-          loadAudit(st, bag);
-        }).catch(function (err) {
-          go.disabled = false;
-          fb.textContent = err.message || '校验失败';
-          input.select();
-        });
-      };
-      box.append(form);
+      ta.rows = 2;
+      ta.value = String(value == null ? '' : value);
+      ta.setAttribute('aria-label', '值（明文）');
+      valBox.append(ta);
+      valBox.classList.add('is-plain');
+      pwIn.disabled = true;
     }
 
-    root.append(box);
+    if (v.revealed[key]) showPlain(v.revealed[key]);
+    else {
+      var rv = A.el('button', '查看明文', 'arc-btn is-sm');
+      rv.type = 'button';
+      rv.onclick = function () {
+        var pw = String(pwIn.value || '');
+        if (!pw) { fb.textContent = '先输入二级口令'; pwIn.focus(); return; }
+        rv.disabled = true;
+        fb.textContent = '校验中…';
+        reveal(st, bag, key, pw).then(function (res) {
+          rv.disabled = false;
+          fb.textContent = '';
+          showPlain(res.value);
+        }).catch(function (err) {
+          rv.disabled = false;
+          fb.textContent = err.message || '二级口令不正确';
+          pwIn.select();
+        });
+      };
+      valBox.parentNode.append(rv);
+    }
 
-    var meta = A.el('div', null, 'arc-vault-meta');
-    [['键名', item.key], ['分类', item.category], ['体积', item.bytes + ' B'], ['掩码', item.masked]].forEach(function (pair) {
-      var cell = A.el('div', null, 'arc-vault-metacell');
-      cell.append(A.el('span', pair[0], 'arc-vault-metak'), A.el('span', pair[1], 'arc-vault-metav'));
-      meta.append(cell);
-    });
-    root.append(meta);
-
-    /* 这条键自己的审计：谁在什么时候看过/改过 */
-    var auditBox = A.el('section', null, 'arc-vault-audit');
-    auditBox.append(A.el('h3', '修改记录', 'arc-vault-audit-title'));
-    var rows = v.audit.filter(function (row) { return row.key === item.key; }).slice(0, 8);
-    if (!rows.length) auditBox.append(A.el('p', '还没有这条键的记录。', 'arc-vault-hint'));
-    rows.forEach(function (row) {
-      var line = A.el('div', null, 'arc-vault-audit-row');
-      var when = new Date(row.at || Date.now());
-      var pad = function (n) { return (n < 10 ? '0' : '') + n; };
-      line.append(
-        A.el('span', pad(when.getMonth() + 1) + '-' + pad(when.getDate()) + ' ' + pad(when.getHours()) + ':' + pad(when.getMinutes()), 'arc-vault-audit-when'),
-        A.el('span', ({ reveal: '查看', edit: '编辑', create: '新增', 'reveal-failed': '验口令失败', 'write-failed': '写失败' })[row.action] || row.action, 'arc-vault-audit-act')
-      );
-      auditBox.append(line);
-    });
-    root.append(auditBox);
-    loadAudit(st, bag);
-    return root;
+    function save(close) {
+      if (!ta) { fb.textContent = '先输入二级口令点「查看明文」，确认过才能改'; if (pwIn) pwIn.focus(); return; }
+      fb.textContent = '保存中…';
+      saveValue(st, bag, key, ta.value, { password: String(pwIn.value || '') }).then(function () {
+        close('saved');
+        v.data = null;
+        load(st, bag).then(function () { bag.rerender(); });
+        A.toast('已写回 data/.env');
+      }).catch(function (err) {
+        fb.textContent = err.message || '保存失败';
+      });
+    }
   }
 
   function loadAudit(st, bag) {
@@ -608,7 +524,6 @@ window.Archive.register('vault', (function () {
     host.append(root);
     if (v.data.setup) { root.append(setupCard(st, bag)); return; }
     if (v.data.locked) { root.append(lockCard(st, bag)); return; }
-    if (v.key) { root.append(detailView(st, bag)); return; }
     root.append(listView(st, bag));
   }
 

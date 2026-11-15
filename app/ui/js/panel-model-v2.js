@@ -1,19 +1,37 @@
-/* 模型页 · 六域工作台 — 骨架
- * 2026-11-15 整页重构。本文件只管：数据加载、域路由、弹层容器、toast、写操作。
- * 六个域的渲染在 panel-model-v2-pages.js，十二种弹层在 panel-model-v2-sheets.js。
+/* 模型页 · 六域工作台 — 骨架（2026-11-15 第二轮：严格对齐参考稿）
+ *
+ * 参考稿：/vol1/1000/飞牛文件/Code_20261115120611.html（CHATES · 模型）
+ * 本文件只管：外壳（两行页签 + content/wrap）、数据加载、域路由、弹层、toast、写操作。
+ * 六个域的渲染在 panel-model-v2-pages.js，弹层在 panel-model-v2-sheets.js。
  * 三者通过 window.MV2 共享命名空间，加载顺序由 index.html 的 script 顺序保证。
+ *
+ * 与第一轮的差别：DOM 结构、类名、组件形态全部改用参考稿那一套
+ * （.tabbars/.tabrow/.content/.wrap/.ph/.hero/.qcard/.pcard/.slotbox/.tscard/.panel/.sheet），
+ * 样式表见 css/panel-model-ref.css（参考 CSS 原样搬入并限定作用域）。
  */
 (function () {
   'use strict';
 
+  /* 每个域的第二行子页签：参考稿里只有能力后端有 */
   var DOMAINS = [
-    ['home', '概览'],
-    ['select', '模型选择'],
-    ['providers', '服务商'],
-    ['backends', '能力后端'],
-    ['toolsets', '工具集'],
-    ['config', '配置']
+    ['home', '概览', []],
+    ['select', '模型选择', []],
+    ['providers', '服务商', []],
+    ['backends', '能力后端', [['all', '全部域'], ['ds', 'DeepSeek 落点']]],
+    ['toolsets', '工具集', []],
+    ['config', '配置', []]
   ];
+
+  /* 域 → 一级路由页 id 双向映射（2026-11-15 二改：页内按钮切换改成一页一域） */
+  var DOMAIN_PAGE = {
+    home: 'models-home', select: 'models-select', providers: 'models-providers',
+    backends: 'models-backends', toolsets: 'models-toolsets', config: 'models-config'
+  };
+  var PAGE_DOMAIN = {};
+  DOMAINS.forEach(function (row) { PAGE_DOMAIN[DOMAIN_PAGE[row[0]]] = row[0]; });
+  /* 六个域的根节点缓存，buildShell 里一次性建好，renderDomain 按域填内容 */
+  var rootsByDomain = null;
+  var loading = false;
 
   var S = {
     domain: 'home',
@@ -27,6 +45,7 @@
     moa: null,
     aux: null,
     caps: null,
+    voice: null,
     loaded: false,
     error: ''
   };
@@ -52,59 +71,40 @@
     return out;
   }
 
-  async function auxGet() {
-    var response = await fetch(url('/api/panel-models/auxiliary'), {
-      method: 'GET', headers: headers(), cache: 'no-store'
-    });
-    var out = await response.json().catch(function () { return {}; });
-    if (!response.ok || !out.ok) {
-      var error = Error(out.error || '辅助模型读取失败');
-      error.status = response.status;
-      throw error;
-    }
-    return out;
+  function makeGet(path, label) {
+    return async function () {
+      var response = await fetch(url(path), { method: 'GET', headers: headers(), cache: 'no-store' });
+      var out = await response.json().catch(function () { return {}; });
+      if (!response.ok || !out.ok) {
+        var error = Error(out.error || label + '读取失败');
+        error.status = response.status;
+        throw error;
+      }
+      return out;
+    };
   }
 
-  async function auxPatch(body) {
-    var response = await fetch(url('/api/panel-models/auxiliary'), {
-      method: 'PATCH', headers: headers(), body: JSON.stringify(body), cache: 'no-store'
-    });
-    var out = await response.json().catch(function () { return {}; });
-    if (!response.ok || !out.ok) {
-      var error = Error(out.error || '辅助模型保存失败');
-      error.status = response.status;
-      throw error;
-    }
-    return out;
+  function makePatch(path, label) {
+    return async function (body) {
+      var response = await fetch(url(path), {
+        method: 'PATCH', headers: headers(), body: JSON.stringify(body), cache: 'no-store'
+      });
+      var out = await response.json().catch(function () { return {}; });
+      if (!response.ok || !out.ok) {
+        var error = Error(out.error || label + '保存失败');
+        error.status = response.status;
+        throw error;
+      }
+      return out;
+    };
   }
 
-  async function voiceGet() {
-    var response = await fetch(url('/api/panel-models/voice'), {
-      method: 'GET', headers: headers(), cache: 'no-store'
-    });
-    var out = await response.json().catch(function () { return {}; });
-    if (!response.ok || !out.ok) {
-      var error = Error(out.error || '语音配置读取失败');
-      error.status = response.status;
-      throw error;
-    }
-    return out;
-  }
+  var auxGet = makeGet('/api/panel-models/auxiliary', '辅助模型');
+  var auxPatch = makePatch('/api/panel-models/auxiliary', '辅助模型');
+  var voiceGet = makeGet('/api/panel-models/voice', '语音配置');
+  var voicePatch = makePatch('/api/panel-models/voice', '语音配置');
 
-  async function voicePatch(body) {
-    var response = await fetch(url('/api/panel-models/voice'), {
-      method: 'PATCH', headers: headers(), body: JSON.stringify(body), cache: 'no-store'
-    });
-    var out = await response.json().catch(function () { return {}; });
-    if (!response.ok || !out.ok) {
-      var error = Error(out.error || '语音配置保存失败');
-      error.status = response.status;
-      throw error;
-    }
-    return out;
-  }
-
-  /* ── DOM 小工具 ─────────────────────────────────────── */
+  /* ── DOM 小工具（类名沿用参考稿）───────────────────── */
   function el(tag, cls, text) {
     var node = document.createElement(tag);
     if (cls) node.className = cls;
@@ -113,51 +113,86 @@
   }
 
   function btn(text, cls, run) {
-    var node = el('button', cls || 'mv2-btn', text);
+    var node = el('button', cls || 'btn', text);
     node.type = 'button';
     if (run) node.onclick = run;
     return node;
   }
 
   function badge(text, tone) {
-    return el('span', 'mv2-badge' + (tone ? ' ' + tone : ''), text);
+    return el('span', 'badge' + (tone ? ' ' + tone : ''), text);
   }
 
-  function chip(text, tone) {
-    return el('span', 'mv2-chip' + (tone ? ' ' + tone : ''), text);
+  function chip(text, mono) {
+    return el('span', 'chip' + (mono ? ' mono' : ''), text);
   }
 
-  function sec(title, sub) {
-    var box = el('div', 'mv2-sec');
-    if (title || sub) {
-      var head = el('div', 'mv2-sec-head');
-      if (title) head.append(el('h3', 'mv2-sec-title', title));
-      head.append(el('div', 'mv2-right'));
-      box.append(head);
-      if (sub) box.append(el('p', 'mv2-sec-sub', sub));
+  function dot(tone) {
+    return el('span', 'dot' + (tone ? ' ' + tone : ''));
+  }
+
+  /* div.sec：h3 + 说明 + spacer */
+  function sec(title, note) {
+    var box = el('div', 'sec');
+    if (title) box.append(el('h3', null, title));
+    if (note) box.append(el('span', 'n', note));
+    box.append(el('span', 'spacer'));
+    return box;
+  }
+
+  /* div.ph：页面头 h1 + sub + acts */
+  function ph(title, sub, acts) {
+    var box = el('div', 'ph');
+    box.append(el('h1', null, title || ''));
+    if (sub) box.append(el('span', 'sub', sub));
+    if (acts) {
+      var wrap = el('div', 'acts');
+      [].concat(acts).forEach(function (a) { if (a) wrap.append(a); });
+      box.append(wrap);
     }
     return box;
   }
 
-  function field(label, control, hint, required) {
-    var box = el('div', 'mv2-field');
-    var tag = el('label', 'mv2-label', label);
-    if (required) tag.append(el('span', 'mv2-req', '*'));
-    box.append(tag, control);
-    if (hint) box.append(el('span', 'mv2-hint', hint));
+  function kv(label, value) {
+    var row = el('div', 'kv');
+    row.append(el('span', null, label));
+    var right = el('b');
+    if (typeof value === 'string') right.textContent = value;
+    else if (value) right.append(value);
+    row.append(right);
+    return row;
+  }
+
+  function panel(title, bodyNodes, headExtra) {
+    var box = el('div', 'panel');
+    if (title) {
+      var head = el('div', 'panel-h');
+      head.append(el('h3', null, title));
+      if (headExtra) head.append(headExtra);
+      box.append(head);
+    }
+    var body = el('div', 'panel-b');
+    [].concat(bodyNodes || []).forEach(function (n) { if (n) body.append(n); });
+    box.append(body);
     return box;
   }
 
-  function input(value, placeholder) {
-    var node = el('input', 'mv2-input');
-    node.type = 'text';
+  function code(text) {
+    var box = el('div', 'code');
+    box.textContent = text || '';
+    return box;
+  }
+
+  function input(value, placeholder, type) {
+    var node = el('input', 'input');
+    node.type = type || 'text';
     node.value = value == null ? '' : String(value);
     if (placeholder) node.placeholder = placeholder;
     return node;
   }
 
   function select(options, value) {
-    var node = el('select', 'mv2-select');
+    var node = el('select', 'select');
     (options || []).forEach(function (option) {
       var item = Array.isArray(option) ? option : [option, option];
       var opt = el('option', null, item[1] === '' ? '（不指定，自动）' : item[1]);
@@ -168,49 +203,79 @@
     return node;
   }
 
-  function toast(message, bad) {
-    var node = document.getElementById('mv2Toast');
-    if (!node) {
-      node = el('div', 'mv2-toast');
-      node.id = 'mv2Toast';
-      document.body.append(node);
-    }
-    node.textContent = message;
-    node.className = 'mv2-toast show' + (bad ? ' bad' : '');
-    clearTimeout(node._timer);
-    node._timer = setTimeout(function () { node.className = 'mv2-toast' + (bad ? ' bad' : ''); }, bad ? 4200 : 2400);
+  function field(label, control, hint, required) {
+    var box = el('div', 'field');
+    var tag = el('label', 'lb', label);
+    if (required) tag.append(el('span', 'req', '*'));
+    box.append(tag, control);
+    if (hint) box.append(el('span', 'ph', hint));
+    return box;
   }
 
-  /* ── 弹层 ───────────────────────────────────────────── */
+  /* 参考稿的步骤条 */
+  function steps(labels, current) {
+    var box = el('div', 'steps');
+    (labels || []).forEach(function (label, index) {
+      var sp = el('div', 'sp' + (index === current ? ' on' : '') + (index < current ? ' done' : ''));
+      sp.append(el('span', 'n', String(index + 1)));
+      sp.append(el('span', null, label));
+      box.append(sp);
+    });
+    return box;
+  }
+
+  /* ── toast：参考稿右下角浮层（图标 + 标题 + 正文 + 按钮）── */
+  function toast(title, body, tone) {
+    var node = document.getElementById('mv2Toast');
+    if (node && node.parentNode) node.parentNode.removeChild(node);
+    node = el('div', 'toast show' + (tone === 'bad' ? ' err' : ''));
+    node.id = 'mv2Toast';
+    var icon = el('span', 'badge ' + (tone === 'bad' ? 'err' : 'info'));
+    icon.textContent = tone === 'bad' ? '!' : 'i';
+    var wrap = el('div');
+    wrap.append(el('b', null, title || ''));
+    if (body) wrap.append(el('div', 'mini', body));
+    node.append(icon, wrap);
+    var act = btn('知道了', 'btn sm', function () { node.remove(); });
+    node.append(act);
+    var x = btn('×', 'sheet-x', function () { node.remove(); });
+    node.append(x);
+    document.body.append(node);
+    clearTimeout(node._timer);
+    node._timer = setTimeout(function () { if (node.parentNode) node.remove(); }, tone === 'bad' ? 6000 : 3600);
+    return node;
+  }
+
+  /* ── 弹层：参考稿 overlay > sheet > (sheet-h + sheet-b + sheet-f) ── */
   var sheetNode = null;
 
   function sheet(options) {
     closeSheet();
-    var overlay = el('div', 'mv2-overlay');
-    var box = el('div', 'mv2-sheet' + (options.wide ? ' wide' : ''));
+    var overlay = el('div', 'overlay');
+    var box = el('div', 'sheet' + (options.wide ? ' wide' : ''));
 
-    var head = el('div', 'mv2-sheet-head');
-    var titles = el('div');
-    titles.append(el('h2', null, options.title || ''));
-    if (options.sub) titles.append(el('p', null, options.sub));
-    head.append(titles);
-    var x = btn('×', 'mv2-sheet-x', closeSheet);
+    var head = el('div', 'sheet-h');
+    var tt = el('div', 'tt');
+    tt.append(el('h3', null, options.title || ''));
+    if (options.sub) tt.append(el('div', 'st', options.sub));
+    head.append(tt);
+    var x = btn('×', 'sheet-x', closeSheet);
     x.setAttribute('aria-label', '关闭');
     head.append(x);
 
-    var body = el('div', 'mv2-sheet-body');
-    if (options.body) body.append(options.body);
+    var body = el('div', 'sheet-b');
+    [].concat(options.body || []).forEach(function (n) { if (n) body.append(n); });
 
-    var foot = el('div', 'mv2-sheet-foot');
+    var foot = el('div', 'sheet-f');
     (options.foot || []).forEach(function (item) {
       if (!item) return;
-      if (item === 'left') { foot.append(el('span', 'mv2-left')); return; }
+      if (item === 'spacer') { foot.append(el('span', 'spacer')); return; }
       foot.append(item);
     });
 
-    // foot 一定要挂进 DOM：多步向导（换主模型 / 添加服务）会在这个容器上
-    // replaceChildren() 重建按钮，不挂进来按钮就永远点不到。
-    box.append(head, body, foot);
+    // foot 必须进 DOM：多步向导会在这个容器上 replaceChildren 重建按钮
+    box.append(head, body);
+    if ((options.foot || []).length) box.append(foot);
     overlay.append(box);
     overlay.onclick = function (event) { if (event.target === overlay) closeSheet(); };
     document.body.append(overlay);
@@ -226,6 +291,8 @@
     sheetNode = null;
   }
 
+  function sheetOpen() { return !!sheetNode; }
+
   document.addEventListener('keydown', function (event) {
     if (event.key === 'Escape' && sheetNode) closeSheet();
   });
@@ -235,8 +302,7 @@
     try { window.panelRuntimeRefresh?.(); } catch (_) {}
   }
 
-  /* 每种写动作对应哪一份 revision。跨域连续操作时，上一笔写会把整份配置的
-     指纹改掉，还拿着旧指纹提交就会 409；这里按动作取对应那本账。 */
+  /* 每种写动作对应哪一份 revision */
   function revisionFor(action) {
     if (action === 'moa_save') return (S.moa || {}).moa_revision || '';
     if (action === 'save_backend') return (S.backends || {}).revision || '';
@@ -244,32 +310,33 @@
     return (S.catalog || {}).revision || '';
   }
 
-  /* 写操作统一走这里：409 先重读再用最新指纹重提一次，不让用户对着旧表单反复失败。 */
   async function mutate(body, options) {
     options = options || {};
     var attempt = 0;
     while (attempt < 2) {
       try {
         var out = await post(body);
-        if (out.changed === false) toast(options.unchanged || '没有变化');
-        else toast(options.done || '已保存');
+        if (out.changed === false) toast(options.unchanged || '没有变化', '配置与提交内容一致，未写入');
+        else toast(options.done || '已保存', options.body || '下一条消息起生效，不用重启');
         if (out.changed !== false) pending();
         await load(options.reload || null);
+        render();
         return out;
       } catch (error) {
         if (error.status === 409 && attempt === 0) {
           attempt++;
           await load();
           body = Object.assign({}, body, { revision: revisionFor(body.action) });
-          toast('配置刚在别处变过，已用最新版本重试一次');
+          toast('配置刚在别处变过', '已用最新版本重试一次');
           continue;
         }
         if (error.status === 409) {
-          toast('配置连续被改动，已刷新；请再点一次', true);
+          toast('配置连续被改动，已刷新', '请再点一次', 'bad');
           await load();
+          render();
           return null;
         }
-        toast(error.message, true);
+        toast('保存失败', error.message, 'bad');
         throw error;
       }
     }
@@ -280,7 +347,7 @@
     options = options || {};
     try {
       var out = await auxPatch(body);
-      toast(options.done || '已保存');
+      toast(options.done || '已保存', options.body || '辅助模型配置已写入 config.yaml');
       pending();
       S.aux = await auxGet();
       await load(['catalog']);
@@ -288,12 +355,34 @@
       return out;
     } catch (error) {
       if (error.status === 409) {
-        toast('辅助模型刚在别处改过，已刷新', true);
+        toast('辅助模型刚在别处改过', '已刷新，请重试', 'bad');
         S.aux = await auxGet();
         render();
         return null;
       }
-      toast(error.message, true);
+      toast('保存失败', error.message, 'bad');
+      throw error;
+    }
+  }
+
+  async function voiceMutate(body, options) {
+    options = options || {};
+    try {
+      var out = await voicePatch(body);
+      toast(options.done || '已保存', options.body || '语音配置已写入 config.yaml');
+      pending();
+      S.voice = await voiceGet();
+      await load(['catalog', 'backends']);
+      render();
+      return out;
+    } catch (error) {
+      if (error.status === 409) {
+        toast('语音配置刚在别处改过', '已刷新，请重试', 'bad');
+        S.voice = await voiceGet();
+        render();
+        return null;
+      }
+      toast('保存失败', error.message, 'bad');
       throw error;
     }
   }
@@ -315,106 +404,150 @@
     var results = await Promise.allSettled(jobs);
     var failed = results.filter(function (row) { return row.status === 'rejected'; });
     S.loaded = true;
-    S.error = failed.length ? '部分数据读取失败，可点右上角刷新重试' : '';
+    S.error = failed.length ? '部分数据读取失败（' + failed.length + ' 项），可点右上角刷新重试' : '';
     return S;
   }
 
   /* ── 路由与渲染 ─────────────────────────────────────── */
   function go(domain, tab) {
     if (domain) S.domain = domain;
-    if (tab) S.tab[S.domain] = tab;
+    if (tab) S.tab[domain] = tab;
     closeSheet();
-    render();
-    try { history.replaceState(null, '', '#' + S.domain + (S.tab[S.domain] ? '/' + S.tab[S.domain] : '')); } catch (_) {}
+    /* 域切换 = 一级路由切换，交给面板原生 switchPage，再重渲染目标域 */
+    try { window.switchPage(DOMAIN_PAGE[domain] || 'models-home'); } catch (_) {}
+    renderDomain(domain);
   }
 
-  function render() {
-    var root = document.getElementById('mv2Root');
-    if (!root) return;
-    /* 页头标题由 panel-navigation 的 applyTitle 负责，这里不抢。 */
-    document.querySelectorAll('#mv2DomainBar .mv2-tab').forEach(function (node) {
-      node.classList.toggle('on', node.dataset.domain === S.domain);
+  function subTabsOf(domain) {
+    var row = DOMAINS.filter(function (r) { return r[0] === domain; })[0];
+    return (row && row[2]) || [];
+  }
+
+  function makeRefreshBtn() {
+    return btn('刷新', 'btn sm', async function () {
+      S.loaded = false;
+      render();
+      try { await load(); toast('已刷新', '配置已从 config.yaml 重新读取'); } catch (error) { toast('刷新失败', error.message, 'bad'); }
+      render();
     });
+  }
+
+  /* 渲染单个域到它自己的 #page-models-* 的 .mv2-root；能力后端的子页签
+     （全部域 / DeepSeek 落点）作为该域根节点顶部的 second 页签行渲染。 */
+  function renderDomain(domain) {
+    var root = rootsByDomain && rootsByDomain[domain];
+    if (!root) return;
     root.replaceChildren();
-    if (S.error) root.append(el('div', 'mv2-empty', S.error));
     if (!S.loaded) {
-      root.append(el('div', 'mv2-empty', '正在读取配置…'));
+      root.append(el('div', 'empty', '正在读取 config.yaml…'));
       return;
     }
-    var page = (window.MV2 && MV2.pages && MV2.pages[S.domain]) || null;
+    if (S.error) root.append(el('div', 'empty', S.error));
+    var subItems = subTabsOf(domain);
+    if (subItems.length) {
+      var bar = el('div', 'tabrow second');
+      var current = S.tab[domain] || subItems[0][0];
+      if (!subItems.some(function (i) { return i[0] === current; })) current = subItems[0][0];
+      S.tab[domain] = current;
+      subItems.forEach(function (item) {
+        var tab = btn(item[1], '', function () { go(domain, item[0]); });
+        tab.classList.toggle('on', item[0] === current);
+        bar.append(tab);
+      });
+      root.append(bar);
+    }
+    var page = (window.MV2 && MV2.pages && MV2.pages[domain]) || null;
     if (!page) {
-      root.append(el('div', 'mv2-empty', '这个域还没有渲染器'));
+      root.append(el('div', 'empty', '这个域还没有渲染器'));
       return;
     }
     try {
       root.append(page(S));
     } catch (error) {
-      var box = el('div', 'mv2-empty', '渲染失败：' + (error && error.message ? error.message : String(error)));
-      root.append(box);
+      root.append(el('div', 'empty', '渲染失败：' + (error && error.message ? error.message : String(error))));
       if (window.console) console.error(error);
     }
   }
 
-  /* ── 启动 ───────────────────────────────────────────── */
-  function buildShell() {
-    var host = document.getElementById('page-models');
-    if (!host) return false;
-    var body = host.querySelector('.page-body') || host;
-    var existingRoot = document.getElementById('mv2Root');
-    var existingBar = document.getElementById('mv2DomainBar');
-    if (existingRoot && existingBar) return true;
+  function render() {
+    buildShell();
+    DOMAINS.forEach(function (row) { renderDomain(row[0]); });
+  }
 
-    var bar = existingBar || el('div', 'mv2-tabs');
-    bar.id = 'mv2DomainBar';
-    bar.style.marginBottom = '14px';
-    if (!bar.children.length) {
-      DOMAINS.forEach(function (row) {
-        var tab = btn(row[1], 'mv2-tab', function () { go(row[0]); });
-        tab.dataset.domain = row[0];
-        bar.append(tab);
-      });
-    }
-    var root = existingRoot || el('div', 'mv2-shell');
-    root.id = 'mv2Root';
-    root.className = 'mv2-shell';
-    body.replaceChildren(bar, root);
-    var acts = document.getElementById('mv2HeadActs');
-    if (acts && !acts.children.length) {
-      acts.append(btn('刷新', 'ov-actbtn', async function () {
-        S.loaded = false;
-        render();
-        try { await load(); toast('已刷新'); } catch (error) { toast(error.message, true); }
-        render();
-      }));
-    }
+  /* ── 外壳 ───────────────────────────────────────────── */
+  function buildShell() {
+    var roots = {};
+    DOMAINS.forEach(function (row) {
+      var domain = row[0];
+      var host = document.getElementById('page-' + DOMAIN_PAGE[domain]);
+      if (!host) return;
+      var body = host.querySelector('.page-body') || host;
+      var root = body.querySelector('.mv2-root');
+      if (!root) { root = el('div', 'mv2-root'); root.dataset.domain = domain; body.replaceChildren(root); }
+      roots[domain] = root;
+      var acts = host.querySelector('.page-header .mv2-acts');
+      if (acts && !acts.children.length) acts.append(makeRefreshBtn());
+    });
+    if (DOMAINS.some(function (row) { return !roots[row[0]]; })) return false;
+    rootsByDomain = roots;
     return true;
   }
 
-  async function boot() {
+  var booted = false;
+
+  async function boot(force) {
     if (!buildShell()) return;
-    var hash = (location.hash || '').replace(/^#/, '');
-    if (hash) {
-      var parts = hash.split('/');
-      if (DOMAINS.some(function (row) { return row[0] === parts[0]; })) {
-        S.domain = parts[0];
-        if (parts[1]) S.tab[S.domain] = parts[1];
-      }
-    }
+    /* 已加载且未过期 → 只重渲染不重拉；首次或 >60s 或 force → 重拉 config.yaml */
+    var stale = !booted || (Date.now() - (window.__mv2LoadedAt || 0) > 60000);
+    if (booted && !force && !stale) { render(); return; }
+    if (loading) return;  /* 已经在拉，别叠第二个 */
+    loading = true;
+    window.__mv2LoadedAt = Date.now();
     render();
     try { await load(); } catch (error) { S.error = error.message; }
+    booted = true;
+    loading = false;
     render();
+  }
+
+  /* 自动启动：面板切到任意模型页（models-home ~ models-config）时才 boot。
+     直接包 switchPage 最稳——首次加载时六个 #page-models-* 可能还没被别处重建。 */
+  function autostart() {
+    /* 让出一次宏任务：pages.js / sheets.js 是后面的 <script>，本文件执行时
+       MV2.pages 还是空的，直接 boot 会渲染出「这个域还没有渲染器」。 */
+    setTimeout(function () {
+      boot().catch(function (error) { if (window.console) console.error('[MV2]', error); });
+    }, 0);
+    var orig = window.switchPage;
+    if (typeof orig === 'function' && !orig.__mv2Wrapped) {
+      var wrapped = function (name) {
+        var out = orig.apply(this, arguments);
+        if (name === 'models' || /^models-/.test(name)) {
+          setTimeout(function () {
+            boot().catch(function (error) { if (window.console) console.error('[MV2]', error); });
+          }, 0);
+        }
+        return out;
+      };
+      wrapped.__mv2Wrapped = true;
+      window.switchPage = wrapped;
+    }
   }
 
   window.MV2 = {
     S: S, DOMAINS: DOMAINS,
     api: post, auxGet: auxGet, auxPatch: auxPatch, voiceGet: voiceGet, voicePatch: voicePatch,
-    el: el, btn: btn, badge: badge, chip: chip, sec: sec, field: field, input: input, select: select,
-    toast: toast, sheet: sheet, closeSheet: closeSheet,
-    load: load, render: render, go: go, mutate: mutate, auxMutate: auxMutate,
+    el: el, btn: btn, badge: badge, chip: chip, dot: dot, sec: sec, ph: ph, kv: kv, panel: panel,
+    code: code, field: field, input: input, select: select, steps: steps,
+    toast: toast, sheet: sheet, closeSheet: closeSheet, sheetOpen: sheetOpen,
+    load: load, render: render, go: go, mutate: mutate, auxMutate: auxMutate, voiceMutate: voiceMutate,
     pending: pending, boot: boot,
     pages: {}, sheets: {}
   };
 
-  /* 兼容：旧面板里的「刷新配置」等入口可能调 window.renderProviders */
-  window.renderProviders = function () { S.loaded = false; render(); load().then(render).catch(function () {}); };
+  window.renderProviders = function () { boot().catch(function () {}); };
+
+  /* 自动启动放在 MV2 挂载之后：boot 里 render() 要读 window.MV2.pages。 */
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', autostart);
+  else autostart();
 })();

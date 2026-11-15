@@ -95,11 +95,20 @@ def patch_entry(old,changes):
     if 'key_env' in changes and str(changes['key_env'])!=str(old.get('key_env',old.get('api_key_env',''))):
         updated.pop('api_key',None);updated.pop('api_key_env',None)
     if changes.get('provider')=='auto':
-        for key in ('model','base_url','api_key','key_env','api_key_env'):updated.pop(key,None)
+        # 切回 auto 时，原本存在但为空的 model/base_url/api_key 要留成空串，
+        # 不能整个删掉：语义一样（空串等于没设置），但字节不一样，用户对着
+        # git diff 会看见莫名其妙的删除，而且「改回去」就不再是原文件。
+        for key in ('model','base_url','api_key'):
+            if key in old:updated[key]=''
+            else:updated.pop(key,None)
+        for key in ('key_env','api_key_env'):updated.pop(key,None)
     # A credential tied to another endpoint must never silently follow a provider change.
     changed_endpoint=any(key in changes and str(changes[key])!=str(old.get(key,'')) for key in ('provider','base_url'))
     if changed_endpoint and changes.get('provider')!='auto':
-        updated.pop('api_key',None)
+        # 换端点时把旧密钥清掉，但键本身留着置空：直接删键的话，用户把来源改回去
+        # 就没法字节还原了（内核读空串等于没设置，行为一样）。
+        if 'api_key' in updated:updated['api_key']=''
+        else:updated.pop('api_key',None)
         if 'key_env' not in changes:
             updated.pop('key_env',None);updated.pop('api_key_env',None)
         if updated.get('provider')=='custom' and not updated.get('base_url'):

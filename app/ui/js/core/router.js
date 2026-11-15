@@ -18,10 +18,12 @@ function pageFromPath(p){
     assistant:'assistant',
     connectors:'connectors', cron:'cron', memory:'memory', learning:'learning',
     usage:'usage', updates:'updates', settings:'settings', rooms:'rooms',
-    models:'models-general',
-    'models-general':'models-general', 'models-api':'models-api', 'models-aux':'models-aux',
-    'models-checks':'models-checks', 'models-jev':'models-jev', 'models-moa':'models-moa',
-    'models-stt':'models-stt', 'models-tts':'models-tts'
+    models:'models-home',
+    'models-home':'models-home', 'models-select':'models-select', 'models-providers':'models-providers',
+    'models-backends':'models-backends', 'models-toolsets':'models-toolsets', 'models-config':'models-config',
+    'models-general':'models-home', 'models-api':'models-home', 'models-aux':'models-home',
+    'models-checks':'models-home', 'models-jev':'models-home', 'models-moa':'models-home',
+    'models-stt':'models-home', 'models-tts':'models-home'
   };
   return map[seg] || 'chat';
 }
@@ -31,13 +33,13 @@ function pageFromHash(){
   return h ? pageFromPath('/'+h) : 'chat';
 }
 function switchPage(name){
-  // 2026-11-15：模型板块整页重构，九个平铺页面（models-general / -api / -aux / -moa /
-  // -jev / -stt / -tts / -checks / -caps）收成一个 #page-models，页内六个域由
-  // panel-model-v2.js 自己渲染。老入口 'models' 现在就是真页面，不再改名；
-  // 旧 id 由 panel-navigation.js 的 aliases 折回来，这里不用兜。
-  // 数据刷新：进模型页时如果超过 60 秒没拉过，重拉一次；页内「刷新」按钮不受此限。
-  var needModels = name === 'models' && (Date.now() - (window.__mv2LoadedAt || 0) > 60000);
-  if (needModels) window.__mv2LoadedAt = Date.now();
+  // 2026-11-15 二改：模型板块六个域是一级路由（#page-models-home ~ -config），
+  // 老入口 'models' 与九个旧 id 统一归一化到 'models-home'，再由 panel-navigation.js
+  // 的页签条驱动切换。数据刷新（>60s 重拉）交给 panel-model-v2.js 的 boot()，这里不再兜。
+  name = ({models:'models-home','models-general':'models-home','models-api':'models-home',
+    'models-aux':'models-home','models-moa':'models-home','models-jev':'models-home',
+    'models-stt':'models-home','models-tts':'models-home','models-checks':'models-home',
+    'models-caps':'models-home'})[name] || name;
   // URL 同步：hash 路由（chat 为默认 → #/），刷新/直达保持页面
   try { location.hash = (name==='chat') ? '#/' : '#/' + name; } catch(e){}
   document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -57,7 +59,6 @@ function switchPage(name){
   if(name==='learning') renderLearning();
   if(name==='usage') renderUsagePage();
   if(name==='overview') renderOverview();
-  if(needModels && window.renderProviders) renderProviders();
   if(name==='extensions') renderExtensions();
   if(name==='experts') renderExpertsPage();
   if(name==='rooms'){ ensurePersonasLibrary(mbtiInject); renderRoomsPage(); }

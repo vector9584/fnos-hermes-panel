@@ -23,12 +23,23 @@ ENV_NAME = re.compile(r'[A-Za-z_][A-Za-z0-9_]*\Z')
 # field  : dotted path actually written back into config.yaml
 # options: what the kernel accepts for that field
 # write  : False marks a domain with no independent backend of its own
+# 参考稿的能力后端页有 8 张卡（语音转写/语音合成/网页搜索/网页提取/视觉理解/文字识别/图像生成/浏览器）。
+# 语音与视觉确实有独立后端，但它们的写入口已经在 /api/panel-models/voice 和
+# /api/panel-models/auxiliary 上；这里只做投影（write_via 指路），不再开第二条写路径，
+# 否则两处会互相覆盖。write_via='config' 的才由 save_backend 写回 config.yaml。
+# field  : dotted path 只用于读现值
+# options: 内核接受的取值
+# write  : False 表示没有独立后端配置项
+# write_via: 'config' | 'voice' | 'auxiliary'
 DOMAINS = (
-    ('web_search', '联网搜索', 'web.search_backend', ('', 'tavily', 'brave', 'searxng', 'deepseek', 'exa'), True),
-    ('web_extract', '网页提取', 'web.extract_backend', ('', 'tavily', 'exa', 'deepseek', 'firecrawl'), True),
-    ('browser', '浏览器', 'browser.engine', ('auto', 'chromium', 'camofox'), True),
-    ('ocr', '文字识别', '', (), False),
-    ('image_gen', '图像生成', '', (), False),
+    ('stt', '语音转写', 'stt.provider', ('', 'local', 'openai', 'mistral', 'elevenlabs'), True, 'voice'),
+    ('tts', '语音合成', 'tts.provider', ('', 'windows-indextts', 'edge', 'openai', 'elevenlabs'), True, 'voice'),
+    ('web_search', '联网搜索', 'web.search_backend', ('', 'tavily', 'brave', 'searxng', 'deepseek', 'exa'), True, 'config'),
+    ('web_extract', '网页提取', 'web.extract_backend', ('', 'tavily', 'exa', 'deepseek', 'firecrawl'), True, 'config'),
+    ('vision', '视觉理解', 'auxiliary.vision.provider', ('',), True, 'auxiliary'),
+    ('ocr', '文字识别', '', (), False, 'none'),
+    ('image_gen', '图像生成', '', (), False, 'none'),
+    ('browser', '浏览器', 'browser.engine', ('auto', 'chromium', 'camofox'), True, 'config'),
 )
 
 STT_MODELS = {'local': ('model',), 'openai': ('model',), 'mistral': ('model',), 'elevenlabs': ('model_id',)}
@@ -119,7 +130,7 @@ def keys_view(data, path):
                 sub = credential_fields(entry, 'providers')
                 note(sub.get('key_env'), 'auxiliary.' + task, sub.get('api_key') or '')
 
-    for key, label, field, options, writable in DOMAINS:
+    for key, label, field, options, writable, write_via in DOMAINS:
         if not field:
             continue
         holder = data
@@ -143,10 +154,15 @@ def _dig(data, field):
 
 
 def backends_view(data):
+    """8 张能力卡：语音两张开到语音编辑器，视觉开到辅助模型编辑器，其余本页直写。"""
     tts = data.get('tts') if isinstance(data.get('tts'), dict) else {}
     tts_providers = tts.get('providers') if isinstance(tts.get('providers'), dict) else {}
+    stt = data.get('stt') if isinstance(data.get('stt'), dict) else {}
+    stt_params = stt.get('params') if isinstance(stt.get('params'), dict) else {}
+    aux = data.get('auxiliary') if isinstance(data.get('auxiliary'), dict) else {}
+    vision = aux.get('vision') if isinstance(aux.get('vision'), dict) else {}
     rows = []
-    for key, label, field, options, writable in DOMAINS:
+    for key, label, field, options, writable, write_via in DOMAINS:
         holder, leaf = _dig(data, field) if field else (None, None)
         current = ''
         detail = {}
@@ -154,12 +170,29 @@ def backends_view(data):
             current = str(holder.get(leaf) or '')
             detail = {k: plain(v) for k, v in holder.items()
                       if k not in ('api_key', 'key_env', 'api_key_env', 'apiKey') and not isinstance(v, (dict, list))}
+        if key == 'stt':
+            options = ('local', 'openai', 'mistral', 'elevenlabs')
+            detail['language'] = str(stt.get('language') or '')
+            detail['model'] = str(((stt_params.get(current) or {}) if isinstance(stt_params.get(current), dict) else {}).get('model') or '')
         if key == 'tts':
             options = tuple(sorted(set(tts_providers) | {'edge', 'openai', 'elevenlabs', 'windows-indextts'}))
+            detail['format'] = str(tts.get('output_format') or '')
+            detail['providers'] = len(tts_providers)
         if key == 'vision':
-            detail['model'] = str((data.get('auxiliary', {}).get('vision', {}) or {}).get('model') or '')
+            options = ('',)
+            detail['model'] = str(vision.get('model') or '')
+            detail['base_url'] = str(vision.get('base_url') or '')
+            detail['provider'] = str(vision.get('provider') or '')
+        if writable and write_via == 'config':
+            status, status_tone = '原生可配', 'ok'
+        elif write_via in ('voice', 'auxiliary'):
+            status, status_tone = '专用编辑器', 'info'
+        else:
+            status, status_tone = '需二改', 'warn'
         rows.append({'key': key, 'label': label, 'provider': current, 'options': list(options),
-                     'writable': writable, 'detail': detail,
+                     'writable': writable, 'write_via': write_via,
+                     'path': field or '二改工具', 'status': status, 'status_tone': status_tone,
+                     'detail': detail,
                      'note': '' if writable else '跟随服务商原生能力，没有独立配置项'})
     return {'ok': True, 'domains': rows, 'revision': config_revision(data)}
 
@@ -250,9 +283,12 @@ def save_backend(data, body):
     match = next((row for row in DOMAINS if row[0] == domain), None)
     if not match:
         raise ConfigError('没有这个能力后端')
-    key, label, field, options, writable = match
+    key, label, field, options, writable, write_via = match
     if not writable:
         raise ConfigError('%s跟随服务商原生能力，没有可写的配置项' % label)
+    if write_via != 'config':
+        raise ConfigError('%s由%s专用编辑器管理，请在该编辑器里改' %
+                          (label, '语音' if write_via == 'voice' else '辅助模型'))
     value = _scalar(body.get('provider'), label, 120)
     if options and value not in options:
         raise ConfigError('%s不支持这个来源' % label)
@@ -319,6 +355,36 @@ def save_toolsets(data, body):
             security['allow_private_urls'] = True
         else:
             security.pop('allow_private_urls', None)
+    # Tool Gateway 面板：网关的几个真实开关（参考稿那一块的落点）。
+    # 只接受这四个键，其它一律拒绝，避免把面板做成任意配置写入器。
+    gateway_patch = body.get('gateway')
+    if gateway_patch is not None:
+        if not isinstance(gateway_patch, dict):
+            raise ConfigError('网关设置格式不正确')
+        allowed = {'strict', 'trust_recent_files', 'trust_recent_files_seconds', 'media_delivery_allow_dirs'}
+        unknown = sorted(set(gateway_patch) - allowed)
+        if unknown:
+            raise ConfigError('网关不支持这些键：' + '、'.join(unknown))
+        gateway = updated.get('gateway')
+        if not isinstance(gateway, dict):
+            gateway = {}
+        for name, value in gateway_patch.items():
+            if name in ('strict', 'trust_recent_files'):
+                if type(value) is not bool:
+                    raise ConfigError('%s 必须是布尔值' % name)
+                gateway[name] = value
+            elif name == 'trust_recent_files_seconds':
+                if type(value) is not int or not 0 <= value <= 86400:
+                    raise ConfigError('trust_recent_files_seconds 必须是 0–86400 的整数')
+                gateway[name] = value
+            else:
+                if not isinstance(value, list) or any(not isinstance(item, str) or len(item) > 300 for item in value):
+                    raise ConfigError('media_delivery_allow_dirs 必须是路径字符串数组')
+                gateway[name] = [item.strip() for item in value if item.strip()]
+        if gateway:
+            updated['gateway'] = gateway
+        else:
+            updated.pop('gateway', None)
     return updated
 
 
@@ -349,6 +415,29 @@ def execute(body, path, state, raw=None):
     elif action == 'save_toolsets':
         updated = save_toolsets(data, body)
         reason = '工具集与安全边界'
+    elif action == 'config_write':
+        # 手写整份 YAML 写回。三道闸：能解析、是映射、带 model 段。
+        # 少一道就等于给了面板一个把助手写死的机会。
+        text_in = body.get('text')
+        if not isinstance(text_in, str) or not text_in.strip():
+            raise ConfigError('配置内容为空')
+        encoded = text_in.encode('utf-8')
+        if len(encoded) > 2 * 1024 * 1024:
+            raise ConfigError('配置超过 2MB，拒绝写入')
+        try:
+            _, candidate = load_yaml(encoded)
+        except Exception as error:
+            raise ConfigError('YAML 解析失败，原文件未改写：' + str(error)[:200])
+        if not isinstance(candidate, dict) or not candidate:
+            raise ConfigError('配置必须是 YAML 映射，原文件未改写')
+        if not isinstance(candidate.get('model'), dict):
+            raise ConfigError('新配置缺少 model 段，拒绝写入')
+        if semantic(candidate) == semantic(data):
+            return {'ok': True, 'changed': False, 'revision': config_revision(data)}
+        with config_lock(state):
+            result = commit(path, state, raw, encoded, '面板：手写配置写入')
+        return {**result, 'ok': True, 'changed': True, 'revision': config_revision(candidate),
+                'reload_required': True}
     else:
         raise ConfigError('未知动作')
     if semantic(updated) == semantic(data):
