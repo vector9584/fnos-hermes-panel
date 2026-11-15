@@ -413,6 +413,183 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
 }
 @media(prefers-reduced-motion:reduce){.plate-art.in img{animation:none!important}}
 
+
+/* ===== 低调底纹：织金暗纹 + 装帧细线，纯 CSS，无动画 ===== */
+:root{
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='g'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 .91 0 0 0 0 .89 0 0 0 0 .85 0 0 0 .05 0'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23g)'/%3E%3C/svg%3E");
+  --weave:36px;
+  --weave-gold:.03;
+  --weave-cream:.016;
+  --halo:.055;
+}
+body{
+  background-color:#0b0e14;
+  background-image:
+    radial-gradient(ellipse 110% 58% at 50% 0%, rgba(196,129,63,var(--halo)), transparent 62%),
+    repeating-linear-gradient(45deg, rgba(196,129,63,var(--weave-gold)) 0 1px, transparent 1px var(--weave)),
+    repeating-linear-gradient(-45deg, rgba(232,228,218,var(--weave-cream)) 0 1px, transparent 1px var(--weave)),
+    var(--grain);
+}
+/* 题图文字区：暗纹落点，卡片区保持素净 */
+.plate-txt{
+  background-image:
+    repeating-linear-gradient(45deg, rgba(196,129,63,.028) 0 1px, transparent 1px 30px),
+    repeating-linear-gradient(-45deg, rgba(232,228,218,.014) 0 1px, transparent 1px 30px),
+    var(--grain);
+}
+/* 控件窗：顶部一层极淡金雾 + 1px 内高光 */
+.spec{
+  background-image:linear-gradient(180deg, rgba(196,129,63,.032), transparent 110px);
+  box-shadow:inset 0 1px 0 rgba(232,228,218,.045), 0 12px 38px -26px rgba(0,0,0,.85);
+}
+.spec-bar{border-bottom:1px solid rgba(196,129,63,.14)}
+.idxcard{box-shadow:inset 0 1px 0 rgba(232,228,218,.04)}
+/* 章节分隔：柔化的 1px 金线 + 中央菱形结 */
+.chapter::before{
+  height:1px;
+  background:linear-gradient(90deg,transparent,rgba(196,129,63,.42) 5%,rgba(196,129,63,.12) 50%,rgba(196,129,63,.42) 95%,transparent);
+}
+.chapter::after{
+  content:"";position:absolute;top:-3px;left:50%;width:5px;height:5px;
+  transform:translateX(-50%) rotate(45deg);
+  background:var(--bg);border:1px solid rgba(196,129,63,.5);
+}
+/* 装裱：图版双框 + 内描金边 */
+.plate{box-shadow:0 0 0 1px rgba(196,129,63,.055), 0 18px 46px -32px rgba(0,0,0,.9)}
+.plate-art{box-shadow:inset 0 0 0 1px rgba(196,129,63,.14)}
+.hero-plate{box-shadow:inset 0 0 0 1px rgba(196,129,63,.16), inset 0 -1px 0 rgba(196,129,63,.28)}
+/* 顶栏与页脚：第二道细线 */
+.hdr{border-bottom:1px solid rgba(196,129,63,.15)}
+.hdr::after{content:"";position:absolute;left:0;right:0;bottom:3px;height:1px;background:rgba(232,228,218,.025);pointer-events:none}
+.foot{position:relative}
+.foot::before{content:"";position:absolute;top:3px;left:0;right:0;height:1px;background:rgba(196,129,63,.13)}
+@media(max-width:960px){
+  :root{--weave:46px;--weave-gold:.02;--weave-cream:.01;--halo:.042}
+  body{background-image:
+    radial-gradient(ellipse 120% 42% at 50% 0%, rgba(196,129,63,var(--halo)), transparent 64%),
+    repeating-linear-gradient(45deg, rgba(196,129,63,var(--weave-gold)) 0 1px, transparent 1px var(--weave)),
+    repeating-linear-gradient(-45deg, rgba(232,228,218,var(--weave-cream)) 0 1px, transparent 1px var(--weave)),
+    var(--grain)}
+  .plate-txt{background-image:
+    repeating-linear-gradient(45deg, rgba(196,129,63,.02) 0 1px, transparent 1px 40px),
+    repeating-linear-gradient(-45deg, rgba(232,228,218,.01) 0 1px, transparent 1px 40px),
+    var(--grain)}
+}
+
+
+/* ===== PC 端阅读尺度：只在大屏上调，移动端保持原字号 ===== */
+@media(min-width:961px){
+  /* 顶栏 / 侧栏 / 全局 */
+  .hdr .brand{font-size:19px}
+  .hdr .score,.hdr button.nxt,.hdr a.gh{font-size:12px}
+  .rail em{font-size:11px}
+  .hero .kick,.scrollcue,.foot-end,.foot-links a{font-size:11px;line-height:1.6}
+  .scrollcue .ar{font-size:20px}
+  .marq span{font-size:clamp(23px,3vw,38px)}
+  #totop{font-size:16px}
+
+  /* 首屏 */
+  .hero h1{font-size:clamp(42px,6.6vw,88px)}
+  .hero .sub{font-size:clamp(18px,2.2vw,26px)}
+  .hero .mini{font-size:16px;line-height:1.85}
+  .hero .cta a{font-size:12px}
+  .hero .meta{font-size:12px;line-height:1.95}
+  .hero-plate .ov .t{font-size:clamp(22px,3vw,38px)}
+  .hero-plate .ov .b{font-size:11px}
+
+  /* 界面窗通用 */
+  .spec-bar{height:36px}
+  .spec-bar .nm,.spec-bar .st{font-size:11px}
+  .arch b{font-size:15px}
+  .arch span{font-size:10px}
+  .archdetail .k,.archdetail .n{font-size:11px}
+  .archdetail .v{font-size:19px}
+  .mini{font-size:11.5px;line-height:1.6}
+  .sect-t{font-size:12px}
+  .chip{font-size:11.5px;padding:7px 12px}
+  .chip.mini2{font-size:10.5px;padding:5px 9px}
+  .btn{font-size:12px;padding:9px 14px}
+  .btn.sm{font-size:11px;padding:6px 11px}
+  .tiny{font-size:13px;line-height:1.75}
+  .slider label{font-size:11px}
+  .slider .v{font-size:28px}
+
+  /* 章节侧栏 */
+  .side .no{font-size:clamp(66px,8vw,112px)}
+  .side h2{font-size:clamp(28px,3vw,42px)}
+  .side .one{font-size:16px;line-height:1.85}
+  .tags span{font-size:11px;padding:6px 10px}
+  .side .hint{font-size:11px}
+
+  /* 题图 */
+  .plate-txt .fk,.plate-txt .fb{font-size:11px}
+  .plate-txt .ft{font-size:clamp(34px,4.2vw,60px)}
+  .plate-txt .fd{font-size:16.5px;line-height:1.8}
+
+  /* 01 对话 */
+  .tree{max-height:310px}
+  .tree .grp{font-size:11px}
+  .tree .it{font-size:12px}
+  .step{font-size:12px;grid-template-columns:18px 1fr auto}
+  .step .k,.step .s{font-size:11px}
+
+  /* 02 协作 */
+  .expert{min-height:122px}
+  .expert .ic{font-size:11px}
+  .expert .nm{font-size:13.5px}
+  .expert .cat{font-size:10px}
+  .expert .ds{font-size:12px;line-height:1.65}
+  .stance .who{font-size:11px}
+  .stance .txt{font-size:13.5px}
+  .plan .t{font-size:18px}
+  .plan .d{font-size:11px}
+
+  /* 03 任务 */
+  .task .tn{font-size:13px}
+  .task .cron{font-size:11px}
+  .task .meta{font-size:10.5px}
+  .task .acts .btn{font-size:10.5px;padding:5px 9px}
+
+  /* 04 档案 */
+  .canvasbox{height:300px}
+  .gstat .big{font-size:34px}
+  .gstat .lb{font-size:10px}
+  .gstat .r{font-size:11px}
+  .bars div{font-size:10px}
+  .gtip{font-size:11px}
+
+  /* 05 能力 */
+  .tool .tn{font-size:11.5px}
+  .tool .ts{font-size:10px}
+  .tool .ta .btn,.back .ba .btn{font-size:10.5px;padding:5px 8px}
+  .verdict{font-size:17px;min-height:62px}
+  .verdict span{font-size:11px!important}
+  #config5 select,#config5 .row .mini{font-size:11.5px!important}
+
+  /* 06 模型 */
+  .back{min-height:136px}
+  .back .tag{font-size:10px}
+  .back .bn{font-size:13.5px}
+  .back .bk{font-size:10.5px}
+  .back .src{font-size:11px}
+  .menu button{font-size:11px}
+
+  /* 07 维护 */
+  .svc .sn{font-size:13.5px}
+  .svc .st{font-size:11px}
+  .sysinfo b{font-size:21px}
+  .sysinfo span{font-size:10px}
+  .logline{font-size:11px;grid-template-columns:112px 60px 66px 1fr}
+  .ubar{font-size:11px;grid-template-columns:116px 1fr 60px}
+
+  /* 08 收尾 */
+  .idxcard h3{font-size:19px}
+  .idxcard p{font-size:14px;line-height:1.9}
+
+  /* 页脚 */
+  .foot .big{font-size:clamp(34px,5.4vw,72px)}
+}
+
 </style>
 </head>
 <body>
@@ -435,7 +612,7 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
     <div class="rv" style="--d:130ms">
       <div style="height:1px;background:var(--line);margin-bottom:16px"></div>
       <p class="mini">解析完 Hermes 的接口，会话、协作、任务、档案、能力、模型、维护都重新做了一遍。key 是自己的，东西都在本机。</p>
-      <div class="cta"><a class="pri" href="#ch1">从面板开始 ↓</a><a href="#ch8">能干什么 ↗</a><a href="https://vector9584.github.io/fnos-hermes-panel/" target="_blank" rel="noopener">项目主页 ↗</a></div>
+      <div class="cta"><a class="pri" href="#ch1">从面板开始 ↓</a><a href="#ch8">能干什么 ↗</a><a href="https://ruibing.wang/panel/" target="_blank" rel="noopener">项目主页 ↗</a></div>
     </div>
     <div class="meta rv" style="--d:180ms">
       <b>162</b> 会话按项目归档<br>
@@ -721,7 +898,7 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
   <div class="wrap">
     <div class="big rv">想加个按钮、换个调度方式，<br><em>改完能验</em>。</div>
     <div class="foot-links rv">
-      <a href="https://vector9584.github.io/fnos-hermes-panel/" target="_blank">项目主页 ↗</a>
+      <a href="https://ruibing.wang/panel/" target="_blank">项目主页 ↗</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel" target="_blank">GitHub 仓库 ↗</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/README.md" target="_blank">README ↗</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/app/ui/ARCHITECTURE.md" target="_blank">ARCHITECTURE ↗</a>
