@@ -273,9 +273,10 @@
       foot.append(item);
     });
 
-    // foot 必须进 DOM：多步向导会在这个容器上 replaceChildren 重建按钮
-    box.append(head, body);
-    if ((options.foot || []).length) box.append(foot);
+    // foot 必须始终进 DOM：providerEdit 等调用方是在 sheet() 返回后
+    // 才用 sheet.foot.append() 动态加按钮，若按初始 options.foot 判空，
+    // 动态加的按钮永远渲染不出来（这正是「编辑面板没有保存按钮」的根因）。
+    box.append(head, body, foot);
     overlay.append(box);
     overlay.onclick = function (event) { if (event.target === overlay) closeSheet(); };
     document.body.append(overlay);
