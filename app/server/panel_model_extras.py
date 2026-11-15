@@ -144,6 +144,61 @@ def keys_view(data, path):
             'env_file': str(Path(path).parent / '.env'), 'env_count': len(env)}
 
 
+def save_key(data, path, body):
+    """写一个环境变量到 .env（追加或替换同名行）。只动 .env，不碰 config.yaml。"""
+    name = str(body.get('name') or '').strip()
+    value = str(body.get('value') or '')
+    if not ENV_NAME.fullmatch(name):
+        raise ConfigError('变量名只能用字母、数字、下划线')
+    if not value.strip():
+        raise ConfigError('值不能为空')
+    if len(value) > 16000:
+        raise ConfigError('值过长')
+    env_path = Path(path).parent / '.env'
+    lines = env_path.read_text(encoding='utf-8', errors='replace').splitlines() if env_path.is_file() else []
+    out = []
+    found = False
+    for line in lines:
+        stripped = line.strip()
+        if not stripped or stripped.startswith('#') or '=' not in stripped:
+            out.append(line)
+            continue
+        key = stripped.split('=', 1)[0].strip()
+        if key.startswith('export '):
+            key = key[7:].strip()
+        if key == name:
+            out.append(name + '=' + value)
+            found = True
+        else:
+            out.append(line)
+    if not found:
+        out.append(name + '=' + value)
+    content = ('\n'.join(out) + '\n').encode('utf-8')
+    import os, tempfile, time, hashlib
+    original = env_path.read_bytes() if env_path.is_file() else b''
+    backup_dir = Path(path).parent / '.env-backups'
+    try:
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        stamp = backup_dir / ('env-' + str(time.time_ns()) + '-' + hashlib.sha256(original).hexdigest()[:12] + '.bak')
+        with stamp.open('xb') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(original)
+    except OSError:
+        pass
+    fd, temp = tempfile.mkstemp(prefix='.env-', dir=env_path.parent)
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            os.fchmod(stream.fileno(), 0o600)
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, env_path)
+    finally:
+        if os.path.exists(temp):
+            os.unlink(temp)
+    return keys_view(data, path)
+
+
 def _dig(data, field):
     holder = data
     for part in field.split('.')[:-1]:
@@ -397,6 +452,8 @@ def execute(body, path, state, raw=None):
     yaml, data = load_yaml(raw)
     if action == 'keys':
         return keys_view(data, path)
+    if action == 'save_key':
+        return save_key(data, path, body)
     if action == 'backends':
         return backends_view(data)
     if action == 'toolsets':

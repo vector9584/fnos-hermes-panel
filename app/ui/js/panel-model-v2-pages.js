@@ -164,8 +164,8 @@
     return out;
   };
 
-  /* ── 模型选择 ───────────────────────────────────────── */
-  M.pages.select = function (S) {
+  /* ── 模型选择 · 主与辅助 ────────────────────────────── */
+  function selectMain(S) {
     var out = frag();
     var primary = (S.catalog && S.catalog.primary) || {};
     var tasks = auxTasks(S);
@@ -201,13 +201,159 @@
 
     var chips = el('div', 'chips');
     chips.append(chip('单独指定可带 base_url / api_key / timeout / fallback_chain'));
-    chips.append(chip('回退链与 MOA 组合回答在「模型选择」下各自的弹层里改'));
+    chips.append(chip('回退链与 MOA 在右侧「回退链」「组合回答」子页里配'));
     out.append(chips);
     return out;
   };
 
-  /* ── 服务商 ─────────────────────────────────────────── */
-  M.pages.providers = function (S) {
+  /* ── 模型选择 · 回退链 ──────────────────────────────── */
+  function chainOf(S) { return ((S.catalog && S.catalog.fallbacks) || []); }
+
+  function saveChain(S, chain, doneMsg) {
+    var entries = chain.map(function (f) { return { key: f.key }; });
+    M.mutate({ action: 'fallback', entries: entries, revision: (S.catalog || {}).revision },
+      { done: doneMsg || '回退链已更新', body: '写入 fallback_providers' });
+  }
+
+  function moveChain(S, index, dir) {
+    var chain = chainOf(S).slice();
+    var target = index + dir;
+    if (target < 0 || target >= chain.length) return;
+    var tmp = chain[index]; chain[index] = chain[target]; chain[target] = tmp;
+    saveChain(S, chain, '候选顺序已调整');
+  }
+
+  function removeChain(S, index) {
+    var chain = chainOf(S).slice();
+    chain.splice(index, 1);
+    saveChain(S, chain, '已移除一个回退候选');
+  }
+
+  function selectFallback(S) {
+    var out = frag();
+    var chain = chainOf(S);
+    out.append(ph('回退链', 'fallback_providers · 主模型失败时按顺序降级', [
+      btn('+ 备用', 'btn sm primary', function () { M.sheets.fallbackAdd && M.sheets.fallbackAdd(S); })
+    ]));
+    if (!chain.length) {
+      out.append(el('div', 'empty', '还没有备用候选，主模型失败会直接报错'));
+    } else {
+      var list = el('div', 'chain');
+      chain.forEach(function (f, index) {
+        var row = el('div', 'ci');
+        row.append(el('span', 'idx', String(index + 1)));
+        var body = el('div', 'body');
+        body.append(el('div', 'tt', providerName(S, f.provider) + ' / ' + f.model));
+        body.append(el('div', 'dd', f.has_overrides ? '带独立端点 / 密钥覆盖' : '跟随服务商配置'));
+        row.append(body);
+        var ops = el('div', 'ops');
+        var up = btn('↑', 'iconmini', function () { moveChain(S, index, -1); });
+        var down = btn('↓', 'iconmini', function () { moveChain(S, index, +1); });
+        var del = btn('×', 'iconmini', function () { removeChain(S, index); });
+        if (index === 0) up.disabled = true;
+        if (index === chain.length - 1) down.disabled = true;
+        ops.append(up, down, del);
+        row.append(ops);
+        list.append(row);
+      });
+      out.append(list);
+    }
+    out.append(panel('三层韧性', [
+      kv('① 主模型', 'model.default 承担主推理'),
+      kv('② 回退链', 'fallback_providers 按顺序降级'),
+      kv('③ 辅助任务', '各槽位自带 fallback_chain')
+    ]));
+    out.append(panel('auto 的回退', [
+      el('p', 'mini', '槽位没有单独指定时跟随主模型；主模型失败会走这条回退链，一轮最多切换一次。')
+    ]));
+    return out;
+  }
+
+  /* ── 模型选择 · 组合回答（MOA） ─────────────────────── */
+  function toggleMoa(S, on, preset) {
+    var p = preset || {};
+    if (on && (!p.reference_models || !p.reference_models.length || !p.aggregator || !p.aggregator.model)) {
+      M.sheets.moaEdit && M.sheets.moaEdit(S, p);
+      return;
+    }
+    M.mutate({
+      action: 'moa_save', revision: (S.moa || {}).moa_revision,
+      preset: p.name || (S.moa && S.moa.default_preset) || 'default',
+      enabled: on,
+      reference_models: (p.reference_models || []).map(function (r) { return { provider: r.provider, model: r.model }; }),
+      aggregator: p.aggregator || { provider: '', model: '' }
+    }, { done: on ? 'MOA 已开启' : 'MOA 已关闭',
+         body: on ? '主模型切到聚合模型 ' + ((p.aggregator && p.aggregator.model) || '') : '主模型回到原值' });
+  }
+
+  function selectMoa(S) {
+    var out = frag();
+    var moa = S.moa || {};
+    var presets = moa.presets || [];
+    var enabled = !!moa.enabled;
+    var active = moa.active_preset || '';
+    out.append(ph('组合回答', 'moa.presets · 虚拟 provider', [
+      btn('配置', 'btn sm', function () {
+        var p = presets.filter(function (x) { return x.name === active; })[0] || presets[0];
+        M.sheets.moaEdit && M.sheets.moaEdit(S, p || { name: (moa.default_preset || 'default') });
+      })
+    ]));
+    var hero = el('div', 'hero');
+    hero.append(el('div', 'lead', enabled ? 'MOA 已开启' : 'MOA 已关闭'));
+    var h2 = el('h2');
+    if (enabled) {
+      var act = presets.filter(function (p) { return p.name === active; })[0] || {};
+      h2.append(el('em', null, active));
+      h2.append(document.createTextNode(' 承担聚合，' + ((act.reference_models) || []).length + ' 个参考模型并行。'));
+    } else {
+      var cp = moa.current_primary || {};
+      h2.append(el('em', null, providerName(S, cp.provider) + ' / ' + (cp.model || '—')));
+      h2.append(document.createTextNode(' 当前走主模型，开启 MOA 后切到聚合模型。'));
+    }
+    hero.append(h2);
+    out.append(hero);
+    if (!presets.length) {
+      out.append(el('div', 'empty', '还没有预设，点「配置」建第一个'));
+    } else {
+      var cards = el('div', 'cards');
+      presets.forEach(function (p) {
+        var isActive = enabled && p.name === active;
+        var card = el('div', 'pcard' + (isActive ? ' on' : ''));
+        var top = el('div', 'top');
+        top.append(el('span', 'emblem', emblemOf(p.name)));
+        top.append(isActive ? badge('启用中', 'ok') : badge('预设'));
+        card.append(top);
+        card.append(el('div', 'nm', p.name));
+        var meta = el('div', 'meta');
+        meta.append(chip((p.reference_models || []).length + ' 参考'));
+        meta.append(chip('聚合 ' + ((p.aggregator && p.aggregator.model) || '—')));
+        if (p.fanout) meta.append(chip(p.fanout, true));
+        card.append(meta);
+        var foot = el('div', 'foot');
+        foot.append(btn('配置', 'btn sm', function () { M.sheets.moaEdit && M.sheets.moaEdit(S, p); }));
+        if (isActive) foot.append(btn('关闭', 'btn sm danger', function () { toggleMoa(S, false, p); }));
+        else foot.append(btn('启用', 'btn sm primary', function () { toggleMoa(S, true, p); }));
+        card.append(foot);
+        cards.append(card);
+      });
+      out.append(cards);
+    }
+    out.append(panel('成本落点', [
+      el('p', 'mini', '开启后每个请求并行打 N 个参考模型，再加一次聚合调用，token 约为 (N+1) 倍；参考模型只给聚合模型供上下文，不直接回给用户。')
+    ]));
+    return out;
+  }
+
+  /* 模型选择分派器 */
+  M.pages.select = function (S) {
+    var tab = (S.tab && S.tab.select) || 'main';
+    if (tab === 'fallback') return selectFallback(S);
+    if (tab === 'moa') return selectMoa(S);
+    return selectMain(S);
+  };
+
+  /* ── 服务商 · LLM 服务 ──────────────────────────────── */
+  function providersLlm(S) {
     var out = frag();
     var cat = S.catalog || {};
     var providers = cat.providers || [];
@@ -249,40 +395,138 @@
     cards.append(add);
     out.append(cards);
 
-    /* 密钥：参考稿没有独立区块，但它是真实数据（.env 里的 key 与谁在用），
-       用参考的 panel/kv 形态补在下面，不做成假列表。 */
+    var chips = el('div', 'chips');
+    chips.append(chip('语音 / OCR / 搜索不在这里配'));
+    chips.append(chip('密钥与对话内能力在右侧「密钥」「对话内能力」子页'));
+    chips.append(chip('providers.<name>: base_url · api_mode · extra_headers · discover_models', true));
+    out.append(chips);
+    return out;
+  };
+
+  /* ── 服务商 · 密钥 ──────────────────────────────────── */
+  function providersKeys(S) {
+    var out = frag();
     var keys = (S.keys && S.keys.keys) || [];
-    if (keys.length) {
-      out.append(sec('密钥', '只显示名字和指纹，不显示值'));
+    out.append(ph('密钥', '环境变量 · 只显示名字和指纹', [
+      btn('+ 添加密钥', 'btn sm primary', function () { M.sheets.keyAdd && M.sheets.keyAdd(S); })
+    ]));
+    if (!keys.length) {
+      out.append(el('div', 'empty', 'config 里没有引用任何环境变量'));
+    } else {
       var rows = [];
       keys.forEach(function (k) {
-        var right = el('span');
-        right.append(k.configured ? badge('已配置', 'ok') : badge('缺失', 'err'));
         var row = el('div', 'kv');
         row.append(el('span', 'mono', k.name));
         var holder = el('b');
-        holder.append(right);
+        holder.append(k.configured ? badge('已配置', 'ok') : badge('缺失', 'err'));
         holder.append(el('span', 'mini', ' ' + (k.hint || '') + (k.used_by && k.used_by.length ? ' · ' + k.used_by.length + ' 处引用' : '')));
         row.append(holder);
         rows.push(row);
       });
       out.append(panel('环境变量（' + ((S.keys && S.keys.env_count) || 0) + ' 个）', rows));
     }
-
-    var chips = el('div', 'chips');
-    chips.append(chip('语音 / OCR / 搜索不在这里配'));
-    chips.append(chip('providers.<name>: base_url · api_mode · extra_headers · discover_models', true));
-    out.append(chips);
+    out.append(el('p', 'mini', '值写进 ' + ((S.keys && S.keys.env_file) || 'config 同目录 .env') + '，config.yaml 里用 ${KEY} 引用，不落明文。'));
     return out;
+  }
+
+  /* ── 服务商 · 对话内能力 ────────────────────────────── */
+  function dsProvider(S) {
+    var providers = (S.catalog && S.catalog.providers) || [];
+    return providers.filter(function (p) {
+      return p.enabled !== false && p.request_extra && Object.keys(p.request_extra).length;
+    })[0] || null;
+  }
+
+  function chatToolState(ds, key) {
+    var extra = ds.request_extra || {};
+    if (key === 'thinking') return !!(extra.thinking && extra.thinking.type !== 'disabled');
+    if (key === 'title') return !!(extra.title && extra.title.enabled !== false);
+    if (key === 'safety') return !!extra.safety_check;
+    return false;
+  }
+
+  function toggleChatTool(S, ds, key) {
+    var extra = JSON.parse(JSON.stringify(ds.request_extra || {}));
+    var on = !chatToolState(ds, key);
+    if (key === 'thinking') { if (on) extra.thinking = { type: 'enabled' }; else delete extra.thinking; }
+    else if (key === 'title') { if (on) extra.title = { enabled: true }; else delete extra.title; }
+    else if (key === 'safety') { if (on) extra.safety_check = { level: 'high' }; else delete extra.safety_check; }
+    M.mutate({ action: 'update', id: ds.id, changes: { request_extra: extra }, revision: (S.catalog || {}).revision },
+      { done: (on ? '已开启 ' : '已关闭 ') + key, body: '写入 providers.<id>.extra_body' });
+  }
+
+  function providersChat(S) {
+    var out = frag();
+    var ds = dsProvider(S);
+    out.append(ph('对话内能力', '服务端托管工具 · 请求参数', [chip('DeepSeek 官方', true)]));
+    if (!ds) {
+      out.append(el('div', 'empty', '没有服务配置 extra_body，无法编辑对话内能力'));
+      return out;
+    }
+    out.append(panel('DeepSeek 官方', [
+      kv('服务商', ds.name + ' · ' + ds.id),
+      kv('地址', ds.base_url || '—'),
+      kv('启用模型', (ds.models || []).filter(function (m) { return m.enabled; }).map(function (m) { return m.id; }).join(', ') || '—')
+    ], badge('extra_body 明确支持', 'info')));
+    out.append(sec('参数开关', '写入 provider 请求参数 extra_body'));
+    var grid = el('div', 'capgrid');
+    [
+      ['thinking', '深度思考', 'extra_body.thinking'],
+      ['title', '服务端标题', 'extra_body.title'],
+      ['safety', '安全校验', 'extra_body.safety_check']
+    ].forEach(function (row) {
+      var on = chatToolState(ds, row[0]);
+      var card = el('div', 'capcard' + (on ? ' on' : ''));
+      var ch = el('div', 'ch');
+      ch.append(el('span', 'ci', row[0].slice(0, 1).toUpperCase()));
+      ch.append(el('span', 'cn', row[1]));
+      card.append(ch);
+      card.append(el('div', 'ca mono', row[2]));
+      var cf = el('div', 'cf');
+      cf.append(on ? badge('已开启', 'ok') : badge('关闭'));
+      cf.append(btn(on ? '关闭' : '开启', 'btn sm' + (on ? '' : ' primary'), function () { toggleChatTool(S, ds, row[0]); }));
+      card.append(cf);
+      grid.append(card);
+    });
+    out.append(grid);
+    out.append(el('p', 'mini', 'web_search / read_url / file 是 DeepSeek 服务端工具，不做成 config 开关；下方可实测。'));
+    var caps = (S.caps && S.caps.caps) || [];
+    var chatCaps = caps.filter(function (c) { return (c.id || '').indexOf('chat_') === 0; });
+    if (chatCaps.length) {
+      out.append(sec('对话内能力实测', 'cap_run 真发一次请求'));
+      var g2 = el('div', 'capgrid');
+      chatCaps.forEach(function (c) {
+        var card = el('div', 'capcard');
+        var ch = el('div', 'ch');
+        ch.append(el('span', 'ci', (c.id || '').slice(5, 7).toUpperCase()));
+        ch.append(el('span', 'cn', c.label || c.id));
+        card.append(ch);
+        card.append(el('div', 'ca mono', c.desc || ''));
+        var cf = el('div', 'cf');
+        cf.append(btn('实测', 'btn sm', function () { M.sheets.capRun && M.sheets.capRun(S, c); }));
+        card.append(cf);
+        g2.append(card);
+      });
+      out.append(g2);
+    }
+    return out;
+  }
+
+  /* 服务商分派器 */
+  M.pages.providers = function (S) {
+    var tab = (S.tab && S.tab.providers) || 'llm';
+    if (tab === 'keys') return providersKeys(S);
+    if (tab === 'chat') return providersChat(S);
+    return providersLlm(S);
   };
 
   /* ── 能力后端 ───────────────────────────────────────── */
   var backendFilter = 'all';
 
-  M.pages.backends = function (S) {
+  /* ── 能力后端 · 全部域 ──────────────────────────────── */
+  function backendsAll(S) {
     var out = frag();
     var domains = (S.backends && S.backends.domains) || [];
-    var mode = (S.tab && S.tab.backends) || 'all';
 
     out.append(ph('能力后端', '按工具域注册 · 与 LLM provider 独立', [
       btn('+ 自定义来源', 'btn sm primary', function () { M.sheets.backendCustom && M.sheets.backendCustom(S); })
@@ -304,9 +548,6 @@
       if (backendFilter === 'all') return true;
       return d.status === backendFilter;
     });
-    if (mode === 'ds') {
-      shown = shown.filter(function (d) { return d.write_via !== 'none'; });
-    }
 
     var cards = el('div', 'cards');
     shown.forEach(function (d) {
@@ -362,6 +603,62 @@
       el('p', 'mini', '入站接口（把本机当模型给别的程序调）不在这里，状态由语音配置服务统一读取，见概览页的「入站接口」链路。')
     ]));
     return out;
+  };
+
+  /* ── 能力后端 · DeepSeek 落点 ───────────────────────── */
+  var DS_CAP_LANDING = {
+    models: 'providers · 服务商',
+    chat_basic: 'model.default · 主模型',
+    chat_thinking: 'extra_body.thinking',
+    chat_title: 'extra_body.title',
+    chat_safety: 'extra_body.safety_check',
+    chat_search: 'deepseek_web_search 工具',
+    chat_readurl: 'deepseek_read_url 工具',
+    chat_reminder: 'latest_reminder · 主模型',
+    chat_file: 'deepseek /files',
+    tool_search: 'web.backend · 搜索',
+    tool_fetch: 'web.backend · 抓取',
+    tool_ocr: '无独立槽位 · 跟随服务商',
+    tool_asr: 'stt.provider',
+    tool_tts: 'tts.provider'
+  };
+
+  function backendsDs(S) {
+    var out = frag();
+    var caps = (S.caps && S.caps.caps) || [];
+    out.append(ph('DeepSeek 落点', '能力 → 落到哪个配置对象'));
+    if (!caps.length) {
+      out.append(el('div', 'empty', '能力矩阵未加载'));
+    } else {
+      var grid = el('div', 'capgrid');
+      caps.forEach(function (c) {
+        var card = el('div', 'capcard');
+        var ch = el('div', 'ch');
+        ch.append(el('span', 'ci', (c.id || '').slice(0, 2).toUpperCase()));
+        ch.append(el('span', 'cn', c.label || c.id));
+        card.append(ch);
+        card.append(el('div', 'ca mono', c.id || ''));
+        card.append(el('div', 'cft', '→ ' + (DS_CAP_LANDING[c.id] || '—')));
+        var cf = el('div', 'cf');
+        cf.append(el('span', 'mini', c.desc || ''));
+        cf.append(btn('实测', 'btn sm', function () { M.sheets.capRun && M.sheets.capRun(S, c); }));
+        card.append(cf);
+        grid.append(card);
+      });
+      out.append(grid);
+    }
+    out.append(panel('为什么不是都在接入大模型时配', [
+      el('p', 'mini', 'chat_* 是对话内能力，落在 DeepSeek 官方 provider 的 extra_body 或服务端工具；tool_* 是独立接口，落在各自后端配置（web/stt/tts）。'),
+      el('p', 'mini', '实测（cap_run）真发一次请求到当前服务商，只读不写配置。')
+    ]));
+    return out;
+  }
+
+  /* 能力后端分派器 */
+  M.pages.backends = function (S) {
+    var tab = (S.tab && S.tab.backends) || 'all';
+    if (tab === 'ds') return backendsDs(S);
+    return backendsAll(S);
   };
 
   /* ── 工具集 ─────────────────────────────────────────── */
@@ -440,8 +737,8 @@
     return out;
   };
 
-  /* ── 配置 ───────────────────────────────────────────── */
-  M.pages.config = function (S) {
+  /* ── 配置 · config.yaml ─────────────────────────────── */
+  function configYaml(S) {
     var out = frag();
     var preview = S.preview || {};
     var text = preview.text || '（读取失败）';
@@ -463,20 +760,63 @@
       code(text),
       el('p', 'mini', (preview.lines || 0) + ' 行 · ' + (preview.bytes || 0) + ' 字节 · 密钥值已替换为 ****（已隐藏），写回时不会带上这些掩码')
     ], head));
+    return out;
+  };
 
+  /* ── 配置 · 生效与写入 ──────────────────────────────── */
+  function configApply(S) {
+    var out = frag();
+    out.append(ph('生效与写入', '每个写操作的属性'));
+    var split = el('div', 'split');
+    var left = el('div');
+    var cat = S.catalog || {};
+    var auxTasks = (S.aux && S.aux.tasks) || [];
+    var ownCount = auxTasks.filter(function (t) { return t.provider && t.provider !== 'auto'; }).length;
+    var domains = (S.backends && S.backends.domains) || [];
+    var toolsets = S.toolsets || {};
+    left.append(panel('本次改动', [
+      kv('model.default', (cat.primary && cat.primary.model) || '—'),
+      kv('单独指定槽位', ownCount + ' / ' + auxTasks.length),
+      kv('fallback_providers', (cat.fallbacks || []).length + ' 条'),
+      kv('能力后端', domains.length + ' 域'),
+      kv('工具集', (toolsets.count_enabled || 0) + ' 启用')
+    ], badge('已同步', 'ok')));
     var audit = (S.audit && S.audit.snapshots) || [];
     if (audit.length) {
-      out.append(sec('历史快照', (S.audit && S.audit.directory) || ''));
-      var rows = audit.slice(0, 12).map(function (item) {
+      var rows = audit.slice(0, 15).map(function (item) {
+        var when = item.at ? new Date(item.at * 1000).toLocaleString('zh-CN', { hour12: false }) : '';
         var row = el('div', 'kv');
-        row.append(el('span', 'mono', item.name));
+        row.append(el('span', null, (when || '') + ' · ' + item.name.split('-')[0]));
         var right = el('b');
-        right.append(el('span', 'mini', item.bytes + ' 字节'));
+        right.append(el('span', 'mono', item.bytes + ' 字节'));
         row.append(right);
         return row;
       });
-      out.append(panel('', rows));
+      left.append(panel('操作记录', rows));
     }
+    split.append(left);
+    var aside = el('div', 'aside');
+    aside.append(panel('生效边界', [
+      kv('CLI', '下次启动'),
+      kv('Gateway', '下个新会话'),
+      kv('当前会话换模型', '/model'),
+      kv('工具集变更', '/reset'),
+      el('p', 'mini', '辅助槽位改了没生效：先看是否新会话、是否仍为 auto、目标服务是否缺凭据。')
+    ]));
+    var chipsRow = el('div', 'chips');
+    ['hermes model', 'hermes fallback', 'hermes tools', 'hermes config set'].forEach(function (c) {
+      chipsRow.append(chip(c, true));
+    });
+    aside.append(panel('可复现', [chipsRow]));
+    split.append(aside);
+    out.append(split);
     return out;
+  }
+
+  /* 配置分派器 */
+  M.pages.config = function (S) {
+    var tab = (S.tab && S.tab.config) || 'yaml';
+    if (tab === 'apply') return configApply(S);
+    return configYaml(S);
   };
 })();

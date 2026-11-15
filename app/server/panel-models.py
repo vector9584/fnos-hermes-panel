@@ -323,7 +323,7 @@ def execute(body,path,state,var_root=None):
   # 分散在别的页面或根本不存在，统一由 panel_model_extras 提供。它的 revision 覆盖
   # 整份配置（不是模型子树），所以必须在下面那条模型子树 revision 校验之前分派，
   # 否则切换一个工具集就会拿「模型配置已被修改」把用户挡回去。
-  if action in ('keys','backends','toolsets','config_preview','audit','save_backend','save_toolsets','config_write'):
+  if action in ('keys','save_key','backends','toolsets','config_preview','audit','save_backend','save_toolsets','config_write'):
    from panel_model_extras import execute as run_extras
    return run_extras(body,path,state,raw)
   # 2026-11-15：能力实验室。只读动作，不写配置、不碰 revision——

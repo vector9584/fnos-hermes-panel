@@ -90,6 +90,11 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
 .lab-h .t{font:10px var(--mono);letter-spacing:.18em;color:var(--acc)}
 .lab-h .s{font:9px var(--mono);letter-spacing:.12em;color:var(--faint);margin-left:auto}
 .lab-b{padding:15px 14px}
+.lab-h,.lab-b{display:none}
+section[data-ch] .console{display:none}
+section[data-ch] .stage{grid-template-columns:1fr}
+#end .console{display:flex;align-items:center;justify-content:center;background:transparent}
+#end .console img{height:clamp(300px,38vw,460px);width:auto;display:block;opacity:.92}
 .row{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
 .btn{all:unset;cursor:pointer;font:10px var(--mono);letter-spacing:.08em;padding:9px 13px;border:1px solid var(--line);color:var(--dim);transition:.2s;white-space:nowrap;user-select:none}
 .btn:hover{border-color:var(--acc);color:var(--fg)}
@@ -267,10 +272,10 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
 <div id="bar"></div>
 <header class="hdr">
   <div class="brand">HERMES <em>/</em> PANEL</div>
-  <div class="score">LABS <b id="score">0</b> / 07</div>
+  <div class="score">章节 <b id="score">0</b> / 07</div>
   <div class="sp"></div>
-  <button class="next" id="nextLab">下一个实验 ↓</button>
-  <a class="gh" href="article.html">长文总结 ↗</a>
+  <button class="next" id="nextLab">往下看 ↓</button>
+  <a class="gh" href="https://vector9584.github.io/fnos-hermes-panel/" target="_blank" rel="noopener">项目主页 ↗</a>
   <a class="gh" href="https://github.com/vector9584/fnos-hermes-panel" target="_blank" rel="noopener">GITHUB ↗</a>
 </header>
 <nav class="rail" id="rail" aria-label="章节导航"></nav>
@@ -283,7 +288,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
   <div class="hero-stage">
     <div class="rv" style="--d:140ms">
       <div style="height:1px;background:var(--line);margin-bottom:18px"></div>
-      <p class="mini">打开一个网页就能用：<b>对话、专家团、定时任务、知识库、语音、换模型</b>。下面七块都是真机的样子，都能点。</p>
+      <p class="mini">打开一个网页就能用：<b>对话、专家团、定时任务、知识库、语音、换模型</b>。下面这一屏，就是它打开的样子。</p>
       <div class="cta">
         <a class="pri" href="#ch1">往下看 ↓</a>
         <a href="#ch7">看它能干什么 ↗</a>
@@ -300,16 +305,31 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
   <div class="hero-fig rv" style="--d:230ms">
     <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="hero" alt="手绘线稿：双手拆开一台机器的机芯" data-par>
       <span class="cm tl"></span><span class="cm tr"></span><span class="cm bl"></span><span class="cm br"></span>
-      <div class="vo"><div class="t">不是它替你想，<br>是你说完，它去做。</div><div class="b">图 00 — 一页看全</div></div>
+      <div class="vo"><div class="t">不是它替你想，<br>是你说完，它去做。</div><div class="b">图 00 — 拆开来看</div></div>
     </div>
   </div>
-  <div class="scrollcue"><span>七块真功能 · 都能点</span><span class="ar">↓</span><span>← → 翻章</span></div>
+  <div class="scrollcue"><span>往下看</span><span class="ar">↓</span><span>真实面板长这样</span></div>
 </section>
 
 <div class="marq" id="marq" aria-hidden="true"><div class="in">
   <span>对话 <i>✦</i> 协作 <i>✦</i> 任务 <i>✦</i> 档案 <i>✦</i> 能力 <i>✦</i> 模型 <i>✦</i> 维护 <i>✦</i> 设置 <i>✦</i>&nbsp;</span>
   <span>对话 <i>✦</i> 协作 <i>✦</i> 任务 <i>✦</i> 档案 <i>✦</i> 能力 <i>✦</i> 模型 <i>✦</i> 维护 <i>✦</i> 设置 <i>✦</i>&nbsp;</span>
 </div></div>
+
+<!-- ===== 00 整体 · 真实面板 ===== -->
+<section class="chapter wrap" id="shot" style="--mark:#c4813f">
+  <div class="stage">
+    <aside class="side rv" id="sideshot">
+      <div class="no">00</div><h2>打开就是这样</h2>
+      <p class="one">深色、三栏、一个输入框。<br>不装神秘，也不喊你敲命令。</p>
+      <div class="tags"><span>八组导航</span><span>会话树</span><span>对话区</span></div>
+      <div class="hint"><i>↘</i> 这就是它，不是示意图</div>
+    </aside>
+    <div class="console rv">
+      <img src="promo/img/panel-overview.png" alt="CHATÈS 面板整体截图：左侧八组导航、中间会话列表、右侧对话区，深色主题" style="width:100%;display:block;border-radius:6px">
+    </div>
+  </div>
+</section>
 
 <!-- ===== 01 对话 · 会话列表 ===== -->
 <section class="chapter wrap" id="ch1" data-ch="1" data-title="对话" style="--mark:#c4813f">
@@ -318,7 +338,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">01</div><h2>对话</h2>
       <p class="one">一个输入框，什么都能问。</p>
       <div class="tags"><span>会话列表</span><span>27 组工具</span><span>随时插话</span></div>
-      <div class="hint"><i>↘</i> 点一条会话，看它当时干了什么</div>
+      <div class="hint"><i>↘</i> 一条会话，一段来龙去脉</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="bus" alt="总线与端口" data-par>
@@ -342,7 +362,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">02</div><h2>看着它干活</h2>
       <p class="one">它做到哪一步，你就在哪一步。</p>
       <div class="tags"><span>每步可见</span><span>随时插话</span><span>危险动作先问你</span></div>
-      <div class="hint"><i>↘</i> 跑一次，中途插一句话试试</div>
+      <div class="hint"><i>↘</i> 每一步都摊开在页面上</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="monolith" alt="布满排线的石板" data-par>
@@ -370,7 +390,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">03</div><h2>手机上也能管</h2>
       <p class="one">不是压窄，是重新排过。</p>
       <div class="tags"><span>八个入口</span><span>单手够得着</span><span>不卡</span></div>
-      <div class="hint"><i>↘</i> 手机可以直接点</div>
+      <div class="hint"><i>↘</i> 一只手，全都够得着</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="twin" alt="半调双镜" data-par>
@@ -409,7 +429,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">04</div><h2>关掉浏览器，回来还在</h2>
       <p class="one">关了网页，聊到一半的还在。</p>
       <div class="tags"><span>隔天还在</span><span>断了自动接上</span><span>不重画</span></div>
-      <div class="hint"><i>↘</i> 点时间点，看它还记不记得</div>
+      <div class="hint"><i>↘</i> 关了再开，还在原处</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in" id="vw4"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="glitch" alt="断裂齿轮与故障条" data-par>
@@ -435,7 +455,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">05</div><h2>直接说话</h2>
       <p class="one">说一句，接进同一条消息流。</p>
       <div class="tags"><span>单次</span><span>连续</span><span>简繁</span><span>说错了有兜底</span></div>
-      <div class="hint"><i>↘</i> 按住麦克风说话</div>
+      <div class="hint"><i>↘</i> 说一遍，它就懂了</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="voice" alt="声波与缓存格" data-par>
@@ -464,7 +484,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">06</div><h2>换模型</h2>
       <p class="one">用哪家的模型，界面里就能定。</p>
       <div class="tags"><span>不用改文件</span><span>换完立即生效</span><span>用量看得见</span></div>
-      <div class="hint"><i>↘</i> 点一个模型试试</div>
+      <div class="hint"><i>↘</i> 几副嗓子，随时换</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="colonnade" alt="拆开的柱廊" data-par>
@@ -489,7 +509,7 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
       <div class="no">07</div><h2>开关是真的</h2>
       <p class="one">权限是开关，不是承诺。</p>
       <div class="tags"><span>27 组工具</span><span>一组一组关</span><span>关了就真碰不到</span></div>
-      <div class="hint"><i>↘</i> 拨开关，右边实时变</div>
+      <div class="hint"><i>↘</i> 看得见，改得动，留得住</div>
     </aside>
     <div class="console rv" style="--d:90ms">
       <div class="viewer in"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7" data-img="gate" alt="敞开的石拱门" data-par>
@@ -503,6 +523,20 @@ img{display:block;max-width:100%}a{color:inherit;text-decoration:none}button{fon
         <div class="row" style="margin:12px 0 0"><button class="btn on" data-cap="do">主要能做</button><button class="btn" data-cap="not">还没做到</button><button class="btn" id="copy7">这些开关在哪 ⧉</button></div>
         <div class="out" id="cap7" style="min-height:74px"></div>
       </div>
+    </div>
+  </div>
+</section>
+
+<!-- ===== 结尾 · 半开的门 ===== -->
+<section class="chapter wrap" id="end" style="--mark:#c4813f">
+  <div class="stage">
+    <aside class="side rv">
+      <div class="no">✦</div>
+      <h2>门一直半开着</h2>
+      <p class="one">装在自己机器上，就一直是自己的。<br>剩下的，推开门让它去做。</p>
+    </aside>
+    <div class="console rv">
+      <img src="promo/art/06_end.webp" alt="手绘：一扇半开的门，门缝里漏进光">
     </div>
   </div>
 </section>
@@ -820,5 +854,5 @@ document.getElementById('copy7').addEventListener('click',function(){
 tick();ready=true;
 })();
 </script>
-<script src="promo/panel-demo.js"></script></body>
+</body>
 </html>

@@ -587,8 +587,7 @@
       vSheet.foot.append(btn('关闭', 'btn', M.closeSheet));
       vSheet.foot.append(btn('打开语音编辑器', 'btn primary', function () {
         M.closeSheet();
-        if (window.openModelVoiceEditor) { window.openModelVoiceEditor(); return; }
-        M.toast('语音编辑器入口', '面板「模型」旧页的语音区块已并入这里；先在 config.yaml 改或等这一版接上', 'bad');
+        M.sheets.voiceEditor && M.sheets.voiceEditor(S);
       }));
       return;
     }
@@ -752,6 +751,200 @@
       S.preview = null;
       await M.load(['preview']);
       M.render();
+    }));
+  };
+
+  /* ── 12. 添加回退候选 ───────────────────────────────── */
+  M.sheets.fallbackAdd = function (S) {
+    var rows = modelOptions(S);
+    var sheet = M.sheet({ title: '加一条备用', sub: 'fallback_providers · 主模型失败时的降级顺序' });
+    if (!rows.length) {
+      sheet.body.append(el('div', 'empty', '没有可用的模型服务，先去「服务商」加一个'));
+      sheet.foot.append(btn('知道了', 'btn primary', M.closeSheet));
+      return;
+    }
+    var picked = null;
+    groupBy(rows, 'provider').forEach(function (group) {
+      var lb = el('div', 'lb', group.name);
+      lb.append(el('span', 'mono', group.key));
+      sheet.body.append(lb);
+      group.rows.forEach(function (row) {
+        var opt = btn('', 'bigopt', function () {
+          picked = { provider: row.provider, model: row.model };
+          sheet.body.querySelectorAll('.bigopt').forEach(function (n) { n.classList.remove('on'); });
+          opt.classList.add('on');
+        });
+        opt.append(el('span', 'bo'));
+        var box = el('span');
+        box.append(el('span', 'bt mono', row.model));
+        box.append(el('span', 'bd', row.api_mode || 'chat_completions'));
+        opt.append(box);
+        sheet.body.append(opt);
+      });
+    });
+    sheet.foot.append(btn('取消', 'btn', M.closeSheet));
+    sheet.foot.append(btn('添加', 'btn primary', function () {
+      if (!picked) { M.toast('没选模型', '先挑一个候选', 'bad'); return; }
+      var chain = (S.catalog.fallbacks || []).map(function (f) { return { key: f.key }; });
+      chain.push({ provider: picked.provider, model: picked.model });
+      M.closeSheet();
+      M.mutate({ action: 'fallback', entries: chain, revision: (S.catalog || {}).revision },
+        { done: '已加备用 ' + picked.model, body: '追加到 fallback_providers 末尾' });
+    }));
+  };
+
+  /* ── 13. 配置 MOA 预设 ──────────────────────────────── */
+  M.sheets.moaEdit = function (S, preset) {
+    var moa = S.moa || {};
+    var candidates = moa.candidates || [];
+    var p = preset || { name: (moa.default_preset || 'default') };
+    var sheet = M.sheet({ title: '组合回答配置', sub: 'moa.presets.' + (p.name || ''), wide: true });
+    var nameI = input(p.name || '', '预设名（字母数字下划线）');
+    var enabled = !!moa.enabled && moa.active_preset === p.name;
+
+    var allModels = [];
+    candidates.forEach(function (c) {
+      (c.models || []).forEach(function (m) {
+        allModels.push({ provider: c.id, providerName: c.name, model: m.id });
+      });
+    });
+
+    var refPicked = {};
+    (p.reference_models || []).forEach(function (r) { refPicked[r.provider + '|' + r.model] = true; });
+    var refList = el('div', 'picklist');
+    allModels.forEach(function (m) {
+      var key = m.provider + '|' + m.model;
+      var row = el('label', 'checkline');
+      var box = document.createElement('input');
+      box.type = 'checkbox';
+      box.checked = !!refPicked[key];
+      box.onchange = function () { refPicked[key] = box.checked; };
+      row.append(box);
+      row.append(el('span', null, m.providerName + ' / ' + m.model));
+      refList.append(row);
+    });
+
+    var aggSel = select([['', '（选聚合模型）']].concat(allModels.map(function (m) {
+      return [m.provider + '|' + m.model, m.providerName + ' / ' + m.model];
+    })), ((p.aggregator && (p.aggregator.provider + '|' + p.aggregator.model)) || ''));
+
+    var enableBox = document.createElement('input');
+    enableBox.type = 'checkbox';
+    enableBox.checked = enabled;
+
+    sheet.body.append(field('预设名', nameI, '', true));
+    sheet.body.append(field('聚合模型', aggSel, '汇总各参考模型的输出，作为最终回答', true));
+    sheet.body.append(sec('参考模型（1-8 个）', '并行打给这些模型，再交给聚合模型汇总'));
+    sheet.body.append(refList);
+    var toggleLine = el('label', 'checkline');
+    toggleLine.append(enableBox);
+    toggleLine.append(el('span', null, '立即启用这个预设（不勾则只保存不切换）'));
+    sheet.body.append(toggleLine);
+    var err = el('div', 'errline');
+    sheet.body.append(err);
+
+    sheet.foot.append(btn('取消', 'btn', M.closeSheet));
+    sheet.foot.append(btn('保存', 'btn primary', function () {
+      var name = nameI.value.trim();
+      var agg = aggSel.value;
+      if (!name || !/^[A-Za-z0-9_-]{1,40}$/.test(name)) { err.textContent = '预设名只能用字母、数字、下划线，最多 40 字'; return; }
+      if (name.toLowerCase() === 'moa') { err.textContent = '预设名不能叫 moa'; return; }
+      if (!agg) { err.textContent = '要选聚合模型'; return; }
+      var refs = allModels.filter(function (m) { return refPicked[m.provider + '|' + m.model]; }).map(function (m) { return { provider: m.provider, model: m.model }; });
+      if (refs.length < 1 || refs.length > 8) { err.textContent = '参考模型要选 1 到 8 个'; return; }
+      var aggParts = agg.split('|');
+      var aggregator = { provider: aggParts[0], model: aggParts[1] };
+      if (refs.some(function (r) { return r.provider === aggregator.provider && r.model === aggregator.model; })) {
+        err.textContent = '聚合模型不能同时作为参考模型'; return;
+      }
+      M.closeSheet();
+      M.mutate({
+        action: 'moa_save', revision: moa.moa_revision,
+        preset: name, enabled: enableBox.checked,
+        reference_models: refs, aggregator: aggregator
+      }, { done: 'MOA 预设已保存', body: enableBox.checked ? '主模型切到聚合模型' : '只保存预设，不切换' });
+    }));
+  };
+
+  /* ── 14. 能力实测 ───────────────────────────────────── */
+  M.sheets.capRun = function (S, cap) {
+    var sheet = M.sheet({ title: '实测 · ' + (cap.label || cap.id), sub: (cap.id || '') + ' · 真发一次请求', wide: true });
+    sheet.body.append(el('p', 'mini', '正在请求 ' + (cap.desc || '') + ' …'));
+    M.api({ action: 'cap_run', cap: cap.id }).then(function (out) {
+      sheet.body.replaceChildren();
+      sheet.body.append(panel('结果', [
+        kvRow('状态', out.ok ? (out.status || '通过') : '失败'),
+        kvRow('耗时', (out.ms || 0) + ' ms'),
+        kvRow('标题', out.headline || '—')
+      ]));
+      (out.lines || []).forEach(function (line) {
+        sheet.body.append(el('p', 'mini', String(line)));
+      });
+      if (out.preview) sheet.body.append(el('div', 'code', String(out.preview).slice(0, 2000)));
+    }).catch(function (error) {
+      sheet.body.replaceChildren(el('div', 'errline', '实测失败：' + error.message));
+    });
+    sheet.foot.append(btn('关闭', 'btn primary', M.closeSheet));
+  };
+
+  /* ── 15. 添加密钥 ───────────────────────────────────── */
+  M.sheets.keyAdd = function (S) {
+    var sheet = M.sheet({ title: '添加密钥', sub: '.env · 环境变量' });
+    var nameI = input('', '例如 DEEPSEEK_API_KEY');
+    var valueI = input('', 'sk-…', 'password');
+    sheet.body.append(field('变量名', nameI, '大写字母数字下划线', true));
+    sheet.body.append(field('值', valueI, '写入 .env，config 里用 ${变量名} 引用', true));
+    var err = el('div', 'errline');
+    sheet.body.append(err);
+    sheet.foot.append(btn('取消', 'btn', M.closeSheet));
+    sheet.foot.append(btn('保存', 'btn primary', function () {
+      var name = nameI.value.trim();
+      var value = valueI.value.trim();
+      if (!name || !/^[A-Z][A-Z0-9_]{2,63}$/.test(name)) { err.textContent = '变量名要大写开头，字母数字下划线，3-64 位'; return; }
+      if (!value) { err.textContent = '值不能为空'; return; }
+      M.closeSheet();
+      M.mutate({ action: 'save_key', name: name, value: value, revision: (S.keys || {}).revision },
+        { done: '已写入 ' + name, body: '写入 .env，config 里用 ${' + name + '} 引用' });
+    }));
+  };
+
+  /* ── 16. 语音编辑器（接 /api/panel-models/voice） ────── */
+  M.sheets.voiceEditor = function (S) {
+    var voice = S.voice || {};
+    var tts = voice.tts || {};
+    var stt = voice.stt || {};
+    var sheet = M.sheet({ title: '语音编辑器', sub: 'stt / tts · 独立配置段 · 写 config.yaml', wide: true });
+
+    sheet.body.append(sec('TTS 语音合成', 'tts.provider · 下一条消息起生效'));
+    var ttsOpts = (tts.options || []).map(function (o) { return [o[0], o[1]]; });
+    var ttsSel = select(ttsOpts, tts.provider);
+    sheet.body.append(field('当前提供方', ttsSel));
+    var ttsProviders = tts.providers || [];
+    if (ttsProviders.length) {
+      sheet.body.append(panel('已注册提供方（' + ttsProviders.length + '）',
+        ttsProviders.map(function (p) {
+          return kvRow(p.name + '（' + (p.type || 'command') + '）', (p.command || '').slice(0, 80) || '—');
+        })));
+    }
+    sheet.body.append(el('p', 'mini', '自定义 command 提供方的命令、输出格式、超时在旧语音页编辑；这里切当前 provider。'));
+
+    sheet.body.append(sec('STT 语音转写', 'stt.provider'));
+    var sttOpts = (stt.options || []).map(function (o) { return [o[0], o[1]]; });
+    var sttSel = select(sttOpts, stt.provider);
+    sheet.body.append(field('当前提供方', sttSel));
+    var langI = input(stt.language || '', '识别语言（如 zh，留空自动）');
+    sheet.body.append(field('识别语言', langI));
+
+    sheet.foot.append(btn('关闭', 'btn', M.closeSheet));
+    sheet.foot.append(btn('保存 TTS', 'btn sm primary', function () {
+      M.closeSheet();
+      M.voiceMutate({ section: 'tts', revision: voice.revision, changes: { provider: ttsSel.value } },
+        { done: 'TTS 已切到 ' + ttsSel.value, body: '写入 tts.provider' });
+    }));
+    sheet.foot.append(btn('保存 STT', 'btn sm primary', function () {
+      M.closeSheet();
+      M.voiceMutate({ section: 'stt', revision: voice.revision, changes: { provider: sttSel.value, language: langI.value.trim() } },
+        { done: 'STT 已保存', body: '写入 stt.provider / stt.language' });
     }));
   };
 

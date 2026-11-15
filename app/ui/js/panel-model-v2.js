@@ -12,14 +12,14 @@
 (function () {
   'use strict';
 
-  /* 每个域的第二行子页签：参考稿里只有能力后端有 */
+  /* 每个域的第二行子页签（严格对齐参考稿 DOMS） */
   var DOMAINS = [
     ['home', '概览', []],
-    ['select', '模型选择', []],
-    ['providers', '服务商', []],
+    ['select', '模型选择', [['main', '主与辅助'], ['fallback', '回退链'], ['moa', '组合回答']]],
+    ['providers', '服务商', [['llm', 'LLM 服务'], ['keys', '密钥'], ['chat', '对话内能力']]],
     ['backends', '能力后端', [['all', '全部域'], ['ds', 'DeepSeek 落点']]],
     ['toolsets', '工具集', []],
-    ['config', '配置', []]
+    ['config', '配置', [['yaml', 'config.yaml'], ['apply', '生效与写入']]]
   ];
 
   /* 域 → 一级路由页 id 双向映射（2026-11-15 二改：页内按钮切换改成一页一域） */

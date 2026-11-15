@@ -50,7 +50,8 @@ body.theme-dark .models-page{
 .models-page .tabrow.second{display:flex;gap:5px;padding:7px 22px 9px;background:var(--bg-soft);border-top:1px solid var(--line)}
 .models-page .tabrow.second button{font-size:11px;border:1px solid var(--line);border-radius:18px;padding:5px 11px}
 .models-page .tabrow.second button.on{border-color:var(--primary-bd);background:var(--primary-soft);color:var(--primary);font-weight:700}
-.models-page .content{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;scrollbar-width:thin}
+.models-page .content{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;scrollbar-width:thin}
+.models-page .page-body{overflow-x:hidden}
 .models-page .wrap{max-width:1400px;margin:0 auto;padding:22px 24px 60px}
 .models-page .btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;padding:8px 13px;border-radius:9px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-size:12px;white-space:nowrap}
 .models-page .btn:hover{background:var(--surface-2)}
