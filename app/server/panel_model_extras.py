@@ -2,9 +2,13 @@
 
 The model page used to stop at providers and routes. Everything below is read
 from the same config.yaml the kernel reads — nothing here invents a setting. A
-domain the kernel has no independent switch for (OCR, image generation) is
-reported as following the provider instead of getting a decorative control that
-would silently do nothing.
+domain the kernel really has no independent switch for is reported as following
+the provider instead of getting a decorative control that would silently do
+nothing.
+
+注意：图像生成**不属于**这一类。内核的 agent/image_gen_registry.py 明确读
+`image_gen.provider`，所以它在本文件里有真实的读写路径（下面 DOMAINS 那行）。
+之前把它写成「跟随服务商」是误判，已纠正。
 """
 import json
 import re
@@ -38,9 +42,26 @@ DOMAINS = (
     ('web_extract', '网页提取', 'web.extract_backend', ('', 'tavily', 'exa', 'deepseek', 'firecrawl'), True, 'config'),
     ('vision', '视觉理解', 'auxiliary.vision.provider', ('',), True, 'auxiliary'),
     ('ocr', '文字识别', 'ocr.provider', ('', 'baimiao', 'deepseek'), True, 'config'),
-    ('image_gen', '图像生成', '', (), False, 'none'),
+    # 生图内核确有独立开关：agent/image_gen_registry.py 的 get_active_provider()
+    # 明确读 config.yaml 的 image_gen.provider。之前这行标 False/'none' 是误判
+    # （写成「跟随服务商原生能力」），导致面板只显示一张红卡、没法配。
+    ('image_gen', '图像生成', 'image_gen.provider',
+     ('', 'custom', 'openai', 'fal', 'krea', 'deepinfra', 'openrouter', 'xai', 'openai-codex'), True, 'config'),
     ('browser', '浏览器', 'browser.engine', ('auto', 'chromium', 'camofox'), True, 'config'),
 )
+
+# 每个生图 provider 在 .env 里认的凭据名（openai-codex 走 Codex OAuth，无独立 key）。
+# 只用于在面板上标「key 已配 / 未配」，绝不回传值。
+IMAGE_GEN_KEYS = {
+    'openai': 'OPENAI_API_KEY',
+    'fal': 'FAL_KEY',
+    'krea': 'KREA_API_KEY',
+    'deepinfra': 'DEEPINFRA_API_KEY',
+    'openrouter': 'OPENROUTER_API_KEY',
+    'xai': 'XAI_API_KEY',
+    'openai-codex': '',
+    'custom': 'IMAGE_GEN_CUSTOM_API_KEY',
+}
 
 STT_MODELS = {'local': ('model',), 'openai': ('model',), 'mistral': ('model',), 'elevenlabs': ('model_id',)}
 
@@ -212,8 +233,13 @@ def _dig(data, field):
     return holder, field.split('.')[-1]
 
 
-def backends_view(data):
-    """8 张能力卡：语音两张开到语音编辑器，视觉开到辅助模型编辑器，其余本页直写。"""
+def backends_view(data, path=None):
+    """8 张能力卡：语音两张开到语音编辑器，视觉开到辅助模型编辑器，其余本页直写。
+
+    image_gen 在本页直写 ``image_gen.provider``；它选的 API key 在「密钥」页
+    写进 .env，所以这张卡的 detail 会标出该 provider 认哪个变量、是否已经配了。
+    """
+    env = env_file(path) if path else {}
     tts = data.get('tts') if isinstance(data.get('tts'), dict) else {}
     tts_providers = tts.get('providers') if isinstance(tts.get('providers'), dict) else {}
     stt = data.get('stt') if isinstance(data.get('stt'), dict) else {}
@@ -242,6 +268,23 @@ def backends_view(data):
             detail['model'] = str(vision.get('model') or '')
             detail['base_url'] = str(vision.get('base_url') or '')
             detail['provider'] = str(vision.get('provider') or '')
+        if key == 'image_gen':
+            section = data.get('image_gen') if isinstance(data.get('image_gen'), dict) else {}
+            scoped = section.get(current) if isinstance(section.get(current), dict) else {}
+            # custom 的模型名必须来自 image_gen.custom.model；回落到顶层
+            # image_gen.model 会把「picker 选的 provider id」误当成模型名显示。
+            fallback_model = '' if current == 'custom' else section.get('model')
+            detail['model'] = str(scoped.get('model') or fallback_model or '')
+            detail['base_url'] = str(scoped.get('base_url') or '')
+            key_name = IMAGE_GEN_KEYS.get(current, '')
+            detail['key_env'] = key_name
+            if key_name:
+                # .env 里有没有这个变量；绝不把值传出去。
+                detail['key'] = '已配置' if env.get(key_name) else '未配置'
+            elif current == 'openai-codex':
+                detail['key'] = '走 Codex OAuth，无需单独 key'
+            else:
+                detail['key'] = '选好服务后在此填 key'
         if writable:
             status, status_tone = '本页可配', 'ok'
         else:
@@ -360,6 +403,30 @@ def save_backend(data, body):
         holder[parts[-1]] = value
     else:
         holder.pop(parts[-1], None)
+    if key == 'image_gen':
+        # 图像生成卡的额外字段（只有「自定义中转站」用得上）：base_url / model /
+        # api_key_env 写进 image_gen.custom。密钥值不在这里，走「密钥」页进 .env。
+        extras = body.get('extras')
+        if isinstance(extras, dict):
+            section = updated.get('image_gen')
+            if not isinstance(section, dict):
+                section = {}
+                updated['image_gen'] = section
+            sub = section.get('custom')
+            if not isinstance(sub, dict):
+                sub = {}
+                section['custom'] = sub
+            for fname, flabel in (('base_url', '中转站地址'),
+                                  ('model', '生图模型名'),
+                                  ('api_key_env', '密钥变量名')):
+                if fname in extras:
+                    cleaned = _scalar(extras.get(fname), flabel, 200)
+                    if cleaned:
+                        sub[fname] = cleaned
+                    else:
+                        sub.pop(fname, None)
+            if not sub:
+                section.pop('custom', None)
     if key == 'stt' and value:
         stt = updated.setdefault('stt', {})
         if not isinstance(stt.get(value), dict):
@@ -457,7 +524,7 @@ def execute(body, path, state, raw=None):
     if action == 'save_key':
         return save_key(data, path, body)
     if action == 'backends':
-        return backends_view(data)
+        return backends_view(data, path)
     if action == 'toolsets':
         return toolsets_view(data, body.get('platform') or 'api_server')
     if action == 'config_preview':

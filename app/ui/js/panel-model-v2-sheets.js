@@ -608,13 +608,37 @@
     var box = el('div', 'backend-form');
 
     if (d.write_via === 'config') {
-      var opts = [['', '不指定（内核默认）']].concat((d.options || []).filter(function (o) { return o !== ''; }).map(function (o) { return [o, o]; }));
+      var optLabels = { custom: '自定义中转站（填地址 + 模型名）' };
+      var opts = [['', '不指定（内核默认）']].concat((d.options || []).filter(function (o) { return o !== ''; }).map(function (o) { return [o, optLabels[o] || o]; }));
       var sel = select(opts, d.provider);
       box.append(field('来源', sel));
+
+      // 图像生成选「自定义中转站」时才需要：端点地址 + 真实模型名。
+      // 密钥不在这张卡里，走「服务商 → 密钥 → + 添加密钥」写进 .env。
+      var baseI = null;
+      var modelI = null;
+      if (d.key === 'image_gen') {
+        var det = d.detail || {};
+        var extraBox = el('div', 'backend-form');
+        baseI = input(det.base_url || '', 'https://你的中转站');
+        modelI = input(det.model || '', '例如 gemini-2.5-flash-image');
+        extraBox.append(field('中转站地址', baseI, '只填到域名，不用带 /v1'));
+        extraBox.append(field('生图模型名', modelI, '中转站里真实的模型 ID，不是显示名'));
+        extraBox.append(el('p', 'mini', '密钥去「服务商 → 密钥 → + 添加密钥」：变量名 ' + (det.key_env || 'IMAGE_GEN_CUSTOM_API_KEY') + '，值填中转站那把 key。'));
+        var syncVisible = function () { extraBox.style.display = sel.value === 'custom' ? '' : 'none'; };
+        sel.onchange = syncVisible;
+        syncVisible();
+        box.append(extraBox);
+      }
+
       var saveBtn = btn('保存', 'btn sm primary', async function () {
         saveBtn.disabled = true;
         saveBtn.textContent = '写入中…';
-        await M.mutate({ action: 'save_backend', domain: d.key, provider: sel.value, revision: (S.backends || {}).revision },
+        var payload = { action: 'save_backend', domain: d.key, provider: sel.value, revision: (S.backends || {}).revision };
+        if (d.key === 'image_gen' && sel.value === 'custom') {
+          payload.extras = { base_url: (baseI.value || '').trim(), model: (modelI.value || '').trim() };
+        }
+        await M.mutate(payload,
           { done: d.label + ' 来源已改为 ' + (sel.value || '默认'), body: '写入 ' + d.path });
       });
       box.append(saveBtn);

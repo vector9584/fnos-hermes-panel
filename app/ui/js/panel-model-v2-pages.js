@@ -602,6 +602,7 @@
       if (d.detail && d.detail.model && d.provider) meta.append(chip(d.detail.model));
       if (d.detail && d.detail.language) meta.append(chip('语言 ' + d.detail.language));
       if (d.detail && d.detail.providers) meta.append(chip(d.detail.providers + ' 个提供方'));
+      if (d.detail && d.detail.key) meta.append(chip((d.detail.key_env ? d.detail.key_env + ' · ' : '') + d.detail.key, d.detail.key === '未配置'));
       if (d.note) meta.append(chip(d.note));
       card.append(meta);
 
@@ -630,7 +631,8 @@
 
     out.append(panel('每个域怎么改', [
       el('p', 'mini', '来源直接在本页选、保存即写入 config.yaml；语音（stt/tts）与视觉（vision）也内联在这里，不再跳专属编辑器。'),
-      el('p', 'mini', '文字识别（OCR）可选白描（账密在「密钥」页）或 DeepSeek（复用其 API key）；生图走 image_gen 工具集开关，没有独立 provider。'),
+      el('p', 'mini', '文字识别（OCR）可选白描（账密在「密钥」页）或 DeepSeek（复用其 API key）；生图就在本卡选服务（写入 image_gen.provider），选完去「密钥」页填对应 key —— fal 填 FAL_KEY、openai 填 OPENAI_API_KEY、openrouter 填 OPENROUTER_API_KEY。'),
+      el('p', 'mini', '用自己的中转站（OpenAI 兼容或 Gemini 原生）：来源选「自定义中转站」，本卡填中转站地址 + 真实模型名，密钥页加一条 IMAGE_GEN_CUSTOM_API_KEY。三套端点自动依次尝试：/v1/images/generations → /v1/chat/completions → /v1beta/models/<模型>:generateContent，哪套通就用哪套。'),
       el('p', 'mini', '入站接口（把本机当模型给别的程序调）不在这里，状态由语音配置服务统一读取，见概览页的「入站接口」链路。')
     ]));
     return out;
