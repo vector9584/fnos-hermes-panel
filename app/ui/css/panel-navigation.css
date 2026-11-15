@@ -30,14 +30,10 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
    就整体下沉 2px——八个模型页里 JEV 的标题比别的高 2px，肉眼看得出歪。 */
 .workbench-navigation .page-body { padding:24px; }
 .workbench-navigation #sidebarToggle[hidden] { display:none; }
-/* 窄屏这颗按钮开的是抽屉（对话页=会话树，档案页=资料树）。
-   方框+箭头那套是"折叠侧栏"的语义，20px 下像返回键，用户认不出来；
-   ≤768 与 new-dialog.js 的 isMobileRail() 同档（抽屉样式也在这个断点），换成三条杠。
-   769–900 保留原图标：那一档对话页还是固定侧栏，画汉堡会骗人。 */
-@media (max-width:768px){
-  .workbench-navigation #sidebarToggle > svg { display:none !important; }
-  .workbench-navigation #sidebarToggle > #sidebarIconBurger { display:block !important; }
-}
+/* 2026-11-15 用户第二次打回：窄屏那颗按钮必须还是会话页原来那颗，不许换成三条杠。
+   事实核对：这颗按钮全站只有一颗（#sidebarToggle），会话页和档案三页共用；
+   图标由 applyRailState() 用 inline style 切 sidebarIconOpen/Close，
+   ≤768 那段 display:none !important 会把 inline 的 display:block 一起压掉 —— 已删。 */
 .workbench-navigation #page-rooms > .page-body { display:flex; min-height:0; overflow:hidden; }
 .workbench-navigation .rooms-layout { flex:1; height:auto; min-height:0; min-width:0; }
 .workbench-navigation .rooms-msgs { min-height:0; }

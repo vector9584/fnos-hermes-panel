@@ -11,17 +11,18 @@
     {id:'capabilities',title:'能力',icon:'extensions',pages:[['extensions','技能与工具'],['comm','渠道与连接器']]},
     // 2026-11-12：模型服务原来是单页 + 页内 .ui-tabs 八分区（两套导航语言，与协作页对不上）。
     // 现在八个分区就是八个真页面，顶部页签直接列八项，页内底槽撤掉。
-    {id:'models',title:'模型',icon:'models',pages:[
-      ['models-general','通用模型'],['models-api','模型 API'],['models-aux','辅助模型'],['models-moa','组合模型'],
-      ['models-jev','JEV'],['models-stt','STT 提供方'],['models-tts','TTS 提供方'],['models-checks','响应验证'],
-      /* 2026-11-15：能力实验室。配置项 ≠ 能力，这一页把服务端能力做成可点的卡。 */
-      ['models-caps','能力实验室']]},
+    /* 2026-11-15 整页重构：模型板块收成一个页面，页内六个域（概览/选择/服务商/后端/工具集/配置）
+       由 panel-model-v2.js 自己渲染域切换条。原来九个平铺页签整体撤掉。 */
+    {id:'models',title:'模型',icon:'models',pages:[['models','模型']]},
     {id:'maintenance',title:'维护',icon:'overview',pages:[['overview','运行状态'],['usage','用量统计'],['updates','本地版本']]},
     {id:'settings',title:'设置',icon:'settings',pages:[['settings','偏好设置']]},
   ];
   var activePage='chat',sidebar,secondary,mobile,moreDialog,last={},_pressTarget=null;
-  // models 是老入口（斜杠命令、工作台按钮、#/models 深链都还这么调），统一落到通用模型
-  var aliases={connectors:'comm',tunnel:'comm',learning:'kb',flows:'plans',models:'models-general'};
+  // models 是老入口（斜杠命令、工作台按钮、#/models 深链都还这么调），统一落到模型页；
+  // 重构前那九个旧页签 id 也一并落到这里，旧书签不至于 404。
+  var aliases={connectors:'comm',tunnel:'comm',learning:'kb',flows:'plans',
+    models:'models','models-general':'models','models-api':'models','models-aux':'models','models-moa':'models',
+    'models-jev':'models','models-stt':'models','models-tts':'models','models-checks':'models','models-caps':'models'};
   function groupFor(page){return groups.find(function(group){return group.pages.some(function(item){return item[0]===page;});})||groups[0];}
   function navigate(page){window.switchPage(page);}
   function groupTarget(group){return group.pages.some(function(item){return item[0]===last[group.id];})?last[group.id]:group.pages[0][0];}
@@ -88,6 +89,9 @@
     if(arcPage&&narrow)toggle.title=open?'收起资料目录':'展开资料目录';
     /* 切回对话页时把档案页留下的标题换掉，否则会出现"对话页按钮写着展开资料目录" */
     else if(page==='chat'){var rail=document.getElementById('chatRail');toggle.title=(rail&&!rail.classList.contains('hidden'))?'折叠会话树':'展开会话树';}
+    /* 图标也跟着页走：从档案页切回对话页，档案那边留在按钮上的是「收起」图标，
+       对话页抽屉明明是关的，看着就像点了没反应。applyRailState 会按真实开合重算图标。 */
+    if(page==='chat'&&typeof applyRailState==='function')applyRailState();
   }
   function boot(){
     sidebar=document.querySelector('.global-sidebar');if(!sidebar)return;

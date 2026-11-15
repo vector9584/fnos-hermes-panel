@@ -22,8 +22,8 @@
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
 <link rel="stylesheet" href="css/panel-workspace.css?v=559864a4">
     <link rel="stylesheet" href="css/panel-maintenance.css?v=22a9662a">
-    <link rel="stylesheet" href="css/archive.css?v=655a6391">
-<link rel="stylesheet" href="css/panel-model-deck.css?v=33d4c316">
+    <link rel="stylesheet" href="css/archive.css?v=bf77ac07">
+<link rel="stylesheet" href="css/panel-model-deck.css?v=3bfae1a3">
 <link rel="stylesheet" href="css/ui-kit.css?v=343723a8">
 </head>
 <body class="theme-dark">
@@ -56,9 +56,6 @@
         <button class="glob-btn" id="sidebarToggle" title="折叠会话树" onclick="toggleRail()">
           <svg xmlns="http://www.w3.org/2000/svg" id="sidebarIconClose" viewBox="0 0 24 24" style="display:block"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="9" y1="5" x2="9" y2="19"/><polyline points="16 9 12 12 16 15"/></svg>
           <svg xmlns="http://www.w3.org/2000/svg" id="sidebarIconOpen" viewBox="0 0 24 24" style="display:none"><rect x="3" y="5" width="18" height="14" rx="2"/><line x1="15" y1="5" x2="15" y2="19"/><polyline points="8 9 12 12 8 15"/></svg>
-          <!-- 2026-11-15：窄屏专用。手机上方框+箭头那套是"折叠侧栏"语义，缩到 20px 看着像返回键，
-               用户压根认不出这是开目录的按钮。≤900 换成三条杠。 -->
-          <svg xmlns="http://www.w3.org/2000/svg" id="sidebarIconBurger" viewBox="0 0 24 24" style="display:none"><line x1="4" y1="7" x2="20" y2="7"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="17" x2="20" y2="17"/></svg>
         </button>
         <div class="brand-logo" id="brandLogo" data-conn="idle"><span class="brand-dot" id="brandDot"></span><span class="brand-wordmark" id="brandWordmark" role="img" aria-label="CHATÈS"><img id="brandWordmarkImg" alt="" decoding="async"><span class="brand-wordmark-fallback" aria-hidden="true">CHATÈS</span></span><span class="brand-connection connecting" id="brandConnectionText" role="status" aria-live="polite" aria-atomic="true">连接中</span></div>
         <span class="brand-ver" id="brandVer">--</span>
@@ -386,134 +383,14 @@
           </div>
         </section>
 
-        <!-- 模型页 · 七区结构对齐官方设置：通用模型 / 模型 API / 辅助模型 / 组合模型 / JEV / STT / TTS -->
-        <!-- 模型服务 · 通用模型（组页面 1/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-general">
-          <div class="page-header"><h1>通用模型</h1></div>
-          <div class="page-body">
-      <!-- ① 通用模型：走哪个模型、挂了换谁、从哪家服务取 -->
-      <div class="settings-section">
-        <p class="page-subtitle">平时所有对话走主模型；主模型报错、超时或额度用完，才按回退顺序往下换。再往下是服务商：一家服务一条卡片，地址、密钥、这家能提供哪些模型，接口协议（Chat Completions / Responses / Anthropic Messages）也在卡片里选。停用只是暂时不参与选择，不删配置。</p>
-        <div id="modelRoutesSlot"></div>
-        <div id="providerFeedbackSlot"></div>
-        <div class="provider-grid" id="providerGrid"></div>
-        <!-- 2026-11-13（用户第 9 条）：这一行「+ 添加模型服务」已由卡片网格末尾那张「添加模型服务」卡替代，
-             两个入口挨着摆却只有卡片有样式，容易以为下面那个才是正门。入口只留一个。 -->
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · 模型 API（组页面 2/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-api">
-          <div class="page-header"><h1>模型 API</h1><button class="ov-actbtn" id="openAiApiRefresh">重新探测</button></div>
-          <div class="page-body">
-      <!-- ② 模型 API：本机网关对外提供的 OpenAI 兼容接口 -->
-      <div class="settings-section">
-        <p class="page-subtitle">方向反过来：不是我们去调别人，是把本机 agent 当模型给别的程序调。地址、端点、鉴权状态都在这。</p>
-        <div id="openAiApiSlot"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · 辅助模型（组页面 3/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-aux">
-          <div class="page-header"><h1>辅助模型</h1><button class="ov-actbtn" id="auxiliaryRefresh">刷新配置</button></div>
-          <div class="page-body">
-      <!-- ③ 辅助模型：旁活单独指定 -->
-      <div class="settings-section">
-        <p class="page-subtitle">图像理解、上下文压缩、会话标题这十一类旁路任务可以单独指定模型；不指定就跟着主模型走。</p>
-        <div id="auxiliaryStatus" class="maintenance-feedback" role="status"></div>
-        <div id="auxTaskList"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · 组合模型（组页面 4/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-moa">
-          <div class="page-header"><h1>组合模型</h1></div>
-          <div class="page-body">
-      <!-- ④ 组合模型：MOA -->
-      <div class="settings-section">
-        <p class="page-subtitle">几个模型各答一遍，再让聚合模型挑或合成。比回退贵得多，默认不开。</p>
-        <div id="moaSlot"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · JEV（组页面 5/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-jev">
-          <div class="page-header"><h1>JEV</h1></div>
-          <div class="page-body">
-      <!-- ⑤ JEV：可选判断插件，只读状态 -->
-      <div class="settings-section">
-        <p class="page-subtitle">有界的判断副驾：外部判定后端回答「这句合不合规、该不该拦」。不是对话模型，也不顶替主模型。</p>
-        <div id="jevSlot"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · STT 提供方（组页面 6/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-stt">
-          <div class="page-header"><h1>STT 提供方</h1></div>
-          <div class="page-body">
-      <!-- ⑥ STT 提供方 -->
-      <div class="settings-section">
-        <p class="page-subtitle">语音条转文字用谁：本地 Whisper 不上传音频，云端更快。保存后下一条消息起生效，不用重启。</p>
-        <div id="voiceStackStatus" class="maintenance-feedback" role="status"></div>
-        <div id="voiceSttSlot"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · TTS 提供方（组页面 7/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-tts">
-          <div class="page-header"><h1>TTS 提供方</h1></div>
-          <div class="page-body">
-      <!-- ⑦ TTS 提供方 -->
-      <div class="settings-section">
-        <p class="page-subtitle">你听到的那副嗓子。换提供方只影响之后的合成，已经发出去的语音不会变。</p>
-        <div id="voiceTtsSlot"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · 响应验证（组页面 8/8）—— 2026-11-12：原来是页内 .ui-tabs 分区，现提升为真页面，
-             顶部页签由 panel-navigation.js 统一渲染，页内那条底槽整个撤掉。 -->
-        <section class="page models-page" id="page-models-checks">
-          <div class="page-header"><h1>响应验证</h1><button class="ov-actbtn" id="modelChecksRefresh">刷新记录</button></div>
-          <div class="page-body">
-      <!-- ⑧ 响应验证：真发一句，看回不回。
-           2026-11-15 统一样式：这页原来是重构前的老写法——没有 page-subtitle、区块用 h2、
-           刷新按钮塞在区块里。其余 8 页都是「页头 h1（+右侧刷新）+ 副标题 + h3 小区块」，
-           这里补齐，别无二致。 -->
-      <div class="settings-section model-check-section">
-            <p class="page-subtitle">真发一句出去，看它回不回。这里记录每次验证的耗时、服务商报告的模型名和原始回复；正在跑的可以取消，关掉页面也会继续。</p>
-            <div class="section-head"><h3>验证记录</h3></div>
-            <form id="modelChecksForm" class="model-check-form"><label>服务与模型<select id="modelChecksTarget" required></select></label><button type="submit" class="btn primary">验证响应</button></form>
-            <div id="modelChecksStatus" class="maintenance-feedback" role="status"></div>
-            <div id="modelChecksList"></div>
-      </div>
-          </div>
-        </section>
-
-        <!-- 模型服务 · 能力实验室（组页面 9/9）—— 2026-11-15：
-             用户「配了我看不到功能」。配置项写在卡片里只是存了个参数，能不能用、用出来什么
-             没人知道。这一页把每个服务端能力做成一张卡：选服务 → 填一句 → 点运行 → 当场看返回。 -->
-        <section class="page models-page" id="page-models-caps">
-          <div class="page-header"><h1>能力实验室</h1><button class="ov-actbtn" id="modelCapsRefresh">重新读取</button></div>
-          <div class="page-body">
-      <div class="settings-section">
-        <p class="page-subtitle">这一页不是配置，是验证：每张卡片点下去，服务端会用这条服务的密钥真发一次请求，回来的是服务商的真实返回。密钥不出服务端，前端拿不到。中转站通常只支持前几项，官方地址才支持全套。</p>
-        <div id="modelCapsSlot"></div>
-      </div>
-          </div>
+        <!-- 模型页 · 六域工作台（2026-11-15 整页重构）
+             原来九个平铺 section（通用模型 / 模型 API / 辅助模型 / 组合模型 / JEV /
+             STT / TTS / 响应验证 / 能力实验室）收成一个页面。页内六个域
+             （概览 / 模型选择 / 服务商 / 能力后端 / 工具集 / 配置）由
+             panel-model-v2.js 自己渲染域切换条，不再占用顶部页签。 -->
+        <section class="page models-page" id="page-models">
+          <div class="page-header"><h1 id="mv2Title">模型</h1><div id="mv2HeadActs"></div></div>
+          <div class="page-body"><div id="mv2Root"></div></div>
         </section>
 
         <!-- 扩展页 -->
@@ -837,10 +714,10 @@
 <script src="js/panels/terminal.js?v=3d002036"></script>
 <script src="js/chat/message-ops.js?v=bd6d9472"></script>
 <script src="js/chat/roundtable.js?v=71e58827"></script>
-<script src="js/chat/new-dialog.js?v=2dd9c4b5"></script>
+<script src="js/chat/new-dialog.js?v=90e471e0"></script>
 <script src="js/chat/compose.js?v=3a526c93"></script>
 <script src="js/core/mini-popup.js?v=f59e5f7f"></script>
-<script src="js/core/router.js?v=8852a333"></script>
+<script src="js/core/router.js?v=dee2412f"></script>
 <script src="js/panels/tunnel.js?v=1e1aca8c"></script>
 <script src="js/core/theme.js?v=c726d6fb"></script>
 <script src="js/panels/overview.js?v=fbe49f30"></script>
@@ -870,17 +747,14 @@
 <script src="js/panel-cron-hooks-ui.js?v=bed7905c"></script>
 <script src="js/panel-cron-history-ui.js?v=dfd38576"></script>
 <script src="js/panel-echo-ui.js?v=386584a9"></script>
-<link rel="stylesheet" href="css/panel-navigation.css?v=760afbdf">
+<link rel="stylesheet" href="css/panel-navigation.css?v=9b450477">
 <link rel="stylesheet" href="css/panel-wordmark.css?v=d585d361">
 <link rel="stylesheet" href="css/panel-chat-avatar.css?v=e87cba5d">
 <script src="js/panel-rooms-ui.js?v=840e27e9"></script>
 <script src="js/panel-experts-ui.js?v=2a3291a8"></script>
-<script src="js/panel-model-editor.js?v=38b9c247"></script>
-<script src="js/panel-models-ui.js?v=e9b1513f"></script>
-<script src="js/panel-model-caps-ui.js?v=5eac3527"></script>
-        <script src="js/panel-models-voice.js?v=2e2d1454"></script>
-<script src="js/panel-model-checks-ui.js?v=6279719b"></script>
-<script src="js/panel-auxiliary-ui.js?v=ed114e0b"></script>
+<script src="js/panel-model-v2.js?v=2affb0f8"></script>
+<script src="js/panel-model-v2-pages.js?v=aaf8bc34"></script>
+<script src="js/panel-model-v2-sheets.js?v=5cd0e8ce"></script>
 <script src="js/panel-connectors-ui.js?v=7bbcbc2f"></script>
 <script src="js/panel-auth-ui.js?v=a792fab9"></script>
 <script src="js/panel-files-ui.js?v=4b940c73"></script>
@@ -901,19 +775,19 @@
 <script src="js/panel-library-drafts.js?v=f1279a85"></script>
 <!-- 档案三页：提示词 / 知识库 / 留痕录（2026-11-14 替换 panel-library-ui 与 panels/assistant）
      顺序要紧：core 定义命名空间 → 各视图模块注册 → boot 同步挂载 → reviews-ui 往新页头塞「整理草稿」。 -->
-<script src="js/archive/archive-core.js?v=a6565c73"></script>
-<script src="js/archive/archive-tree.js?v=69afc8ea"></script>
-<script src="js/archive/archive-search.js?v=e161e01f"></script>
+<script src="js/archive/archive-core.js?v=ccb9e96c"></script>
+<script src="js/archive/archive-tree.js?v=c95a2e3e"></script>
+<script src="js/archive/archive-search.js?v=d794933e"></script>
 <script src="js/archive/archive-md.js?v=e10c1478"></script>
 <script src="js/archive/archive-doc.js?v=cc82fad7"></script>
 <script src="js/archive/archive-info.js?v=67af34d1"></script>
 <script src="js/archive/archive-arch.js?v=6df10aca"></script>
 <script src="js/archive/archive-graph.js?v=2b5fbbc9"></script>
 <script src="js/archive/archive-trajectory.js?v=a4ecb974"></script>
-<script src="js/archive/archive-vault.js?v=56c6474e"></script>
+<script src="js/archive/archive-vault.js?v=2db2f9b9"></script>
 <script src="js/archive/archive-boot.js?v=43ffdda0"></script>
 <script src="js/panel-library-reviews-ui.js?v=4939c059"></script>
-<script src="js/panel-navigation.js?v=7067eff7"></script>
+<script src="js/panel-navigation.js?v=23657952"></script>
 <script src="js/panel-chat-avatar.js?v=ed52ec92"></script>
 <script src="js/panel-chat-tail.js?v=8ea31e46"></script>
 <script src="js/panel-clarify.js?v=add6c1e9"></script>

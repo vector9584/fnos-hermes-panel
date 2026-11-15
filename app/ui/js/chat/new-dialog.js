@@ -358,10 +358,29 @@ function _paintRailState(){
 function openRailDrawer(){
   var r=document.getElementById('chatRail'); if(r){ r.classList.remove('hidden'); r.classList.add('open'); }
   var o=document.getElementById('chatRailOverlay'); if(o) o.classList.add('open');
+  syncRailIcons();
 }
 function closeRailDrawer(){
   var r=document.getElementById('chatRail'); if(r) r.classList.remove('open');
   var o=document.getElementById('chatRailOverlay'); if(o) o.classList.remove('open');
+  syncRailIcons();
+}
+/* 这颗按钮的图标必须跟「抽屉现在开没开」一致。
+   原来只有窗口 resize 时才重算，手机上点开抽屉图标还是"展开"，看着像点了没反应。
+   档案三页的图标归 archive-core 的 syncRailButton 管，这里发现不在对话页就直接交出去。 */
+function syncRailIcons(){
+  var cur = document.querySelector('.workbench-page.active, .page.active');
+  if(cur && cur.id !== 'page-chat') return;
+  var mobile = isMobileRail();
+  var r = document.getElementById('chatRail');
+  var drawerOpen = !!(r && r.classList.contains('open'));
+  var collapsed = mobile ? !drawerOpen : (_railState === 2);
+  var siO = document.getElementById('sidebarIconOpen'), siC = document.getElementById('sidebarIconClose');
+  if(siO) siO.style.display = collapsed ? 'block' : 'none';
+  if(siC) siC.style.display = collapsed ? 'none' : 'block';
+  var st = document.getElementById('sidebarToggle');
+  if(st) st.title = mobile ? (drawerOpen ? '收起会话树' : '展开会话树')
+                           : (_railState === 2 ? '展开面板' : (_railState === 0 ? '折叠会话树' : '折叠菜单栏'));
 }
 /* 两级折叠：0=全部展开；1=会话树折叠；2=会话树+左侧菜单栏全折叠（类似 Octop） */
 var _railState = 0;
@@ -374,11 +393,7 @@ function applyRailState(){
   var collapsed = _railState===2;
   if(rail) rail.classList.toggle('hidden', railState>=1);
   if(sb) sb.classList.toggle('collapsed', collapsed);
-  var siO=document.getElementById('sidebarIconOpen'), siC=document.getElementById('sidebarIconClose');
-  if(siO) siO.style.display = collapsed?'block':'none';
-  if(siC) siC.style.display = collapsed?'none':'block';
-  var st=document.getElementById('sidebarToggle');
-  if(st) st.title = _railState===2 ? '展开面板' : (_railState===0 ? '折叠会话树' : '折叠菜单栏');
+  syncRailIcons();
   syncSessionTabsVisibility();
   try { localStorage.setItem('fnos-rail-state', String(_railState)); } catch(e){}
 }

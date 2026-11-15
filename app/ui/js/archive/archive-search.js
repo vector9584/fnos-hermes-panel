@@ -1,67 +1,49 @@
-/* 档案 · 搜索面板（⌘K）
- * 先本地过滤文件名与路径（零延迟），回车再向服务端要正文命中（带 snippet 高亮）。
- * 键盘：↑↓ 选，Enter 打开，Esc 关。 */
+/* 档案 · 全文搜索面板
+ *
+ * 2026-11-15 用户第三次打回：「触发全文搜索之后，全文搜索面板是弹出来的，现在是遮盖住的，
+ * 能复用的样式就用会话里面的，不要重复做弹出框、搜索框」。
+ *
+ * 改法：不再自造 .arc-search 下拉浮层（它挂在 body 上、靠 place() 跟着锚点走，
+ * 层级又低，被左栏抽屉和遮罩压住），直接调 ui.modal() —— 与会话页 pwSearch 同一个弹窗组件，
+ * 结果行用同一套 .pw-results / .pw-result 样式。弹窗 z-index 从 6000 起，永远在最上层，
+ * Esc / 点遮罩 / 关按钮都由 ui-kit 统一处理。
+ *
+ * 数据侧照旧：本地文件名 + 路径零延迟，服务端正文命中（带 snippet 高亮）防抖 320ms 补上。
+ * 键盘：↑↓ 选，Enter 打开，Esc 关闭。
+ */
 window.Archive.register('search', (function () {
   'use strict';
 
   var A = window.Archive;
-  var box = null, input = null, list = null, foot = null;
-  var hits = [], cursor = 0, seq = 0, current = null, remoteTerm = '';
-  var anchorEl = null, debounce = null;
+  var dlg = null, input = null, list = null, status = null;
+  var hits = [], cursor = 0, seq = 0, current = null, remoteTerm = '', debounce = null;
 
-  /* 位置跟着页头搜索框走（案例的 .search-panel 是 top:48 right:18 的下拉浮层）。
-     窗口滚动/缩放时重算，锚点没了就关掉，不留孤儿浮层。 */
-  function place() {
-    if (!anchorEl || !anchorEl.isConnected) { close(); return; }
-    var rect = anchorEl.getBoundingClientRect();
-    var vw = window.innerWidth;
-    if (vw > 900) {
-      var width = Math.min(460, vw - 24);
-      box.style.width = width + 'px';
-      box.style.left = Math.max(12, Math.min(rect.left, vw - width - 14)) + 'px';
-      box.style.right = 'auto';
-    } else {
-      box.style.width = 'auto';
-      box.style.left = '8px';
-      box.style.right = '8px';
-    }
-    box.style.top = Math.round(rect.bottom + 6) + 'px';
-  }
+  function q(sel) { return dlg ? dlg.bodyEl.querySelector(sel) : null; }
 
   function build() {
-    if (box) return;
-    box = A.el('div', null, 'arc-search');
-    box.setAttribute('role', 'dialog');
-    box.setAttribute('aria-label', '搜索资料');
-    var panel = A.el('div', null, 'arc-search-panel');
-    var top = A.el('div', null, 'arc-search-top');
-    input = document.createElement('input');
-    input.type = 'search';
-    input.className = 'arc-search-input';
-    input.placeholder = '搜资料：文件名、路径，回车搜正文';
-    input.setAttribute('aria-label', '搜索资料');
-    var hint = A.el('kbd', 'Esc', 'arc-kbd');
-    top.append(input, hint);
-    list = A.el('div', null, 'arc-search-list');
-    list.setAttribute('role', 'listbox');
-    foot = A.el('div', null, 'arc-search-foot');
-    panel.append(top, list, foot);
-    box.append(panel);
-    document.body.append(box);
-    /* 下拉浮层没有全屏遮罩，所以点外面要自己关（案例用的是整块 mask） */
-    document.addEventListener('pointerdown', function (ev) {
-      if (!box.classList.contains('show')) return;
-      if (box.contains(ev.target) || (anchorEl && anchorEl.contains(ev.target))) return;
-      close();
-    }, true);
-    window.addEventListener('resize', function () { if (box.classList.contains('show')) place(); });
-    window.addEventListener('scroll', function () { if (box.classList.contains('show')) place(); }, true);
+    if (dlg) return;
+    dlg = window.ui.modal({
+      title: '搜索所有资料',
+      width: 560,
+      className: 'arc-search-modal',
+      bodyHTML:
+        '<input id="arcSearchQ" type="search" placeholder="搜索资料：文件名、路径、正文" autocomplete="off" aria-label="搜索资料">' +
+        '<div class="pw-hint" id="arcSearchStatus"></div>' +
+        '<div class="pw-results" id="arcSearchResults"></div>',
+      onClose: function () {
+        clearTimeout(debounce);
+        dlg = null; input = null; list = null; status = null;
+        hits = []; cursor = 0; remoteTerm = '';
+        current = null;
+      }
+    });
+    input = q('#arcSearchQ');
+    list = q('#arcSearchResults');
+    status = q('#arcSearchStatus');
     input.addEventListener('input', function () {
       remoteTerm = '';
       if (current) current.searchQ = input.value;
       paint();
-      /* 案例是「输入即搜」，本地正文在内存里所以同步；我们正文在服务端，
-         给 320ms 防抖后自动补一次正文命中，不用用户再按 ⌘Enter。 */
       clearTimeout(debounce);
       var term = input.value.trim();
       if (term.length < 2) return;
@@ -75,8 +57,6 @@ window.Archive.register('search', (function () {
     else if (ev.key === 'ArrowUp') { ev.preventDefault(); move(-1); }
     else if (ev.key === 'Enter') {
       ev.preventDefault();
-      /* 2026-11-14：原来有本地命中时 Enter 直接 openDoc，正文搜索永远走不到，
-         foot 写着「回车搜正文」却是死路。改成 ⌘/Ctrl+Enter 强制搜正文。 */
       if (ev.metaKey || ev.ctrlKey) { searchRemote(input.value.trim()); return; }
       if (hits[cursor]) { pick(hits[cursor]); return; }
       searchRemote(input.value.trim());
@@ -99,15 +79,15 @@ window.Archive.register('search', (function () {
 
   function localRows() {
     if (!current) return [];
-    var q = input.value.trim().toLowerCase();
+    var term = input.value.trim().toLowerCase();
     var allowed = current.cfg.sources;
     var items = (current.catalog && current.catalog.items) || [];
     var rows = items.filter(function (item) { return allowed.indexOf(item.source) >= 0; });
-    if (!q) return rows.slice(0, 30);
+    if (!term) return rows.slice(0, 30);
     return rows.filter(function (item) {
-      return (item.title || '').toLowerCase().indexOf(q) >= 0
-        || (item.path || '').toLowerCase().indexOf(q) >= 0
-        || (item.source_name || '').toLowerCase().indexOf(q) >= 0;
+      return (item.title || '').toLowerCase().indexOf(term) >= 0
+        || (item.path || '').toLowerCase().indexOf(term) >= 0
+        || (item.source_name || '').toLowerCase().indexOf(term) >= 0;
     }).slice(0, 40);
   }
 
@@ -135,27 +115,27 @@ window.Archive.register('search', (function () {
     if (rest) host.append(document.createTextNode(rest.length > 60 ? rest.slice(0, 60) + '…' : rest));
   }
 
+  /* 结果行沿用会话页全局搜索的 .pw-result 结构：<b>标题</b> <small>来源 · 路径</small><p>摘要</p> */
   function renderList() {
     list.replaceChildren();
     var term = input.value.trim();
     if (!hits.length) {
-      list.append(A.el('p', term && remoteTerm !== term ? '本地没命中，按回车搜正文' : '没有匹配的资料。', 'arc-empty'));
+      list.append(A.el('p', term && remoteTerm !== term ? '本地没命中，按回车搜正文' : '没有找到匹配内容。', 'pw-hint'));
       return;
     }
     hits.forEach(function (item, index) {
-      var row = A.el('button', null, 'arc-hit' + (index === cursor ? ' on' : ''));
+      var row = A.el('button', null, 'pw-result' + (index === cursor ? ' on' : ''));
       row.type = 'button';
-      row.setAttribute('role', 'option');
-      var top = A.el('div', null, 'arc-hit-top');
-      top.append(A.el('span', String(item.title || '').replace(/\.md$/i, ''), 'arc-hit-name'));
-      top.append(A.el('span', item.snippet ? '正文命中' : '文件名命中', 'arc-hit-badge' + (item.snippet ? ' is-body' : '')));
+      var head = A.el('div');
+      head.append(A.el('b', String(item.title || '').replace(/\.md$/i, '')));
       var source = A.sourceOf(current, item.source);
-      top.append(A.el('span', (source ? source.name + ' · ' : '') + item.path, 'arc-hit-path'));
-      row.append(top);
-      var snip = A.el('div', null, 'arc-hit-snip');
-      if (item.snippet) mark(item.snippet, term, snip);
-      else snip.textContent = item.missing ? '尚未建立，打开后可新建' : '文件名或路径匹配';
-      row.append(snip);
+      head.append(A.el('small', ' ' + (source ? source.name + ' · ' : '') + item.path +
+        (item.snippet ? ' · 正文命中' : ' · 文件名命中')));
+      row.append(head);
+      var para = A.el('p');
+      if (item.snippet) mark(item.snippet, term, para);
+      else para.textContent = item.missing ? '尚未建立，打开后可新建' : '文件名或路径匹配';
+      row.append(para);
       row.onmouseenter = function () { cursor = index; paintSelection(); };
       row.onclick = function () { pick(item); };
       list.append(row);
@@ -165,52 +145,50 @@ window.Archive.register('search', (function () {
   function searchRemote(term) {
     if (!current || !term) return;
     var mine = ++seq;
-    foot.textContent = '正在搜正文…';
+    if (status) status.textContent = '正在搜正文…';
     A.call('/api/panel-library?limit=200&q=' + encodeURIComponent(term)).then(function (data) {
-      if (mine !== seq || !current) return;
+      if (mine !== seq || !current || !status) return;
       current.remoteHits = data.items || [];
       remoteTerm = term;
       hits = current.remoteHits.filter(function (item) { return current.cfg.sources.indexOf(item.source) >= 0; });
       cursor = 0;
-      if (data.partial) foot.textContent = '命中 ' + hits.length + ' 条（部分文件超大未展开正文）';
-      else foot.textContent = '命中 ' + hits.length + ' 条';
+      status.textContent = '命中 ' + hits.length + ' 条' + (data.partial ? '（部分文件超大未展开正文）' : '') +
+        ' · ↑↓ 选择 · Enter 打开';
       renderList();
     }).catch(function (err) {
-      if (mine !== seq) return;
-      foot.textContent = '正文搜索失败：' + err.message;
+      if (mine !== seq || !status) return;
+      status.textContent = '正文搜索失败：' + err.message;
     });
   }
 
   function pick(item) {
     var st = current;
-    close();
+    if (dlg) dlg.close('pick');
     A.openDoc(st, item.source, item.path);
   }
 
-  function open(st, initial, anchor) {
+  function open(st, initial) {
     build();
     current = st;
     cursor = 0;
     seq++;
-    /* 每个面板各留各的关键词（案例是 state.query[t]）：切页回来还是上次那句 */
     input.value = initial != null && initial !== '' ? initial : (st.searchQ || '');
     st.searchQ = input.value;
     remoteTerm = '';
-    anchorEl = anchor || anchorEl;
-    foot.textContent = '上下键选择 · Enter 打开 · Esc 关闭';
-    box.classList.add('show');
-    place();
+    status.textContent = '↑↓ 选择 · Enter 打开 · Esc 关闭';
     paint();
-    setTimeout(function () { input.focus(); input.select(); }, 0);
+    setTimeout(function () { try { input.focus(); input.select(); } catch (e) {} }, 0);
   }
 
-  function close() {
-    if (box) box.classList.remove('show');
-    clearTimeout(debounce);
-    if (current) { current.searchQ = input.value; current.remoteHits = null; }
-    current = null;
-    remoteTerm = '';
+  function close() { if (dlg) dlg.close('api'); }
+
+  /* 点放大镜 = 弹面板 + 直接搜正文，并把框里的词带进去。词为空时退回输入框，不弹空面板。 */
+  function openRemote(st, term) {
+    var t = String(term == null ? '' : term).trim();
+    if (!t) { if (dlg) close(); return; }
+    open(st, t);
+    searchRemote(t);
   }
 
-  return { open: open, close: close };
+  return { open: open, openRemote: openRemote, close: close };
 })());

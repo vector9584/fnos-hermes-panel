@@ -129,9 +129,9 @@ window.Archive.register('tree', (function () {
     var filter = document.createElement('input');
     filter.type = 'search';
     filter.className = 'arc-filter';
-    filter.placeholder = '筛选文件名或文件夹';
+    filter.placeholder = '筛选文件夹或文件名…';
     filter.value = st.q;
-    filter.setAttribute('aria-label', '筛选文件名或文件夹');
+    filter.setAttribute('aria-label', '按文件夹名或文件名筛选');
     p.filter = filter;
 
     /* 组字标记放在闭包里，不塞 st（切页后状态还在，会卡住下一次输入） */
@@ -156,17 +156,30 @@ window.Archive.register('tree', (function () {
       if (ev.isComposing) return;
       if (ev.key !== 'Enter') return;
       ev.preventDefault();
-      if (A.modules && A.modules.search) A.modules.search.open(st, filter.value);
+      /* 回车等同点放大镜：把词带进全文搜索面板并直接搜正文 */
+      var term = filter.value.trim();
+      if (!term) { filter.focus(); return; }
+      if (A.modules && A.modules.search && A.modules.search.openRemote) A.modules.search.openRemote(st, term);
     };
 
-    /* 筛选框照页头那个搜索框：左放大镜内嵌、框内无边框。
-       会话树那边是「框 + 右侧放大镜按钮」，用户要的是「搜索框加一个放大镜」，
-       左侧内嵌更像搜索框，也和他截图里认过的页头搜索框同一副样子。 */
-    var filterBox = A.el('div', null, 'arc-filter-box');
-    var lense = A.el('span', null, 'arc-filter-lense');
-    lense.append(A.svgIcon('search', 15));
-    lense.onclick = function () { filter.focus(); };
-    filterBox.append(lense, filter);
+    /* 筛选条照会话左栏的 #railFilterInput + #railFilterBtn：输入框在左，
+       放大镜是右侧一颗独立方按钮（2026-11-15 用户第三次点明：放大镜是分开的、在右）。
+       样式整段复用 base.css 的 .rail-filter，档案页不再自造外壳。
+       分工：输入 = 就地筛文件夹和文件名；点放大镜 = 弹全文搜索面板并带词；回车同放大镜。 */
+    var filterBox = A.el('div', null, 'rail-filter arc-rail-filter');
+    var goBtn = A.el('button', null, '');
+    goBtn.type = 'button';
+    goBtn.id = 'arcFilterBtn';
+    goBtn.title = '在所有资料中搜索';
+    goBtn.setAttribute('aria-label', '在所有资料中搜索');
+    goBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="16.4" y1="16.4" x2="21" y2="21"/></svg>';
+    goBtn.onclick = function (ev) {
+      ev.preventDefault();
+      var term = filter.value.trim();
+      if (!term) { filter.focus(); return; }
+      if (A.modules && A.modules.search && A.modules.search.openRemote) A.modules.search.openRemote(st, term);
+    };
+    filterBox.append(filter, goBtn);
 
     /* 「展开」「收起」两个按钮 2026-11-15 去掉：档案页只留顶栏那一颗抽屉按钮，
        树内单个文件夹的折叠箭头保留（那是树本身，不是重复入口）。 */
@@ -242,6 +255,21 @@ window.Archive.register('tree', (function () {
       return;
     }
 
+    /* 名字一个都没筛到：原来只剩一个空左栏，看着像崩了。
+       这里给一句话 + 一个「搜正文」的出口——名字没有不代表正文没有。 */
+    if (q && !rows.length) {
+      var none = A.el('div', null, 'arc-empty arc-empty-q');
+      none.append(A.el('p', '没有名字含「' + String(st.q).trim() + '」的文件夹或文件', 'arc-empty-t'));
+      var go = A.el('button', '搜正文试试', 'arc-empty-btn');
+      go.type = 'button';
+      go.onclick = function () {
+        if (A.modules && A.modules.search && A.modules.search.openRemote) A.modules.search.openRemote(st, st.q);
+      };
+      none.append(go);
+      scroller.append(none);
+      return;
+    }
+
     var nav = A.el('nav', null, 'arc-tree');
     st.cfg.sources.forEach(function (id) {
       var source = A.sourceOf(st, id);
@@ -253,6 +281,7 @@ window.Archive.register('tree', (function () {
       var folded = !!st.folded[id] && !q;
       var groupHead = A.el('button', null, 'arc-row arc-group-head');
       groupHead.type = 'button';
+      groupHead.dataset.depth = '0';
       groupHead.setAttribute('aria-expanded', folded ? 'false' : 'true');
       groupHead.append(
         caretNode(!folded),
@@ -333,6 +362,8 @@ window.Archive.register('tree', (function () {
       var folded = (st.folded[fk] !== undefined ? st.folded[fk] : dflt) && !q;
       var row = A.el('button', null, 'arc-row arc-dir');
       row.type = 'button';
+      /* 层级写进 DOM：CSS 按 data-depth 上四档色块和逐层字号（会话树的 data-depth 同款做法） */
+      row.dataset.depth = String(prefix ? prefix.split('/').length : 0);
       row.setAttribute('aria-expanded', folded ? 'false' : 'true');
       row.title = path;
       var name = A.el('span', null, 'arc-leaf-name');

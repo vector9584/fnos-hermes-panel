@@ -296,24 +296,9 @@ window.Archive = (function () {
       head.classList.add('arc-no-views');
     }
 
-    /* 工具条搜索框：回车/点「搜索」进正文检索（案例的 search-wrap） */
-    var box = el('div', null, 'arc-searchbox');
-    box.append(svgIcon('search'));
-    var sInput = document.createElement('input');
-    sInput.type = 'search';
-    sInput.placeholder = '搜索标题与正文';
-    sInput.setAttribute('aria-label', '搜索标题与正文');
-    sInput.onkeydown = function (ev) {
-      if (ev.key !== 'Enter') return;
-      ev.preventDefault();
-      if (modules.search) modules.search.open(st, sInput.value, box);
-    };
-    /* 案例里点搜索框就地出结果，不用先点按钮 */
-    sInput.onfocus = function () { if (modules.search) modules.search.open(st, sInput.value, box); };
-    var goBtn = el('button', '搜索', 'arc-search-go');
-    goBtn.onclick = function () { if (modules.search) modules.search.open(st, sInput.value, box); };
-    box.append(sInput, el('span', '⌘K', 'arc-kbd'), goBtn);
-    st.searchAnchor = box;
+    /* 页头那个「搜索标题与正文」框 2026-11-15 撤掉：左放大镜内嵌 + 一个「搜索」文字按钮 + ⌘K 角标，
+       一套三件套，跟会话左栏的「输入框 + 右侧一颗放大镜方按钮」完全是两种东西，摆一起风格打架。
+       现在只留左栏那一条（照会话左栏做的），页头不再重复造第二个搜索框。⌘K 仍能唤起面板。 */
 
     var tools = el('div', null, 'arc-tools');
     if (cfg.createSource) {
@@ -330,7 +315,7 @@ window.Archive = (function () {
        同一个位置、同一颗按钮、同一套抽屉动效。桌面端左栏常驻，本来就不需要按钮。 */
     head.append(titleWrap);
     if (views) head.append(views);
-    head.append(tools, box);
+    head.append(tools);
 
     var shell = el('div', null, 'arc-shell');
     var rail = el('aside', null, 'arc-rail');
@@ -648,11 +633,11 @@ window.Archive = (function () {
       var key = String(ev.key || '').toLowerCase();
       if (meta && key === 'k') {
         ev.preventDefault();
-        if (modules.search) modules.search.open(st, st.searchQ || '', st.searchAnchor);
+        if (modules.search) modules.search.open(st, st.searchQ || '');
         return;
       }
       if (ev.key === 'Escape') {
-        var open = document.querySelector('.arc-search.show');
+        var open = document.querySelector('.arc-search-modal');
         if (open) { ev.preventDefault(); if (modules.search) modules.search.close(st); return; }
         /* 抽屉开着先收抽屉——和对话那边 Esc 收会话树的习惯一致 */
         if (st.nodes.shell.classList.contains('rail-open')) { ev.preventDefault(); closeRailDrawer(); return; }
@@ -757,6 +742,12 @@ window.Archive = (function () {
     var open = st.nodes.shell.classList.contains('rail-open');
     btn.title = open ? '收起资料目录' : '展开资料目录';
     btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    /* 同一颗按钮、同一套图标：抽屉开着显示「收起」，收起显示「展开」。
+       此前只改 title 不改图标，手机上看着像一颗死按钮。 */
+    var siO = document.getElementById('sidebarIconOpen');
+    var siC = document.getElementById('sidebarIconClose');
+    if (siO) siO.style.display = open ? 'none' : 'block';
+    if (siC) siC.style.display = open ? 'block' : 'none';
   }
   /* 返回 true = 这件事归档案页处理了，调用方（toggleRail）就此打住 */
   function toggleRailDrawer() {

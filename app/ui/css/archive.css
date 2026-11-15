@@ -147,23 +147,15 @@ body.theme-dark {
   color: var(--text); background: var(--card); border: 1px solid var(--border); border-radius: 7px;
 }
 .arc-filter:focus { outline: none; border-color: var(--accent); }
-/* 筛选框外壳：照页头 .arc-searchbox 的尺寸（32 高 / 圆角 9 / 左 10 右 8），放大镜内嵌在左。
-   里面的 .arc-filter 退回裸输入（无边框无底色），靠外壳出框。 */
-.arc-filter-box {
-  flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 6px;
-  height: 32px; padding: 0 8px 0 10px;
-  background: var(--card); border: 1px solid var(--border); border-radius: 9px;
+/* 筛选条：外壳与输入框、放大镜按钮全部复用 base.css 的 .rail-filter（会话左栏同款），
+   2026-11-15 用户第三次打回后这里不再自造外壳。旧的 .arc-filter-box / .arc-filter-lense 已删。 */
+.arc-rail-filter { padding: 0 0 8px; }
+.arc-rail-filter input.arc-filter {
+  flex: 1 1 auto; min-width: 0; height: 30px; padding: 0 10px;
+  font: inherit; font-size: 12px; color: var(--text);
+  background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.arc-filter-box:focus-within { border-color: var(--accent); }
-.arc-filter-lense {
-  flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center;
-  color: var(--muted); cursor: text;
-}
-.arc-filter-box .arc-filter {
-  flex: 1 1 auto; min-width: 0; width: 100%; height: 100%; padding: 0;
-  background: transparent; border: 0; border-radius: 0;
-}
-.arc-filter-box .arc-filter:focus { outline: none; border-color: transparent; }
+.arc-rail-filter input.arc-filter:focus { outline: none; border-color: var(--accent); }
 .arc-rail-count { font-size: 11px; color: var(--muted); white-space: nowrap; }
 /* 展开/收起全部：两个小按钮，照案例 sb-head 右侧的做法（文字比符号稳，⇕/⇳ 有些字体里是豆腐块） */
 .arc-rail-btn {
@@ -209,7 +201,10 @@ body.theme-dark {
 .arc-stat-side::-webkit-scrollbar-thumb:hover,
 .arc-search-list::-webkit-scrollbar-thumb:hover,
 .arc-outline::-webkit-scrollbar-thumb:hover { background: var(--muted); }
-.arc-rail-scroll { flex: 1 1 auto; overflow-y: auto; overflow-x: hidden; min-height: 0; padding-bottom: 12px; }
+.arc-rail-scroll {
+  flex: 1 1 auto; display: flex; flex-direction: column;
+  overflow-y: auto; overflow-x: hidden; min-height: 0; padding-bottom: 12px;
+}
 .arc-rail-foot {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 8px;
   padding: 10px 14px; font-size: 11px; color: var(--muted);
@@ -241,17 +236,17 @@ body.theme-dark {
 /* 文件行不加粗——整列 600 会白茫茫一片，层级反而没了 */
 .arc-leaf { height: 34px; padding: 0 8px; font-size: 13px; font-weight: 400; color: var(--text2); }
 .arc-leaf:hover { background: var(--bg3); color: var(--text); }
-/* 嵌套容器：每深一级 +11px 外加 1px 虚线 + 5px 内距 = 16px。
-   层级是靠这条虚线读出来的（案例的做法），不是靠单行的 padding 假装。 */
+/* 嵌套容器：层级靠这条虚线读出来（案例的做法），不是靠单行的 padding 假装。 */
+/* 缩进照会话树（.pw-tree-kids 是 margin-left:10 + padding-left:8）：原来 11/5 每级 16px、
+   第一级还单独补到 19px，层与层之间不均匀，看着不像同一棵树。 */
 .arc-kids {
-  margin-left: 11px; padding-left: 5px;
+  margin-left: 10px; padding-left: 8px;
   border-left: 1px dashed var(--border);
 }
 /* 进了嵌套容器，行自己不再吃左右 8px 外边距，虚线才贴着行的左缘 */
 .arc-kids > .arc-row { width: 100%; margin: 0; }
-/* 第一层要补上分组头自己的 8px 外边距，否则第一级只缩 9px、后面每级 16px，
-   看上去像"第一层没缩进"（2026-11-14 量出来 172→181→198）。 */
-.arc-group > .arc-kids { margin-left: 19px; }
+/* 第一层补上分组头自己的 8px 外边距，之后每级统一 18px（8+10）。 */
+.arc-group > .arc-kids { margin-left: 18px; }
 .arc-leaf.on {
   background: var(--accent-bg); color: var(--accent); font-weight: 600;
   box-shadow: inset 2px 0 0 var(--accent);
@@ -274,6 +269,38 @@ body.theme-dark {
   color: var(--muted);
 }
 .arc-ti svg { display: block; }
+/* ── 层级色块（2026-11-15 照会话树搬过来）──
+   会话树 #railScroll 的 .pw-tree-ico：20×20 圆角 6、四档色相垫底，
+   深色主题取亮色、浅色主题取深色。这里同一组色值、同一尺寸，
+   只把作用域改成 .arc-page（档案三页的树不在 #railScroll 里）。 */
+.arc-page {
+  --arc-lvl0: #f0894a; --arc-lvl0-bg: rgba(240, 137, 74, .18);
+  --arc-lvl1: #df6a93; --arc-lvl1-bg: rgba(223, 106, 147, .18);
+  --arc-lvl2: #5f9fd6; --arc-lvl2-bg: rgba(95, 159, 214, .18);
+  --arc-lvl3: #56b98c; --arc-lvl3-bg: rgba(86, 185, 140, .18);
+}
+body.theme-light .arc-page {
+  --arc-lvl0: #bf5a12; --arc-lvl0-bg: rgba(191, 90, 18, .14);
+  --arc-lvl1: #a63a5e; --arc-lvl1-bg: rgba(166, 58, 94, .14);
+  --arc-lvl2: #2b5f8f; --arc-lvl2-bg: rgba(43, 95, 143, .14);
+  --arc-lvl3: #1c6b45; --arc-lvl3-bg: rgba(28, 107, 69, .14);
+}
+.arc-dir .arc-ti,
+.arc-group-head .arc-ti {
+  width: 20px; height: 20px; flex: 0 0 20px; border-radius: 6px;
+}
+.arc-dir[data-depth="0"] .arc-ti,
+.arc-group-head[data-depth="0"] .arc-ti { color: var(--arc-lvl0); background: var(--arc-lvl0-bg); }
+.arc-dir[data-depth="1"] .arc-ti { color: var(--arc-lvl1); background: var(--arc-lvl1-bg); }
+.arc-dir[data-depth="2"] .arc-ti { color: var(--arc-lvl2); background: var(--arc-lvl2-bg); }
+.arc-dir[data-depth="3"] .arc-ti,
+.arc-dir[data-depth="4"] .arc-ti { color: var(--arc-lvl3); background: var(--arc-lvl3-bg); }
+/* 逐层降字号/字重（会话树同款 13/600 → 12.5/500 → 12/400） */
+.arc-dir[data-depth="0"] { font-size: 13px; font-weight: 600; color: var(--text); }
+.arc-dir[data-depth="1"] { font-size: 12.5px; font-weight: 500; color: var(--text2); }
+.arc-dir[data-depth="2"],
+.arc-dir[data-depth="3"],
+.arc-dir[data-depth="4"] { font-size: 12px; font-weight: 400; color: var(--text3); }
 .arc-leaf.on .arc-ti, .arc-group-head:hover .arc-ti, .arc-sub-head:hover .arc-ti { color: var(--accent); }
 .arc-badge {
   flex: 0 0 auto; font-size: 10px; font-weight: 400; line-height: 16px; padding: 1px 7px;
@@ -295,6 +322,15 @@ body.theme-dark {
 .arc-only-mobile { display: none; }
 
 .arc-empty { margin: 18px 16px; font-size: 12.5px; color: var(--muted); line-height: 1.7; }
+/* 筛选没命中：一句话 + 一个「搜正文」出口 */
+.arc-empty-q { margin: 22px 16px; }
+.arc-empty-t { margin: 0 0 10px; font-size: 12.5px; color: var(--text2); line-height: 1.7; word-break: break-all; }
+.arc-empty-btn {
+  height: 28px; padding: 0 12px; font-size: 12px; font-weight: 500; cursor: pointer;
+  color: var(--accent); background: var(--accent-bg); border: 1px solid transparent; border-radius: 7px;
+  transition: border-color .12s ease;
+}
+.arc-empty-btn:hover { border-color: var(--accent); }
 /* 主区空态照案例：大图标 + 标题 + 一句说明 */
 .arc-empty-block {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px;
@@ -516,48 +552,19 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 }
 .arc-area:focus { outline: none; border-color: var(--accent); }
 
-/* ── 搜索浮层 ──
-   案例是页头搜索框下方 460px 宽的下拉（.search-panel top:48 right:18），
-   不是全屏居中的命令面板。2026-11-14 按案例改回下拉，top/right 由 JS 贴着框算。 */
-.arc-search {
-  position: fixed; top: 54px; right: 18px; width: 460px; z-index: 90; display: none;
+/* ── 全文搜索面板 ──
+   2026-11-15：原来这套 .arc-search 下拉浮层（自造面板、z-index 90、位置靠 JS 贴锚点）
+   整个删掉，改复用 ui.modal()。弹窗从 z-index 6000 起，左栏抽屉（200）和它的遮罩再也压不住它；
+   结果行直接用会话页全局搜索的 .pw-results / .pw-result，两边长得一样。
+   这里只补输入框和键盘选中态，别的都借会话那套。 */
+.arc-search-modal #arcSearchQ {
+  width: 100%; height: 36px; padding: 0 11px; font: inherit; font-size: 13.5px;
+  color: var(--text); background: var(--bg1);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
 }
-.arc-search.show { display: block; }
-.arc-search-panel {
-  width: 100%; max-height: min(440px, 70vh); display: flex; flex-direction: column;
-  background: var(--card); border: 1px solid var(--border2); border-radius: 12px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, .34); overflow: hidden;
-}
-.arc-search-top { display: flex; align-items: center; gap: 10px; padding: 12px 14px; border-bottom: 1px solid var(--border); }
-.arc-search-input {
-  flex: 1 1 auto; padding: 8px 10px; font: inherit; font-size: 14px;
-  color: var(--text); background: var(--bg1); border: 1px solid var(--border); border-radius: 8px;
-}
-.arc-search-input:focus { outline: none; border-color: var(--accent); }
-.arc-kbd {
-  font-family: ui-monospace, monospace; font-size: 10.5px; padding: 1px 6px;
-  color: var(--muted); background: var(--bg3); border: 1px solid var(--border); border-radius: 5px;
-}
-.arc-search-list { flex: 1 1 auto; overflow-y: auto; padding: 6px; min-height: 80px; }
-.arc-search-foot { padding: 8px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--border); }
-.arc-hit {
-  display: block; width: 100%; text-align: left; padding: 9px 11px;
-  font: inherit; color: var(--text2); background: transparent; border: 0;
-  border-radius: 9px; cursor: pointer;
-}
-.arc-hit.on, .arc-hit:hover { background: var(--accent-bg); color: var(--text); }
-.arc-hit-top { display: flex; align-items: center; gap: 8px; }
-.arc-hit-name { font-size: 13px; font-weight: 600; }
-.arc-hit-badge {
-  font-size: 10px; padding: 1px 6px; border-radius: 999px; white-space: nowrap;
-  color: var(--muted); background: var(--bg3); border: 1px solid var(--border);
-}
-.arc-hit-badge.is-body { color: var(--blue); background: var(--blue-bg); border-color: var(--blue); }
-.arc-hit-path {
-  font-size: 11px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-left: auto;
-}
-.arc-hit-snip { margin-top: 4px; font-size: 11.5px; color: var(--muted); line-height: 1.5; overflow-wrap: anywhere; }
-.arc-hit-snip mark { background: var(--warning-bg); color: var(--text); border-radius: 3px; padding: 0 2px; }
+.arc-search-modal #arcSearchQ:focus { outline: none; border-color: var(--accent); }
+.arc-search-modal .pw-results { margin-top: 8px; max-height: min(420px, 58vh); }
+.arc-search-modal .pw-result.on { border-color: var(--accent); background: var(--accent-bg); }
 
 /* ── 力导向图 ── */
 .arc-force { display: flex; flex-direction: column; gap: 8px; }
@@ -768,19 +775,24 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 .arc-vault-inner { width: 100%; max-width: 1080px; margin: 0 auto; display: flex; flex-direction: column; gap: 14px; }
 
 /* 一级：锁卡 / 设置卡。案例是居中一张卡，不铺满，也不要一排按钮 */
+/* 2026-11-15 用户：「密码本就一个菜单，现在占用空间太大」。
+   锁卡从 440×457 居中大卡压成 340 宽、贴上沿的窄卡：图标 52→30、正文三行→一行、内边距 30/26/22→16/18/14。
+   仍然是同一张卡、同一套表单，只是不再占掉半个视觉中心。 */
 .arc-lock-card {
-  width: 100%; max-width: 440px; margin: 5vh auto 0;
-  padding: 30px 26px 22px; background: var(--card);
-  border: 1px solid var(--border); border-radius: 16px;
-  box-shadow: 0 18px 44px rgba(0, 0, 0, .22);
-  display: flex; flex-direction: column; gap: 10px;
+  width: 100%; max-width: 330px; margin: 0 auto; align-self: center;
+  padding: 13px 16px 12px; background: var(--card);
+  border: 1px solid var(--border); border-radius: 12px;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .18);
+  display: flex; flex-direction: column; gap: 8px;
 }
+/* 图标与标题并排一行，左对齐——原来图标单独居中、标题再一行，纯白吃高度 */
+.arc-lock-head { display: flex; align-items: center; gap: 7px; }
 .arc-lock-ico {
-  width: 52px; height: 52px; margin: 0 auto 4px; display: grid; place-items: center;
-  color: var(--accent); background: var(--accent-bg); border-radius: 14px;
+  flex: none; width: 22px; height: 22px; display: grid; place-items: center;
+  color: var(--accent); background: var(--accent-bg); border-radius: 7px;
 }
-.arc-lock-card h2 { margin: 0; font-size: 18px; color: var(--text); text-align: center; }
-.arc-lock-desc { margin: 0 0 10px; font-size: 12.5px; line-height: 1.85; color: var(--muted); }
+.arc-lock-card h2 { margin: 0; font-size: 13.5px; font-weight: 650; color: var(--text); }
+.arc-lock-desc { margin: 0 0 4px; font-size: 11px; line-height: 1.6; color: var(--muted); }
 .arc-lock-label { font-size: 11.5px; color: var(--muted); margin-bottom: -4px; }
 .arc-lock-card .arc-pass-form { padding: 0; gap: 8px; }
 .arc-vault-hint { margin: 2px 0 0; font-size: 11px; line-height: 1.75; color: var(--muted); opacity: .85; }
@@ -904,7 +916,14 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 .arc-btn.is-block { width: 100%; }
 
 /* 左栏底部特殊入口（密码本）：与资料组之间留一道分隔，避免看着像第 N 个资料来源 */
-.arc-group-special { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+/* 密码本那一组贴到滚动区底部：原来它是自然流里的最后一项，上面一截树、下面一截空白，
+   结果这条入口悬在中间，上下都不挨着（2026-11-15 视觉复核点出的最别扭留白）。
+   margin-top:auto 把它压到底，sticky 保证树滚动时它仍在视野里。 */
+.arc-rail-scroll > * { flex: 0 0 auto; }
+.arc-group-special {
+  margin-top: auto; padding-top: 6px; position: sticky; bottom: 0;
+  background: var(--bg1); border-top: 1px solid var(--border);
+}
 .arc-special {
   display: flex; align-items: center; gap: 8px; width: 100%; height: 34px; padding: 0 8px;
   font: inherit; font-size: 12.5px; color: var(--text2); text-align: left;
@@ -980,16 +999,16 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
      这里必须用 grid 而不是 flex + order —— order 只能调先后，不能强制换行，
      之前 order:3 让搜索框独占一行、☰ 和「新建」挤在页签右边（2026-11-14 用户驳回）。
      选择器带上 .page-header 是为了压过第 29 行那条 0,3,0 的 display:flex。 */
-  /* 页头在手机上两行：第一行「标题 + 工具」，第二行「视图页签 + 搜索框」。
-     搜索框紧跟页签后面（2026-11-15 用户要求），不再单独占一行；
-     目录入口不再自造一颗 ☰ —— 手机上一律用顶栏那颗 #sidebarToggle（对话页开会话树、
-     档案页开资料树），同一个位置、同一个抽屉动效。 */
+  /* 页头在手机上两行：第一行「标题 + 工具」，第二行「视图页签」。
+     页头那个搜索框 2026-11-15 已撤（挪进左栏，与会话左栏同一条），所以第二行不再有 search 区，
+     模板里留 "search" 会变成一条空行被 row-gap 撑开。
+     目录入口不自造 ☰ —— 手机上一律用顶栏那颗 #sidebarToggle（对话页开会话树、档案页开资料树）。 */
   .arc-page .arc-head.page-header {
     display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) auto;
     grid-template-areas:
-      "title  title  tools"
-      "views  search search";
+      "title  tools"
+      "views  views";
     gap: 8px; padding: 8px 12px; align-items: center;
   }
   .arc-title { grid-area: title; }
@@ -1000,9 +1019,7 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   /* 没有页签的页面（提示词）不能留着 "views" 那一行：grid 模板里它照样占位，
      空行会被 row-gap 撑出 8px，页头平白多一条缝。重新声明 area 即可去掉。 */
   .arc-page .arc-head.page-header.arc-no-views {
-    grid-template-areas:
-      "title  title  tools"
-      "search search search";
+    grid-template-areas: "title tools";
   }
   /* 页签在左、搜索框吃满右边（不再有 ☰ 占位） */
   .arc-searchbox { grid-area: search; display: flex; margin-left: 0; max-width: none; height: 34px; min-width: 0; overflow: hidden; }
@@ -1057,7 +1074,7 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   .arc-area { font-size: 13px; min-height: 66vh; }
   /* 密码本：手机单列，锁卡不占满高度，卡片内边距收一点 */
   .arc-vault-grid { grid-template-columns: 1fr; gap: 10px; }
-  .arc-lock-card { max-width: 100%; margin: 3vh auto 0; padding: 26px 18px 20px; }
+  .arc-lock-card { max-width: 100%; margin: 0 auto; padding: 14px 14px 12px; }
   .arc-vault-inner { gap: 12px; }
   .arc-vault-tools { gap: 6px; }
   .arc-vault-search { flex: 1 1 100%; max-width: 100%; margin-left: 0; order: 5; }
@@ -1066,12 +1083,10 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   .arc-vault-key { font-size: 15px; }
   .arc-vault-meta { grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; }
   .arc-vault-valuebox { padding: 13px 13px; }
-  .arc-special { height: 40px; }
+  .arc-special { height: 34px; }
   .arc-rank { grid-template-columns: minmax(96px, 140px) minmax(0, 1fr) 40px; }
   .arc-note-row { grid-template-columns: minmax(0, 1fr) 48px; }
   .arc-note-row .arc-dim { display: none; }
-  .arc-search { padding: 0; }
-  .arc-search-panel { max-height: min(420px, 68vh); border-radius: 12px; }
   .arc-toast-host { right: 12px; bottom: 12px; }
   .arc-toast { max-width: calc(100vw - 24px); }
   .arc-force:not(.is-graph) .arc-canvas { height: 62vh !important; }

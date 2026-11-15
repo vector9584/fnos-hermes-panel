@@ -31,15 +31,13 @@ function pageFromHash(){
   return h ? pageFromPath('/'+h) : 'chat';
 }
 function switchPage(name){
-  // 2026-11-12：模型服务拆成八个真页面后，老的 'models' 入口（#/models、斜杠命令、工作台按钮）
-  // 一律落到通用模型，不再有 #page-models 这个元素。
-  if (name === 'models') name = 'models-general';
-  // 八个模型页共用同一份数据（renderProviders 一次填满所有槽位）。原来进一次模型页拉一次，
-  // 拆成八页后每切一个页签都要重拉 panel-models/auxiliary/catalog/checks 四五个接口，
-  // 实测连点 8 个页签打出 42 次请求。这里加 60 秒节流：一分钟内换页签不重拉，
-  // 页内的「刷新 / 重新探测」按钮仍然是直接调 renderProviders，不受影响。
-  var needProviders = String(name).indexOf('models-')===0 && (Date.now() - (window.__provLoadedAt||0) > 60000);
-  if (needProviders) window.__provLoadedAt = Date.now();
+  // 2026-11-15：模型板块整页重构，九个平铺页面（models-general / -api / -aux / -moa /
+  // -jev / -stt / -tts / -checks / -caps）收成一个 #page-models，页内六个域由
+  // panel-model-v2.js 自己渲染。老入口 'models' 现在就是真页面，不再改名；
+  // 旧 id 由 panel-navigation.js 的 aliases 折回来，这里不用兜。
+  // 数据刷新：进模型页时如果超过 60 秒没拉过，重拉一次；页内「刷新」按钮不受此限。
+  var needModels = name === 'models' && (Date.now() - (window.__mv2LoadedAt || 0) > 60000);
+  if (needModels) window.__mv2LoadedAt = Date.now();
   // URL 同步：hash 路由（chat 为默认 → #/），刷新/直达保持页面
   try { location.hash = (name==='chat') ? '#/' : '#/' + name; } catch(e){}
   document.querySelectorAll('.nav-btn').forEach(function(b){ b.classList.remove('active'); });
@@ -59,7 +57,7 @@ function switchPage(name){
   if(name==='learning') renderLearning();
   if(name==='usage') renderUsagePage();
   if(name==='overview') renderOverview();
-  if(needProviders) renderProviders();
+  if(needModels && window.renderProviders) renderProviders();
   if(name==='extensions') renderExtensions();
   if(name==='experts') renderExpertsPage();
   if(name==='rooms'){ ensurePersonasLibrary(mbtiInject); renderRoomsPage(); }

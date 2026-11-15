@@ -52,10 +52,13 @@ window.Archive.register('vault', (function () {
   function lockCard(st, bag) {
     var v = vs(st);
     var card = A.el('div', null, 'arc-lock-card');
+    /* 图标和标题并排（原来图标单独一行居中、标题再一行，白吃两行高度） */
+    var head = A.el('div', null, 'arc-lock-head');
     var ico = A.el('div', null, 'arc-lock-ico');
-    ico.append(A.svgIcon('lock', 24));
-    card.append(ico, A.el('h2', '密码本已锁定'));
-    card.append(A.el('p', '两级保护：一级口令只解锁列表（键名 / 分类 / 掩码），二级口令才能看和改具体条目。明文由服务端按条下发，不落浏览器存储。', 'arc-lock-desc'));
+    ico.append(A.svgIcon('lock', 16));
+    head.append(ico, A.el('h2', '密码本已锁定'));
+    card.append(head);
+    card.append(A.el('p', '一级只看列表，二级才能看条目。', 'arc-lock-desc'));
 
     var form = A.el('form', null, 'arc-pass-form');
     var label = A.el('label', '一级口令', 'arc-lock-label');
@@ -92,17 +95,19 @@ window.Archive.register('vault', (function () {
       });
     };
 
-    card.append(form, hint('忘记口令就删掉 data/.vault-auth.json 再刷新，会回到设置流程——老口令救不回来，密码本里的值本身不受影响。'));
+    card.append(form, hint('忘了口令就删 data/.vault-auth.json 重设，值本身不受影响。'));
     return card;
   }
 
   /* ── 首次使用：设置两级口令 ── */
   function setupCard(st, bag) {
     var card = A.el('div', null, 'arc-lock-card');
+    var head = A.el('div', null, 'arc-lock-head');
     var ico = A.el('div', null, 'arc-lock-ico');
-    ico.append(A.svgIcon('lock', 24));
-    card.append(ico, A.el('h2', '设置密码本口令'));
-    card.append(A.el('p', '设两道：一级用来解锁列表，二级用来查看和编辑具体条目。二级留空就等于两级同一个口令——能开，但少一层。', 'arc-lock-desc'));
+    ico.append(A.svgIcon('lock', 16));
+    head.append(ico, A.el('h2', '设置密码本口令'));
+    card.append(head);
+    card.append(A.el('p', '一级看列表，二级看条目；二级留空即同一个。', 'arc-lock-desc'));
 
     var form = A.el('form', null, 'arc-pass-form');
     var i1 = document.createElement('input');
@@ -114,8 +119,8 @@ window.Archive.register('vault', (function () {
     var fb = A.el('p', '', 'arc-pass-feedback');
     var btn = A.el('button', '设置并解锁', 'arc-btn is-primary is-block');
     btn.type = 'submit';
-    form.append(A.el('label', '一级口令', 'arc-lock-label'), i1,
-      A.el('label', '二级口令', 'arc-lock-label'), i2, fb, btn);
+    /* label 去掉：placeholder 里已经写着「一级口令（至少 6 位）」，同一句话说两遍白占两行 */
+    form.append(i1, i2, fb, btn);
 
     form.onsubmit = function (ev) {
       ev.preventDefault();
@@ -137,7 +142,7 @@ window.Archive.register('vault', (function () {
       });
     };
 
-    card.append(form, hint('口令以 scrypt 哈希存 data/.vault-auth.json（0600），服务端内存里只放 10 分钟票据，重启即失效。'));
+    card.append(form, hint('口令只存 scrypt 哈希，票据 10 分钟过期。'));
     return card;
   }
 
