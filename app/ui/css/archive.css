@@ -364,7 +364,9 @@ body.theme-light .arc-page {
 }
 .arc-dh-title {
   margin: 1px 0 7px; font-size: 19px; line-height: 1.3; font-weight: 700; color: var(--text);
-  overflow-wrap: anywhere;
+  overflow-wrap: break-word;
+  /* 标题最多两行、超出省略：长文件名窄窗口不再无限换行占满文档头（2026-11-15 用户报标题溢出） */
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .arc-dh-meta { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 11px; }
 .arc-dim { color: var(--muted); font-size: 11px; }
@@ -498,7 +500,7 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   position: fixed; right: 22px; width: 172px; z-index: 3;
   max-height: 58vh; overflow-y: auto; overflow-x: hidden;
 }
-/* 目录是挂在 body 上的 fixed 块，[hidden] 得自己兜住（父级选择器管不到它） */
+/* 目录挂在档案页 shell 里（不是 body），[hidden] 得自己兜住（父级选择器管不到它） */
 .arc-outline[hidden] { display: none !important; }
 .arc-outline-title {
   display: flex; align-items: baseline; gap: 6px;
@@ -990,9 +992,19 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 .arc-footbar .arc-fb-grow { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .arc-footbar .arc-fb-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
 
+/* ── 中等窗口（≤1500）── 动作按钮只出图标：7 个带字按钮（含窄屏才显示的「目录」）561px，
+   1500 以下会把手动标题挤没（1200 实测剩 49px、1024 剩 0px，1440 也只剩 289px，
+   2026-11-15 用户报「head 没适配移动端」） */
+@media (max-width: 1500px) {
+  .arc-doc-actions .arc-btn { width: 32px; height: 32px; padding: 0; }
+  .arc-doc-actions .arc-btn span { display: none; }
+}
+
 /* ── 移动端 ── */
 @media (max-width: 1080px) {
-  .arc-outline { display: none; }
+  /* 目录只在 ≥1024 桌面右侧悬浮，移动端（<1024）不显示、正文全宽；
+     早先 .arc-outline:not(.is-drawer){display:none} 把 1024~1080 的右侧悬浮目录误杀
+     （JS 判 wide 但 CSS 判 <1080 藏，2026-11-15 实测目录 0 尺寸），该条已删。 */
   .arc-doc-body { padding: 18px 16px 60px; }
 }
 @media (max-width: 900px) {
@@ -1056,7 +1068,9 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
   /* 手机行高 40（案例 @media 里的 .tree-row）——手指要能点中 */
   .arc-group-head, .arc-leaf, .arc-dir, .arc-sub-head { height: 40px; }
 
-  .arc-doc-head { gap: 10px; padding: 12px 16px 11px; }
+  /* 头换成两行：图标+标题占第一行，动作按钮换到第二行右对齐（六个图标钮 217px，
+     挤一行会把标题压到 100px 竖排，2026-11-15 用户报「head 没适配移动端」） */
+  .arc-doc-head { gap: 6px 10px; padding: 12px 16px 11px; flex-wrap: wrap; align-items: center; }
   .arc-dh-icon { width: 32px; height: 32px; font-size: 15px; border-radius: 10px; }
   .arc-dh-title { font-size: 16.5px; margin-bottom: 5px; }
   .arc-dh-path { font-size: 10.5px; }
@@ -1064,10 +1078,8 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
      不然 148px 宽要塞 6 个芯片，标题被挤成四行（案例只是两行） */
   .arc-dh-meta { gap: 6px; flex-wrap: nowrap; overflow: hidden; }
   .arc-dh-meta .arc-dim { display: none; }
-  /* 动作区留在同一行：手机上只出图标，四个按钮才塞得下（案例 375 下就 150px 宽） */
-  .arc-doc-actions { margin-left: auto; gap: 5px; padding-top: 2px; flex-wrap: nowrap; }
-  .arc-doc-actions .arc-btn { width: 32px; height: 32px; padding: 0; }
-  .arc-doc-actions .arc-btn span { display: none; }
+  /* 动作区换到第二行右对齐：只出图标，六个按钮 217px 塞第一行会把标题挤成竖排 */
+  .arc-doc-actions { margin-left: 0; gap: 5px; padding-top: 2px; flex-wrap: nowrap; flex-basis: 100%; justify-content: flex-end; }
   .arc-md { font-size: 14.5px; line-height: 1.8; }
   .arc-md h1 { font-size: 20px; }
   .arc-md h2 { font-size: 18px; }

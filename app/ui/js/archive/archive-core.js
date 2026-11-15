@@ -258,7 +258,9 @@ window.Archive = (function () {
         else paintStatus(each, '');
         if (!each.nodes.shell) return;
         render(each);
-        if (!each.doc && !each.error) openDefault(each);
+        /* 默认文档不再在这里统一打开：boot 预挂载三个档案页时，若每个都 openDefault，
+           默认对话页上会连弹三条「正在打开 SOUL.md / notes.md / …」再各挂一个目录。
+           改成懒加载，由 hermes:page 切到该档案页时调用 ensureDoc 打开（2026-11-15 用户报障）。 */
       });
     });
     return catalogCache.pending;
@@ -431,8 +433,8 @@ window.Archive = (function () {
   function renderView(st) {
     var host = st.nodes.main;
     if (!host) return;
-    /* 右目录是挂在 body 上的 fixed 元素，换视图/换文档时必须自己收走，否则会浮在关系图上 */
-    var stale = document.querySelector('.arc-outline');
+    /* 右目录挂在档案页 shell 里的 fixed 元素，换视图/换文档时必须自己收走，否则会浮在关系图上 */
+    var stale = st.nodes.shell.querySelector('.arc-outline');
     if (stale) stale.remove();
     var view = modules[st.view];
     /* 上一个视图必须收摊：关系图和技能轨迹图起的都是 Worker + rAF，切走之后没人叫停，
@@ -553,6 +555,16 @@ window.Archive = (function () {
     empty.append(emptyIcon, el('h3', '这个栏目下还没有资料文件'));
     st.nodes.main.replaceChildren(empty);
     foot(st, { left: '', mid: '', right: '0 份' });
+  }
+
+  /* 懒加载默认文档：boot 预挂载三个档案页时不再统一 openDefault，改为档案页
+     第一次被切到（hermes:page）时才打开。home 写死的直接开；home 为 null 的页
+     （留痕录）要等目录树（rowsOf 依赖 catalog）就绪后才能 openDefault。 */
+  function ensureDoc(st) {
+    if (!st || st.doc) return;
+    if (st.cfg.home) { openDoc(st, st.cfg.home.source, st.cfg.home.path); return; }
+    if (st.catalog) { openDefault(st); return; }
+    loadCatalog(st.page, false).then(function () { if (!st.doc) openDefault(st); });
   }
 
   /* ── 提示条：2026-11-14 收口到全站统一通知组件（js/core/utils.js 的 window.toast）
@@ -685,7 +697,15 @@ window.Archive = (function () {
       if (order.indexOf(key) < 0) order.push(key);
       var val = kv[2].trim();
       /* 空值后面跟 - 列表，先占位成数组；没有列表项就是一个空数组，序列化回 `key:` */
-      data[key] = val ? unquote(val) : [];
+      var inline = /^\[(.*)\]$/.exec(val);
+      if (inline) {
+        /* YAML 行内数组 [a, b, c]：SKILL.md 的 tags 常用这种流式写法。旧逻辑把整串
+           "[a, b, c]" 当字符串存进 data，uniqTags 拿到它直接 forEach 崩
+           （2026-11-15 gaode-map-pro 技能说明书报障）。这里拆成真数组。 */
+        data[key] = inline[1].split(',').map(function (s) { return unquote(s); }).filter(function (s) { return s !== ''; });
+      } else {
+        data[key] = val ? unquote(val) : [];
+      }
     });
     return { raw: m[0], data: data, order: order, unknown: unknown, body: src.slice(m[0].length), has: true };
   }
@@ -711,7 +731,9 @@ window.Archive = (function () {
   /* 标签去重（保留原顺序、大小写不敏感判重） */
   function uniqTags(list) {
     var seen = {}, out = [];
-    (list || []).forEach(function (t) {
+    /* 防御：list 可能是字符串（手写单值 / 历史数据），先归一成数组，避免 forEach 崩 */
+    var arr = Array.isArray(list) ? list : (list == null ? [] : [list]);
+    arr.forEach(function (t) {
       var v = String(t == null ? '' : t).trim().replace(/^#/, '');
       if (!v) return;
       var k = v.toLowerCase();
@@ -771,10 +793,13 @@ window.Archive = (function () {
     /* 记住「现在停在哪个档案页」：顶栏按钮靠它决定开哪棵树 */
     if (PAGES[page]) document.body.dataset.arcPage = page;
     else if (document.body.dataset.arcPage) { delete document.body.dataset.arcPage; }
-    if (!PAGES[page]) { closeRailDrawer(); return; }
+    if (!PAGES[page]) {
+      closeRailDrawer();
+      return;
+    }
     mount(page);
     var st = states[page];
-    if (st) { renderView(st); loadCatalog(page, false); syncRailButton(); }
+    if (st) { renderView(st); loadCatalog(page, false); ensureDoc(st); syncRailButton(); }
   });
   /* 挂载由 archive-boot.js 在脚本末尾同步触发：这样紧随其后的
      panel-library-reviews-ui.js 才能把「整理草稿」按钮塞进新建的页头。 */

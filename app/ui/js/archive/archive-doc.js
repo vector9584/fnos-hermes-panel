@@ -13,6 +13,8 @@ window.Archive.register('doc', (function () {
 
   var A = window.Archive;
   var state = { editing: false, saving: false, dirty: false, draftTimer: null };
+  /* resize 监听清理函数：换文档/换视图时摘掉，避免每个档案页累积一个 window 监听 */
+  var resizeOff = null;
 
   function kb(bytes) {
     if (!bytes) return '';
@@ -84,6 +86,7 @@ window.Archive.register('doc', (function () {
     pathLine.textContent = (source ? source.name + ' / ' : '') + (doc.path || '');
     pathLine.title = (source ? source.name + ' / ' : '') + (doc.path || '');
     var bigTitle = A.el('h2', fileName.replace(/\.(md|txt|json)$/i, '') || doc.path, 'arc-dh-title');
+    bigTitle.title = fileName.replace(/\.(md|txt|json)$/i, '') || doc.path;
 
     /* 标签行对齐案例 dh-meta：分类 badge + 「更新 X · N 行」一条元数据，不再铺体积/可编辑等
        散碎字段——那些叠在标题下就像一段「解释」，案例没有（2026-11-14 用户点名）。 */
@@ -114,6 +117,7 @@ window.Archive.register('doc', (function () {
     mainBox.append(pathLine, bigTitle, meta);
 
     var actions = A.el('div', null, 'arc-doc-actions');
+    /* 目录按钮已移除：目录只在 ≥1024 桌面右侧悬浮，移动端不显示目录（2026-11-15 用户定）。 */
     var editBtn = A.el('button', null, 'arc-btn');
     editBtn.type = 'button';
     editBtn.dataset.act = 'edit';
@@ -208,6 +212,36 @@ window.Archive.register('doc', (function () {
     wrap.append(head, body, foot);
     host.append(wrap);
 
+    /* ── 目录随窗口宽度动态重绘（2026-11-15 用户：不能只刷新才重绘）──
+       目录显示/隐藏取决于视口宽度（≥1024 右侧悬浮，<1024 不显示）。paintRead 只在
+       打开/切换文档时跑一次，窗口 resize 不会重算，所以抽一个 layoutOutline：
+       resize（防抖 120ms）只重挂目录、不重渲染正文，拖宽/拖窄窗口即时生效。 */
+    var outlineBox = null;   // 目录 aside 引用（resize 时即使已 remove 也能找回）
+    var outlineHas = false;  // 是否有章节
+    var resizeTimer = 0;
+
+    function layoutOutline() {
+      if (!outlineBox) return;
+      var wide = window.innerWidth >= 1024;
+      if (outlineHas && wide) {
+        if (!outlineBox.isConnected) st.nodes.shell.append(outlineBox);
+        var rect = head.getBoundingClientRect();
+        outlineBox.style.top = Math.max(16, Math.round(rect.bottom + 14)) + 'px';
+        st.nodes.shell.classList.remove('outline-open');
+      } else if (outlineBox.isConnected) {
+        outlineBox.remove();
+      }
+      body.classList.toggle('has-outline', outlineHas && wide);
+    }
+
+    function onResize() {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(layoutOutline, 120);
+    }
+    if (resizeOff) resizeOff();           // 换文档前摘掉上一个 render 挂的监听
+    window.addEventListener('resize', onResize);
+    resizeOff = function () { window.removeEventListener('resize', onResize); };
+
     paintRead();
     state.editing = false;
 
@@ -218,24 +252,25 @@ window.Archive.register('doc', (function () {
     function paintRead() {
       var outline = A.modules.md.paint(article, bodyText);
       A.modules.md.wireWiki(article, st, api);
-      var old = document.querySelector('.arc-outline');
-      /* 目录的 scroll-spy 监听挂在 .arc-main 上，换文档时必须摘掉，否则每开一篇就多一个滚动监听 */
+      var old = st.nodes.shell.querySelector('.arc-outline');
+      /* 目录的 scroll-spy 监听挂在 .arc-main 上，换文档时必须摘掉，否则每开一篇就多一个滚动监听。
+         只清当前档案页 shell 里的：三个档案页各有各的目录，全局 querySelector 会误删别页的。 */
       if (old) { if (old.__cleanup) old.__cleanup(); old.remove(); }
       var box = A.modules.md.mountOutline(article, outline, null);
       /* 目录是 fixed 挂在视口右侧的，会压到正文上。主区够宽才显示，
          同时给正文栏加 has-outline 把右侧留出来（实测 1440 下不留就是文字跑到目录底下）。 */
       /* 用视口宽度判，不用 main.clientWidth：三个档案页在 boot() 里全部挂载，
          非当前页是 display:none，clientWidth 读出来是 0，目录就永远不出现（2026-11-14 实测）。
-         面板左侧固定占用 456px：视口 ≥1600 时主区 ≥1144，正文能保住 880 再加目录 172；
-         1440 这种尺寸放不下两者，宁可不要目录也不压窄正文（案例本身在 1440 下目录是压字的）。 */
-      var wide = window.innerWidth >= 1600;
-      var shown = !box.hidden && wide;
-      if (shown) {
-        document.body.append(box);
-        var rect = head.getBoundingClientRect();
-        box.style.top = Math.max(16, Math.round(rect.bottom + 14)) + 'px';
-      }
-      body.classList.toggle('has-outline', shown);
+         面板左侧固定占用 456px，has-outline 给正文右留 212px 目录位：视口 ≥1024 时正文
+         仍有 ≥316px 可读；<1024（手机/平板竖屏）不显示目录、正文全宽。早先 1600 阈值把
+         1200~1600 的窄窗口目录也砍没了（用户报「窄窗口目录消失」），且窄窗口不能把
+         右侧悬浮透明目录换成遮罩抽屉——2026-11-15 用户定：PC 恢复右侧悬浮透明、移动端干脆不显示。 */
+      /* 目录挂在档案页自己的 shell 容器里（不是 document.body）：档案页切走时
+         .page 的 display:none 会把目录一起藏掉，不往全局 body 写元素，也不会
+         切到对话页/任务方案页时浮出「幽灵目录」（2026-11-15 用户报的根因）。 */
+      outlineBox = box;
+      outlineHas = !box.hidden;
+      layoutOutline();
       controls();
     }
     function controls() {
@@ -284,7 +319,7 @@ window.Archive.register('doc', (function () {
       if (!doc.editable) return;
       state.editing = !state.editing;
       article.hidden = state.editing;
-      var box = document.querySelector('.arc-outline');
+      var box = st.nodes.shell.querySelector('.arc-outline');
       if (box) box.hidden = state.editing;
       if (state.editing) body.classList.remove('has-outline');
       editor.hidden = !state.editing;
@@ -469,5 +504,10 @@ window.Archive.register('doc', (function () {
     return A.fm.split(doc.content || '').body;
   }
 
-  return { render: render, save: save, toggleEdit: toggleEdit, error: error, beforeLeave: beforeLeave, bodyNow: bodyNow };
+  /* 切视图时核心层会调 unmount：摘掉 window resize 监听，避免档案页切走后监听还在跑 */
+  function unmount() {
+    if (resizeOff) { resizeOff(); resizeOff = null; }
+  }
+
+  return { render: render, save: save, toggleEdit: toggleEdit, error: error, beforeLeave: beforeLeave, bodyNow: bodyNow, unmount: unmount };
 })());

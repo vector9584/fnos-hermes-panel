@@ -354,15 +354,18 @@ async function runRoomMember(rid, member, text, system, model, provider, session
     pushRoomMsg(rid, { ts: _mts, kind: "assistant", from: member.key, label, text: full || "(无文本输出)" });
     broadcastRoom(rid, { type: "done", key: member.key, label, text: full, ts: _mts });
     // 每日记忆：对话完成后自动记录当日摘要（memory/YYYY-MM-DD.md）
+    // 成员无文本输出（full 为空）时不落盘——否则只写一行标题就产生空文件（如 2026-11-04.md 的 46 字节幽灵日志）
     try {
-      const _d = new Date();
-      const _ymd = _d.getFullYear() + "-" + ("0" + (_d.getMonth() + 1)).slice(-2) + "-" + ("0" + _d.getDate()).slice(-2);
-      const _mf = `${DATA_DIR}/memory/${_ymd}.md`;
-      if (!existsSync(`${DATA_DIR}/memory`)) mkdirSync(`${DATA_DIR}/memory`, { recursive: true });
-      const _time = ("0" + _d.getHours()).slice(-2) + ":" + ("0" + _d.getMinutes()).slice(-2);
-      const _entry = "\n## " + _time + " · " + (member.label || member.key) + "\n" + String(full || "").slice(0, 200) + "\n";
-      if (!existsSync(_mf)) writeFileSync(_mf, "# " + _ymd + "（每日记忆，自动记录）\n");
-      appendFileSync(_mf, _entry);
+      if (String(full || "").trim()) {
+        const _d = new Date();
+        const _ymd = _d.getFullYear() + "-" + ("0" + (_d.getMonth() + 1)).slice(-2) + "-" + ("0" + _d.getDate()).slice(-2);
+        const _mf = `${DATA_DIR}/memory/${_ymd}.md`;
+        if (!existsSync(`${DATA_DIR}/memory`)) mkdirSync(`${DATA_DIR}/memory`, { recursive: true });
+        const _time = ("0" + _d.getHours()).slice(-2) + ":" + ("0" + _d.getMinutes()).slice(-2);
+        const _entry = "\n## " + _time + " · " + (member.label || member.key) + "\n" + String(full || "").slice(0, 200) + "\n";
+        if (!existsSync(_mf)) writeFileSync(_mf, "# " + _ymd + "（每日记忆，自动记录）\n");
+        appendFileSync(_mf, _entry);
+      }
     } catch (e) {}
     // AI 自主接力（DGA）：成员发言完成后自动驱动主持人选下一位（幂等，链锁在 _kickRoomChain 内）
     try {

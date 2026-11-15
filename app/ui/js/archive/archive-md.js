@@ -200,7 +200,10 @@ window.Archive.register('md', (function () {
     var box = document.createElement('aside');
     box.className = 'arc-outline';
     box.setAttribute('aria-label', '目录');
-    if (!items.length) { box.hidden = true; return box; }
+    /* 目录只导章节：光有文档标题（h1）没有章节（h2/h3）时没有导航价值，直接隐藏。
+       否则空日志（比如只有一行「# 2026-11-04（每日记忆，自动记录）」、46 字节的空文件）
+       也会挂出一个只印着标题的「幽灵目录」，浮在页面上不消失。 */
+    if (!items.some(function (i) { return i.level >= 2; })) { box.hidden = true; return box; }
     var title = document.createElement('p');
     title.className = 'arc-outline-title';
     title.append(document.createTextNode('目录'));
