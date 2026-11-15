@@ -324,7 +324,10 @@
         render();
         return out;
       } catch (error) {
-        if (error.status === 409 && attempt === 0) {
+        // 409 有两种：revision 冲突（配置在别处改过）→ 自动重试一次；
+        // 业务校验（如「此服务仍用于回退路线」）→ 直接展示后端原因，不能误报成版本冲突。
+        var revisionConflict = error.status === 409 && /已被其他页面修改/.test(error.message || '');
+        if (revisionConflict && attempt === 0) {
           attempt++;
           await load();
           body = Object.assign({}, body, { revision: revisionFor(body.action) });
@@ -332,7 +335,7 @@
           continue;
         }
         if (error.status === 409) {
-          toast('配置连续被改动，已刷新', '请再点一次', 'bad');
+          toast('未保存', error.message, 'bad');
           await load();
           render();
           return null;
