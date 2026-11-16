@@ -501,6 +501,7 @@ function openChannelSession(chId, sessionId){
   var rb = document.getElementById('chReturnBtn'); if(rb) rb.style.display='inline-flex';
   // 切换到聊天页
   switchPage('chat');
+  closeRailIfMobile();
   // 更新标题
   var titleEl = document.getElementById('chatTitle');
   var subEl = document.getElementById('chatSubtitle');
@@ -546,7 +547,7 @@ function toggleAgent(id){
 function switchSession(aid, sid, e){
   if(e) e.stopPropagation();
   openTab(sid);
-  if(window.innerWidth<=768) closeRailDrawer();
+  closeRailIfMobile();
 }
 /* profilefix v4：agent 分组概念已移除（会话树单一平铺），deleteAgentGroup 不再需要 */
 async function delSession(sid, e){
@@ -597,6 +598,13 @@ async function delChannelSession(chId, sid, e){
  * 不用 ondblclick：openTab() 里 renderRail() 会重建列表 DOM，双击第二下落在新节点上，
  * 事件配不成一对（实测 dblclick 不触发）。 */
 var _railLastClick = { sid: null, t: 0 };
+/* 移动端：会话既然已经开出来了，会话树抽屉还挡着就是纯碍事（2026-11-17 用户）。
+ * 原来只有 switchSession 那条老路径关了抽屉，railSessionClick（现在的会话列表项）
+ * 和 openChannelSession（通道会话）两条新路径都漏了 —— 同一个动作散成三条路径、
+ * 只堵了一条，用户点了半天列表还杵在那儿。统一收到这里。 */
+function closeRailIfMobile(){
+  if(window.innerWidth<=768 && typeof closeRailDrawer==='function') closeRailDrawer();
+}
 function railSessionClick(sid, e){
   if(e && e.stopPropagation) e.stopPropagation();
   var now = Date.now();
@@ -606,6 +614,7 @@ function railSessionClick(sid, e){
   }
   _railLastClick.sid = sid; _railLastClick.t = now;
   openTab(sid);
+  closeRailIfMobile();
 }
 function renameSession(sid, e){
   if(e && e.stopPropagation) e.stopPropagation();
@@ -1582,6 +1591,21 @@ function watchComposerHeight(){
   var apply=function(){
     var h=wrap.offsetHeight||0;
     if(!h) return;                       /* 画板/隐藏态读到 0，跳过别把留白写成 0 */
+    /* 2026-11-17：能力 chip 挂在输入框外的 .input-outer 里、绝对定位贴在框上沿，
+       不属于 #chatComposer 的子节点（原写法 wrap.querySelector 永远是 null），
+       也不算进 offsetHeight，于是留白少了整整一行，最后一条气泡里的按钮被 chip 盖住。
+       直接量「chip 顶端 → 输入框底端」的真实跨度，比累加各自高度准（还含中间的间距）。 */
+    var chips=document.getElementById('capabilityChips');
+    if(!chips||!chips.offsetHeight){
+      chips=null;
+      var allChips=document.querySelectorAll('.skill-chips');
+      for(var ci=0;ci<allChips.length;ci++){ if(allChips[ci].offsetHeight){ chips=allChips[ci]; break; } }
+    }
+    if(chips){
+      var cr=chips.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+      var span=Math.round(wr.bottom-cr.top);
+      if(span>h) h=span;
+    }
     var cur=document.documentElement.style.getPropertyValue('--composer-h');
     if(cur===h+'px') return;
     document.documentElement.style.setProperty('--composer-h',h+'px');
@@ -1590,6 +1614,9 @@ function watchComposerHeight(){
   };
   if(window.ResizeObserver) new ResizeObserver(apply).observe(wrap);
   window.addEventListener('resize',apply);
+  /* chip 是绝对定位、重建在 #capabilityChips 里，不会改变上面的 wrap 高度，
+     ResizeObserver 收不到通知 —— 必须由 renderChips() 反过来喊一声。 */
+  window.__recalcComposerH=apply;
   apply();
 }
 

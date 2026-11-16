@@ -2,7 +2,7 @@
 
 改一个东西该看哪个文件，看这一页就够了。不用再翻 index.html。
 
-> 2026-11-13 重组：index.html 从 658KB 降到 71KB。原来 470KB 主逻辑是一个内联 `<script>` 块（557 个函数），
+> 2026-11-13 重组：index.html 从 658KB 降到 65KB。原来 470KB 主逻辑是一个内联 `<script>` 块（557 个函数），
 > 现在按原分区搬到 `js/core/`、`js/chat/`、`js/panels/`，**源码逐字节等价**，不是重写。
 > 验证：全局符号 638 个函数 + 314 个对象零差异；禁动画后 1440×1000 与 390×844 截图差异 **0 像素**。
 
@@ -12,14 +12,14 @@
 ui/
 ├── index.html          71KB，只剩静态 HTML 骨架 + 资源清单（不再有业务逻辑）
 ├── css/
-│   ├── base.css        ★ 主样式表 1076 条规则（原 index.html 第 17 行的 134KB 内联 <style>）
+│   ├── base.css        ★ 主样式表 1341 条规则（原 index.html 第 17 行的 134KB 内联 <style>）
 │   ├── ui-kit.css      组件层样式（配合 js/core/ui-kit.js）
 │   └── panel-*.css     各面板自己的样式，按名字对号入座
 └── js/
     ├── core/           基础设施。别的层都依赖它，它不依赖任何业务代码
     ├── chat/           对话相关（标签页、输入、消息、圆桌、新建弹窗）
     ├── panels/         各个面板页
-    └── panel-*.js      历史遗留的散布模块（38 个，见文末）
+    └── panel-*.js      历史遗留的散布模块（34 个，见文末）
 ```
 
 ## 我要改 X，看哪个文件
@@ -116,9 +116,12 @@ ui.table({ columns: [{ key:'a', title:'列A' }], rows: [...] });
 
 **新写面板一律用 `ui.*`，不要手拼 `<div class="modal-…">` 字符串，不要用原生 `confirm()` / `alert()`。**
 
-现状（2026-11-13 仍需收敛）：原生 `confirm()` 23 处、`alert()` 5 处，分布在 14 个 `panel-*-ui.js`。
-`ui.*` 已被调用 29 次，但这 23+5 处还没换——换的时候注意 `confirm()` 是同步阻塞，`await ui.confirm()` 是异步，
-所在函数必须加 `async`。
+现状（2026-11-17 实测）：原生 `window.confirm()` 只剩 **3 处**（`panel-cron-hooks-ui.js:33`、
+`panel-cron-editor.js:173` 与 `:180`，都是「丢弃未保存草稿」的二选一），`alert()` 剩 **1 处**
+（`fusion-v030.js`）。11-13 时是 23 + 5 处、散布 14 个文件，这三个月换掉了绝大部分。
+
+`ui.modal/confirm/toast` 已被调用 **47 次**。换剩下的几处时注意：`confirm()` 是同步阻塞，
+`await ui.confirm()` 是异步，所在函数必须加 `async`。
 
 ## 三个必踩的坑
 
@@ -141,7 +144,7 @@ Python 先截断文件再求值，右侧一抛异常文件就永久变空。先�
 4. 在 `index.html` 的 `js/panels/` 段末尾加 `<script src="js/panels/<名字>.js?v=<md5前8位>"></script>`
 5. 同步源码仓 `data/workspace/fnos-hermes-agent-src/ui/`，两边必须逐字节一致
 
-## 历史遗留：`js/panel-*.js`（38 个）
+## 历史遗留：`js/panel-*.js`（34 个）
 
 这批是 2026-11 之前陆续加的独立模块，没有被并入三层结构。功能都在用，但职责重叠：
 `panel-models-ui.js`(42KB) 与 `js/panels/models.js`(5KB)、`panel-workspace-ui.js`(66KB) 与 `js/panels/workspace.js`(6KB)

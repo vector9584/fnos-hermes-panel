@@ -62,7 +62,7 @@ var CanvasMode = (function () {
     if (!S.sid) return;
     try {
       var data = {
-        version: 2,
+        version: 3,
         view: S.view,
         order: S.order,
         nodes: S.order.map(function (id) {
@@ -171,8 +171,10 @@ var CanvasMode = (function () {
       e.onclick = function (ev) {
         ev.stopPropagation();
         openComposer(n.id);
-        /* 点一下就把「这张图是用什么提示词生成的」摆出来（用户 2026-11-17 第 2 条）。
-           以前只有 hover 才有，触屏设备永远看不到；点选和出提示词是同一个动作，不冲突。 */
+        /* 点图把提示词浮层钉出来（2026-11-17 用户第 5 条：「点击图片之后顶上的那个
+           悬浮提示词框怎么没了，那个要有啊」）。上一轮我把它当成要删的东西，删错了 ——
+           要删的是图中间那块 text 节点、和输入框上面那条引用条，浮层本身是用户要看的东西。
+           触屏没法 hover，所以点一下就钉住，点空白或点别的图才换/收。 */
         _tipPinned = true;
         showPromptTip(n, e);
       };
@@ -321,6 +323,9 @@ var CanvasMode = (function () {
      以此建立连线关系」。所以画板连线不能只是内部 parentId —— 它得跟普通聊天
      走同一套引用链路：输入框上方出现引用条 → 发出去的气泡带引用块 → 模型收到的
      message 里带【引用上下文】。连线跟着这条引用走，会话里一眼看得见基于哪张图。 */
+  /* 图号辅助函数 imgLabel() 已删除（2026-11-17）：引用条不显示了，
+     它唯一的使用者就是「引用: 图 N」那行，留着是死代码。 */
+
   function quoteAnchorNode(n) {
     var f = promptFacts(n);
     var txt = '';
@@ -338,8 +343,13 @@ var CanvasMode = (function () {
     var pv = document.getElementById('quotePreview');
     var pt = document.getElementById('quotePreviewText');
     if (pv && pt) {
-      pt.textContent = '引用: ' + (txt.length > 80 ? txt.slice(0, 80) + '…' : txt);
-      pv.classList.add('show');
+      /* 引用条不再弹（2026-11-17 用户第 3 条：「现在点击图片后输入框上面还会有一个提示框，
+         是不是有bug…删掉那个提示」）。它确实是点图的副产物，但和节点发光、placeholder 换字
+         三重反馈叠在一起，而且贴输入框最显眼的那条恰恰最没用。
+         window._currentQuote 照旧写满整段「[图片] 提示词：…」—— 发给后端靠它认父，
+         refFromCtx 一个字都不能少；只是屏幕上不再有那条文字。 */
+      pt.textContent = '';
+      pv.classList.remove('show');
     }
   }
 
@@ -360,6 +370,9 @@ var CanvasMode = (function () {
   }
 
   function hidePromptTip() {
+    /* 收起时一并解除钉住（2026-11-17）：点图钉住的浮层要靠点空白/切视图收回，
+       否则它就一直挂在画布上，换会话回来还在。 */
+    _tipPinned = false;
     var t = document.getElementById('cvPromptTip');
     if (t) t.classList.add('cv-hidden');
   }
@@ -367,12 +380,11 @@ var CanvasMode = (function () {
   /* 悬停 220ms 才弹、移出 140ms 才收：
      鼠标只是划过图片时不该闪一下，但真停下来看就别让人等。 */
   var _tipIn = null, _tipOut = null;
-  /* 点开之后就"钉住"，鼠标移开不自动收（2026-11-17）：点图是主动查询，
-     手指/鼠标一移开浮层就消失等于没给看。再点空白处或点别的图才换内容。 */
+  /* 钉住的意思：点过图之后浮层不跟鼠标走，一直留着（触屏根本没法 hover）。
+     恢复于 2026-11-17 用户第 5 条 —— 上一轮删掉是误判。 */
   var _tipPinned = false;
   function bindPromptTip(n, el) {
     el.addEventListener('mouseenter', function () {
-      if (_tipPinned) return;
       clearTimeout(_tipOut);
       _tipIn = setTimeout(function () { showPromptTip(n, el); }, 220);
     });
@@ -657,7 +669,6 @@ var CanvasMode = (function () {
       closeComposer();
       /* 点空白处收掉提示词浮层并解除钉住（2026-11-17）：浮层是 fixed 挂在 body 上，
          画布一动它不会跟着走，留着就飘在别的图上面，看着像标错了对象。 */
-      _tipPinned = false;
       hidePromptTip();
     });
   }
@@ -768,7 +779,6 @@ var CanvasMode = (function () {
     unquoteComposer();
     /* 引用断了，浮层也该跟着收（它显示的是「哪张图的提示词」，
        选中都取消了还留着，用户会以为下一句还接在那张图上）。 */
-    _tipPinned = false;
     hidePromptTip();
     var ta = document.getElementById('chatInput');
     if (ta) ta.placeholder = '输入消息…';
@@ -1023,28 +1033,26 @@ var CanvasMode = (function () {
     var parent = parentId ? S.nodes[parentId] : null;
     if (parentId && !parent) return;
 
-    // 1. 把用户这句话变成一个节点。有引用挂在来源下面，没引用就自己起一条新链
+    /* 1. 不再把用户这句话造成画布节点（2026-11-17 用户第 4 条原话：
+       「引用图片导致提示词也变成了元素建到了图里」—— 要删的就是这一处）。
+       原来这里建一个 kind:'text' 的节点显示「提示 / 改成黑猫」，用户指着截图说
+       「两个图中间有提示词元素是真的…你把那个给我找回来」时我先误判成悬停浮层，
+       实际是这个实打实的画布节点。连线只该表达「谁派生自谁」，提示词放浮层里看，
+       不该在图之间插一块方框占位。
+       提示词本身一个字都没丢：下面照样写进 pend.injected，浮层和认父都靠它。 */
     var pos = parent ? placeChild(parentId) : freeSpot();
-    var textNode = addNode({
-      kind: 'text', x: pos.x, y: pos.y, parentId: parentId || '',
-      refId: parentId || '',
-      text: text || (parent ? '（基于图片）' : '（新话题）')
-    });
-
-    // 2. 生成中的占位节点接着往下排
-    var ts = nodeSize(textNode);
     var pend = addNode({
       kind: 'pending',
-      x: textNode.x + Math.max(0, (ts.w - 200) / 2),
-      y: textNode.y + ts.h + 76,
-      parentId: textNode.id,
-      /* 凭据记在被引用的那张图上，不是记在中间的提示词节点上（2026-11-17）：
-         占位节点后来 setNodeKind 变成 image，它才是画布上那张图，
-         分支判断看它有没有真的引用过谁。没引用 → 空 → 迁移/重排时它就是根。 */
+      x: pos.x,
+      y: pos.y,
+      parentId: parentId || '',
+      /* 凭据记在这张图上（2026-11-17）：占位节点后来 setNodeKind 变成 image，
+         它才是画布上那张图，分支判断看它有没有真的引用过谁。
+         没引用 → 空 → 迁移/重排时它就是根。 */
       refId: parentId || ''
     });
     setLinkLive(pend.id, true);
-    S.activeParent = textNode.id;
+    S.activeParent = parentId || '';
     S.busy = true;
 
     // 3. 交给原来的发送链路，一个字符都不改
@@ -1059,10 +1067,9 @@ var CanvasMode = (function () {
                (target ? '生图目标：' + target + '。' : '') +
                '提示词：' + (text || '基于上面这张图继续');
     ta.value = injected;
-    textNode.injected = injected;
-    /* 占位节点也接一份（2026-11-17）：图出来时占位节点被 setNodeKind 改成 image，
-       injected 只写在父级文字节点上的话就得靠 promptFacts 往父链爬 —— 父链一断
-       （回填、换会话、手删节点）提示词当场变「老节点」。冗余一份最稳。 */
+    /* 提示词只落在占位节点上（2026-11-17）：中间那个 text 节点已经删了，
+       它是唯一另一处副本。pend 出图时被 setNodeKind 改成 image，injected 跟着走，
+       浮层显示和 refFromCtx 认父都读它。 */
     pend.injected = injected;
 
     // 4. 父节点若带图片，把它塞回附件列表（无引用时 parent 是 null）
@@ -1088,6 +1095,19 @@ var CanvasMode = (function () {
      那份【画板生图】注入文）。回填时把它写进节点 injected —— 不回填的话，
      画布上重建出来的图一个提示词都没有，点图弹出来的引用只能是光秃秃的
      「[图片]」，用户 2026-11-17 问的「提示词怎么是老节点」就是这条路径。 */
+  /* 图片去重键（2026-11-17 实测根因）──────────────────────────────
+     同一张图在不同消息里会渲染成两种路径：
+       /app/hermes-agent/data/assets/generated/custom_x.png   （磁盘上真有）
+       /app/hermes-agent/data/assets/custom_x.png             （少一层，404）
+     按完整 src 排重等于把同一张图算成两张，画布上就多出一个裂图节点，
+     还和好节点挤在同一层 —— 用户报「最后多了一个节点和铅笔画平级，图是裂的」。
+     键只取文件名：时间戳 + hash 已经是唯一的，目录不参与比较。 */
+  function imgKey(src) {
+    if (!src) return '';
+    var t = String(src).split('?')[0].split('#')[0];
+    return t.substring(t.lastIndexOf('/') + 1) || t;
+  }
+
   function extractImages(root) {
     var out = [];
     var scopes = root.querySelectorAll('.msg');
@@ -1099,6 +1119,16 @@ var CanvasMode = (function () {
       try {
         ctx = msg.getAttribute('data-content') || '';
         if (!ctx) { var md = msg.querySelector('.md-text'); ctx = md ? (md.textContent || '') : ''; }
+        /* 引用块被 tabs.js 拆成独立的 .quote-block 渲染（tabs.js:1187），
+           data-content 里只剩【用户追问】之后那段正文。
+           不把它拼回去，refFromCtx 就永远找不到【引用上下文】——
+           实测代价：__canvas_probe__ 回填出 10 张图全是散装根、0 条连线。
+           这里按服务端存的原始格式还原，后面认父才有一致的输入。 */
+        var qb = msg.querySelector('.quote-block');
+        if (qb) {
+          var qt = (qb.textContent || '').replace(/^\s*引用\s*/, '').trim();
+          if (qt) ctx = '【引用上下文】\n' + qt + '\n\n【用户追问】\n' + ctx;
+        }
       } catch (e) { ctx = ''; }
       /* 图在 assistant 的气泡里，提示词却在**上一条** user 消息里。
          直接拿本条的 data-content 会得到整段助手回复（含 markdown 链接、
@@ -1111,7 +1141,15 @@ var CanvasMode = (function () {
     for (var i = 0; i < imgs.length; i++) {
       var src = imgs[i].getAttribute('src') || '';
       if (!src) continue;
-      if (S.seenImgs[src]) continue;
+      /* 生图产物的唯一存放位置是 /data/assets/generated/（2026-11-17 磁盘实测）。
+         但消息里同一张图有时渲染成 /data/assets/custom_xxx.png —— 少一层 generated，
+         浏览器 403，按它建节点就是一个裂图块，还和正常那张挤在同一层。
+         文件名是 custom_<model>_<时间戳>_<hash>.png，补回 generated/ 就是真实位置。
+         （正常路径 assets/generated/custom_… 不会被这条正则命中。） */
+      src = src.replace(/\/data\/assets\/(custom_[^\/]+\.(?:png|jpe?g|webp))(\?|$)/i,
+                        '/data/assets/generated/$1$2');
+      var _k = imgKey(src);
+      if (S.seenImgs[_k]) continue;
       /* 认两类产物（2026-11-16 实测）：
          上传件在 /uploads/；生图结果落在 /app/hermes-agent/data/tmp/ 这类路径，
          原来只认 /uploads/，生成图一个都接不上。头像/表情/图标一律排掉。 */
@@ -1121,7 +1159,7 @@ var CanvasMode = (function () {
       var isInline = /^data:image\//.test(src);
       if (!(isUpload || isGen || isInline)) continue;
       if (/avatar|emoji|icon/i.test(src)) continue;
-      S.seenImgs[src] = true;
+      S.seenImgs[_k] = true;
       out.push({ src: src, ctx: (ctx || '').slice(0, 800) });
     }
     }
@@ -1184,11 +1222,35 @@ var CanvasMode = (function () {
        那是内存态，刷新就清空 —— 每次进画板都会把历史图再挂一遍，
        变成一摞重复节点。改成按 url 查真实节点。 */
     var alive = {};
-    S.order.forEach(function (id) { if (S.nodes[id] && S.nodes[id].url) alive[S.nodes[id].url] = id; });
+    S.order.forEach(function (id) {
+      if (!S.nodes[id] || !S.nodes[id].url) return;
+      var k = imgKey(S.nodes[id].url);
+      /* 同键已在册就留着先出现的那个（通常是路径正确的），
+         后面那个裂图节点不再登记，也不参与建节点。 */
+      if (!alive[k]) alive[k] = id;
+    });
     var lastId = S.order.length ? S.order[S.order.length - 1] : '';
+
+    /* 同一张图的两条路径先归并（2026-11-17 实测）────────────────────
+       消息里同一个文件会渲染出两份 src：
+         /app/hermes-agent/data/assets/generated/custom_x.png   磁盘上真有
+         /app/hermes-agent/data/assets/custom_x.png             少一层，403
+       直接遍历就建两个节点：一个能显示、一个裂，两个还挂在同一父下平级 ——
+       用户原话「最后多了一个节点和配了插图的铅笔画平级，但是图是裂的」。
+       按 imgKey 分组，优先留带 /generated/ 的那条。 */
+    var byKey = {};
+    srcs.forEach(function (item) {
+      var k = imgKey(item.src);
+      var cur = byKey[k];
+      if (!cur) { byKey[k] = item; return; }
+      if (/\/generated\//.test(item.src) && !/\/generated\//.test(cur.src)) byKey[k] = item;
+    });
+    srcs = Object.keys(byKey).map(function (k) { return byKey[k]; });
+
     srcs.forEach(function (item) {
       var src = item.src, ctx = item.ctx || '';
-      if (alive[src]) { lastId = alive[src]; return; }
+      var key = imgKey(src);
+      if (alive[key]) { lastId = alive[key]; return; }
       // 有占位节点就把它变成图，没有就新建
       var pendId = Object.keys(S.nodes).filter(function (id) { return S.nodes[id].kind === 'pending'; })[0];
       if (pendId) {
@@ -1196,7 +1258,7 @@ var CanvasMode = (function () {
         setNodeKind(p, 'image', { url: src });
         setLinkLive(p.id, false);
         lastId = p.id;
-        alive[src] = p.id;
+        alive[key] = p.id;
       } else {
         /* 父节点怎么定（2026-11-17 重写）：
            回填历史时按消息里的引用证据认父（refFromCtx），
@@ -1215,7 +1277,7 @@ var CanvasMode = (function () {
         var parent = refId;
         var pos = parent ? placeChild(parent) : freeSpot();
         var n = addNode({ kind: 'image', x: pos.x, y: pos.y, parentId: parent, refId: refId, url: src, injected: ctx });
-        if (n && n.id) { lastId = n.id; alive[src] = n.id; }
+        if (n && n.id) { lastId = n.id; alive[key] = n.id; }
       }
     });
     S.busy = false;
@@ -1245,13 +1307,12 @@ var CanvasMode = (function () {
     if (cur && S.sid && cur !== S.sid) return 0;
     var before = S.order.length;
     var imgs = extractImages(body);
-    /* 回填不再按「出现顺序」串链（2026-11-17）。原来传 {chain:true} 是用
-       「上一张图」当父节点硬串，等于凭空中继出一条到底的线 —— 用户看到的
-       「还是一条线」有一半是这里每次进画板重新造出来的，迁 localStorage 也治不掉。
-       历史消息里判断不出用户当时有没有真引用某张图（引用块在 user 消息、
-       图在 assistant 消息，跨条且不可靠对齐），那就按他的规矩办：
-       没有引用凭据就不连线，一律落成独立根。 */
-    if (imgs.length) attachNewImages(imgs, {});
+    /* 回填必须传 chain:true（2026-11-17 修正）。
+       chain 的语义已经换了：以前是「按出现顺序接上一张图」硬串一条线，
+       现在是把 ctx 交给 refFromCtx，**只认消息里的引用证据**认父；
+       没有证据就落成独立根。所以传 true 不会再造长链，反而是唯一能
+       还原分支的路径。传 {} 会走 live（本期没点任何图 → 空）→ 全散成根。 */
+    if (imgs.length) attachNewImages(imgs, { chain: true });
     return S.order.length - before;
   }
 
@@ -1722,17 +1783,86 @@ var CanvasMode = (function () {
        幂等：版本号抬到 2 并立刻回写，第二次进来就走新口径，不会反复断。
        断开只是不再连线，节点、坐标、图、提示词一个都不删。 */
     var legacy = (saved.version || 1) < 2;
+
+    /* ── 拆掉提示词节点（2026-11-17 用户第 6 条）─────────────────────
+       原话：「引用图片导致提示词也变成了元素建到了图里」。
+       旧代码 sendFrom() 里无条件 addNode({kind:'text'})，于是每发一句就在两张图
+       中间插一个写着「提示 / 改成黑猫」的方框，pending 再挂在它下面。
+       现在这个创建点已经删了，但老存档里那些节点还在 —— 用户打开老画板看到的
+       就是截图里两块方框夹一张图。这里把它们拆掉，子节点直接提到祖父上：
+       白猫 →(text)→ 黑猫  收成  白猫 → 黑猫，连线不断。
+       提示词不丢：老 image 节点常常自己没存 injected，提示词只写在 text 节点上，
+       拆之前先把它捞到子节点身上。 */
+    var byId = {};
+    saved.nodes.forEach(function (sn) { byId[sn.id] = sn; });
+    var textIds = {};
+    var dropped = 0;
     saved.nodes.forEach(function (sn) {
-      var ref = sn.refId || '';
+      if (sn.kind === 'text') { textIds[sn.id] = true; dropped++; }
+    });
+    function liftParent(pid) {
+      var guard = 0;
+      while (pid && textIds[pid] && guard++ < 50) {
+        var t = byId[pid];
+        pid = (t && t.parentId) || '';
+      }
+      return pid || '';
+    }
+    /* ── 同图两路径：合并成一个节点（2026-11-17）────────────────────
+       老存档里已经躺着成对的「同一张图两路径」节点：一个 /assets/generated/x.png
+       能显示，一个 /assets/x.png 是 404 裂图，两个还挂在同一父下平级。
+       用户看到的就是「多了一个节点，图是裂的」。这里按 imgKey 认同一张图，
+       优先留路径带 /generated/ 的那个，另一个记进 dupMap：不建节点，
+       指向它的 parentId/refId 一律改指保留者。 */
+    var keyOwner = {}, dupMap = {};
+    saved.nodes.forEach(function (sn) {
+      if (sn.kind !== 'image' || !sn.url) return;
+      var k = imgKey(sn.url);
+      var cur = keyOwner[k];
+      if (!cur) { keyOwner[k] = sn; return; }
+      var snGood = /\/generated\//.test(sn.url), curGood = /\/generated\//.test(cur.url);
+      var better = (snGood && !curGood) ? sn : cur;
+      var worse = (better === sn) ? cur : sn;
+      keyOwner[k] = better;
+      dupMap[worse.id] = better.id;
+    });
+    function resolveDup(id) {
+      var guard = 0;
+      while (id && dupMap[id] && guard++ < 20) id = dupMap[id];
+      return id || '';
+    }
+    function inheritInjected(sn) {
+      var inj = sn.injected || '';
+      var p = byId[sn.parentId];
+      var guard = 0;
+      while (!inj && p && p.kind === 'text' && guard++ < 50) {
+        inj = p.injected || '';
+        p = byId[p.parentId];
+      }
+      return inj;
+    }
+
+    saved.nodes.forEach(function (sn) {
+      if (textIds[sn.id]) return;
+      if (dupMap[sn.id]) return;            // 同图的裂图副本，丢掉
+      var pid = resolveDup(liftParent(sn.parentId));
+      var ref = resolveDup(liftParent(sn.refId || ''));
       addNode({
         id: sn.id, kind: sn.kind, x: sn.x, y: sn.y,
-        parentId: (legacy && !ref) ? '' : (sn.parentId || ''),
+        parentId: (legacy && !ref) ? '' : pid,
         refId: ref,
-        url: sn.url, text: sn.text, injected: sn.injected
+        url: sn.url, text: sn.text, injected: inheritInjected(sn)
       });
     });
-    if (saved.view) { S.view = saved.view; applyView(); }
-    if (legacy) save();
+    /* 只有对象才是视口（2026-11-17 实测踩到）：S.view 是 {x,y,k}，
+       存档里若混进 'canvas' 这种字符串，centerOn 会往字符串上写 .x 直接抛错，
+       进画板当场白屏。类型不对就丢掉，用默认视口。 */
+    if (saved.view && typeof saved.view === 'object' && !Array.isArray(saved.view)) {
+      S.view = saved.view; applyView();
+    }
+    /* 版本抬到 3：拆过提示词节点的存档不用再走一遍；老存档则必须回写，
+       否则下次打开又按老的 version 判断重复迁移。 */
+    if (legacy || dropped || Object.keys(dupMap).length) save();
     return true;
   }
 

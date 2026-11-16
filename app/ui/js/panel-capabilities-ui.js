@@ -172,7 +172,11 @@
       return it.id === 'web' ? !webNetOn() : isOn(it.id);
     });
     host.replaceChildren();
-    if (!items.length) { host.style.display = 'none'; return; }
+    if (!items.length) {
+      host.style.display = 'none';
+      if (typeof window.__recalcComposerH === 'function') window.__recalcComposerH();
+      return;
+    }
     host.style.display = 'flex';
     /* 联网关掉时排第一，因为它是唯一真拦人的那条，别让人漏看 */
     items.sort(function (a, b) { return (a.id === 'web' ? -1 : 0) - (b.id === 'web' ? -1 : 0); });
@@ -186,6 +190,9 @@
       chip.setAttribute('data-cap', it.id);
       host.appendChild(chip);
     });
+    /* chip 高度要算进消息区留白，否则会压住最后一条气泡里的按钮。
+       chip 是绝对定位，撑不动父节点，只能重建完主动叫一次重算。 */
+    if (typeof window.__recalcComposerH === 'function') window.__recalcComposerH();
   }
 
   /* 直接打 /api/panel-models，不依赖 M.api —— M 是模型页的对象，它在脚本末尾

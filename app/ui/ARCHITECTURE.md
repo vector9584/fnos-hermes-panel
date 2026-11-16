@@ -23,13 +23,14 @@
 
 ---
 
-### 0.2 业务架构：八个板块 → 22 个页面 → 属主文件
+### 0.2 业务架构：八个板块 → 21 个页面 → 属主文件
 
-> 数字以 `js/panel-navigation.js` 的 `groups` 数组为准（2026-11-13 复核：
-> 8 组 22 页，与下表 22 行一致）。此前这里写 21，是没有把「资料」板块的
-> `assistant` 助手页算进去。
+> 数字以 `js/panel-navigation.js` 的 `groups` 数组为准（2026-11-17 复核：
+> **8 组 21 页**，与下表 21 行一致）。11-13 时是 22 页——模型板块那会儿有八个分区；
+> 11-15 收成六个域，最终落成五个真页面（概览／模型选择／服务商／能力后端／配置），
+> 全站因此从 22 回落到 21。
 
-> DOM 里有 25 个 `#page-*` 容器，可导航页面 22 个，其余 3 个是**非导航容器**（见下表）。
+> DOM 里有 23 个 `#page-*` 容器，可导航页面 21 个，其余 2 个是**非导航容器**（见下表）。
 > 2026-11-13 之前 `plans` 由 `panel-plans-ui.js` 运行时 `createElement` 造出来，现已改成静态容器。
 > **现在没有任何页面是 JS 注入的。**
 
@@ -57,9 +58,11 @@
 
 **非导航容器登记表**（锚点定位，不记行号）
 
+2026-11-17 复核只剩两个。`#page-connectors` 已转正——能力板块把它提成一级页面
+（`#/connectors`「外接工具」），不再是被搬进 comm 页的嵌入块。
+
 | 容器 | 真实状态 | 搬运方 |
 |---|---|---|
-| `#page-connectors` | **活的**，整块搬进 `#page-comm` 的 `.page-body` 当嵌入块 | `fusion-v030.js` 的 `commFusionMount()` |
 | `#page-learning` | **活的**，`.page-body` 子节点被搬进 kb 页的轨迹视图 | `panel-library-ui.js` 的 `mount()` |
 | `#page-tunnel` | **功能存活，入口被关**：3 个后端路由仍在（`/api/tunnel/status`、`/api/tunnel/start`、`/api/tunnel/stop`），`fusion-v030.js` 只做 `display:none` ＋ 导航跳转 comm | 未定（待决策：恢复入口或整体下线） |
 
@@ -70,33 +73,32 @@
 <!-- AUTO:业务表 -->
 | 板块 | 页面 | hash | 容器锚点 | 主挂载点 | 属主文件 | 改了不生效（被覆盖的符号） | 主要接口 |
 |---|---|---|---|---|---|---|---|
-| 对话 | 会话 | `#/chat` | `#page-chat` | `#chatBody` | `chat/compose.js` `chat/message-ops.js` `chat/new-dialog.js` `chat/roundtable.js` `chat/tabs.js` `core/init.js` `core/mini-popup.js` `core/router.js` `fusion-v030.js` `panel-clarify.js` `panel-connectors-ui.js` `panel-durable.js` `panel-files-ui.js` `panel-slash.js` `panel-workspace-ui.js` `panels/extensions.js` `panels/models.js` `panels/terminal.js` `panels/workspace.js` | `chat/compose.js`(chatStop/injectExpertSystem)<br>`chat/message-ops.js`(_voiceStreamOpen/openVoiceSettings)<br>`chat/new-dialog.js`(toggleRail)<br>`chat/roundtable.js`(openRoundtable)<br>`chat/tabs.js`(filterRail/loadSessionMessages)<br>`core/init.js`(connectRoomStream/loadRoomsList)<br>`core/mini-popup.js`(_setSessionModel/handleSlashCommand)<br>`core/router.js`(switchPage)<br>`fusion-v030.js`(chatSenderName/openChannelModal)<br>`panel-workspace-ui.js`(openBuiltinExpertEditor/pwRoom)<br>`panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts)<br>`panels/models.js`(__hermesConfigured) | `/api/channel-sessions` `/api/channels` `/api/channels/weixin` `/api/chat/queue` |
+| 对话 | 会话 | `#/chat` | `#page-chat` | `#chatBody` | `chat/canvas.js` `chat/compose.js` `chat/message-ops.js` `chat/new-dialog.js` `chat/roundtable.js` `chat/tabs.js` `core/init.js` `core/mini-popup.js` `core/router.js` `fusion-v030.js` `panel-capabilities-ui.js` `panel-clarify.js` `panel-connectors-ui.js` `panel-durable.js` `panel-files-ui.js` `panel-navigation.js` `panel-slash.js` `panel-workspace-ui.js` `panels/extensions.js` `panels/terminal.js` `panels/workspace.js` | `chat/compose.js`(chatStop/injectExpertSystem)<br>`chat/message-ops.js`(_voiceStreamOpen/openVoiceSettings)<br>`chat/new-dialog.js`(toggleRail)<br>`chat/roundtable.js`(openRoundtable)<br>`chat/tabs.js`(filterRail/loadSessionMessages)<br>`core/init.js`(connectRoomStream/loadRoomsList)<br>`core/mini-popup.js`(_setSessionModel/handleSlashCommand)<br>`core/router.js`(switchPage)<br>`fusion-v030.js`(chatSenderName/openChannelModal)<br>`panel-workspace-ui.js`(openBuiltinExpertEditor/pwRoom)<br>`panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts) | `/api/channel-sessions` `/api/channels` `/api/channels/weixin` `/api/chat/queue` |
 | 协作 | 专家库 | `#/experts` | `#page-experts` | `#expBuiltinGrid` | `panel-experts-ui.js` `panel-workspace-ui.js` `panels/extensions.js` | `panel-experts-ui.js`(extSwitchTab)<br>`panel-workspace-ui.js`(openBuiltinExpertEditor/pwRoom)<br>`panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts) | `/api/experts` `/api/extensions/skills/config-mcp` `/api/extensions/skills/install-package` `/api/extensions/skills/local` |
 | 协作 | 专家讨论 | `#/rooms` | `#page-rooms` | `#roomMsgs` | `core/init.js` `fusion-v030.js` `panel-rooms-ui.js` `panel-workspace-ui.js` | `core/init.js`(connectRoomStream/loadRoomsList)<br>`fusion-v030.js`(chatSenderName/openChannelModal)<br>`panel-workspace-ui.js`(openBuiltinExpertEditor/pwRoom) | `/api/channels` `/api/channels/weixin` `/api/chat/upload-file` `/api/chat/upload-image` |
 | 协作 | 任务方案 | `#/plans` | `#page-plans` | `#planNewTask` | `panel-plans-ui.js` | — | `/api/panel-plans` |
 | 任务 | 定时任务 | `#/cron` | `#page-cron` | `#cronJobList` | `panels/cron.js` | — | `/api/cron-jobs` |
-| 资料 | 助手 | `#/assistant` | `#page-assistant` | `#asstGrid` | `panels/assistant.js` | — | `/api/memory` |
-| 资料 | 资料 | `#/kb` | `#page-kb` | `—` | `panel-library-ui.js` `panels/assistant.js` | — | `/api/memory` `/api/panel-library` `/api/panel-library/download` |
-| 资料 | 足迹 | `#/memory` | `#page-memory` | `#memMemory` | `panel-library-reviews-ui.js` `panel-library-ui.js` `panels/memory.js` | `panels/memory.js`(renderMemoryPage) | `/api/memory` `/api/panel-library` `/api/panel-library-reviews` `/api/panel-library/download` |
-| 能力 | 技能与工具 | `#/extensions` | `#page-extensions` | `#extTabs` | `core/init.js` `panel-experts-ui.js` `panel-mcp-ui.js` `panel-plans-ui.js` `panel-workspace-ui.js` `panels/extensions.js` | `core/init.js`(connectRoomStream/loadRoomsList)<br>`panel-experts-ui.js`(extSwitchTab)<br>`panel-workspace-ui.js`(openBuiltinExpertEditor/pwRoom)<br>`panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts) | `/api/experts` `/api/extensions/skills/config-mcp` `/api/extensions/skills/install-package` `/api/extensions/skills/local` |
-| 能力 | 渠道与连接器 | `#/comm` | `#page-comm` | `#chModalBody` | `fusion-v030.js` `panel-channels-ui.js` `panel-typing-ui.js` `panels/channels.js` | `fusion-v030.js`(chatSenderName/openChannelModal)<br>`panels/channels.js`(chPollWeixinQr/chShowQrSuccess) | `/api/channels` `/api/channels/telegram/qr` `/api/channels/telegram/qr/apply` `/api/channels/wecom/qr` |
-| 模型 | 通用模型 | `#/models-general` | `#page-models-general` | `#modelRoutesSlot` | `panel-models-ui.js` | — | `/api/panel-models` |
-| 模型 | 模型 API | `#/models-api` | `#page-models-api` | `#openAiApiRefresh` | `panel-models-voice.js` | — | `/api/panel-models/voice` |
-| 模型 | 辅助模型 | `#/models-aux` | `#page-models-aux` | `#auxTaskList` | `panel-auxiliary-ui.js` | — | `/api/panel-models/auxiliary` |
-| 模型 | 组合模型 | `#/models-moa` | `#page-models-moa` | `#moaSlot` | `panel-models-ui.js` | — | `/api/panel-models` |
-| 模型 | JEV | `#/models-jev` | `#page-models-jev` | `#jevSlot` | `panel-models-voice.js` | — | `/api/panel-models/voice` |
-| 模型 | STT 提供方 | `#/models-stt` | `#page-models-stt` | `#voiceStackStatus` | `panel-models-voice.js` | — | `/api/panel-models/voice` |
-| 模型 | TTS 提供方 | `#/models-tts` | `#page-models-tts` | `#voiceTtsSlot` | `panel-models-voice.js` | — | `/api/panel-models/voice` |
-| 模型 | 响应验证 | `#/models-checks` | `#page-models-checks` | `#modelChecksForm` | `panel-model-checks-ui.js` | — | `/api/panel-models` |
+| 档案 | 提示词 | `#/assistant` | `#page-assistant` | `—` | — | — | — |
+| 档案 | 知识库 | `#/kb` | `#page-kb` | `—` | `panel-library-ui.js` | — | — |
+| 档案 | 留痕录 | `#/memory` | `#page-memory` | `—` | `panel-library-reviews-ui.js` `panel-library-ui.js` | — | `/api/panel-library-reviews` `/api/panel-models/catalog` |
+| 能力 | 消息渠道 | `#/comm` | `#page-comm` | `#chModalBody` | `fusion-v030.js` `panel-channels-ui.js` `panel-typing-ui.js` `panels/channels.js` | `fusion-v030.js`(chatSenderName/openChannelModal)<br>`panels/channels.js`(chPollWeixinQr/chShowQrSuccess) | `/api/channels` `/api/channels/telegram/qr` `/api/channels/telegram/qr/apply` `/api/channels/wecom/qr` |
+| 能力 | 外接工具 | `#/connectors` | `#page-connectors` | `#connectorGrid` | `panel-connectors-ui.js` `panel-mcp-ui.js` | — | `/api/connectors` `/api/panel-mcp` |
+| 能力 | 工具集 | `#/toolsets` | `#page-toolsets` | `—` | — | — | — |
+| 能力 | 技能 | `#/skills` | `#page-skills` | `#skillFeedback` | `panels/extensions.js` | `panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts) | `/api/experts` `/api/extensions/skills/config-mcp` `/api/extensions/skills/install-package` `/api/extensions/skills/local` |
+| 模型 | 概览 | `#/models-home` | `#page-models-home` | `—` | — | — | — |
+| 模型 | 模型选择 | `#/models-select` | `#page-models-select` | `—` | — | — | — |
+| 模型 | 服务商 | `#/models-providers` | `#page-models-providers` | `—` | — | — | — |
+| 模型 | 能力后端 | `#/models-backends` | `#page-models-backends` | `—` | — | — | — |
+| 模型 | 配置 | `#/models-config` | `#page-models-config` | `—` | — | — | — |
 | 维护 | 运行状态 | `#/overview` | `#page-overview` | `#dbPort` | `panels/overview.js` | — | `/api/dashboard/start` `/api/dashboard/stop` `/api/logs` `/api/logs/clear` |
 | 维护 | 用量统计 | `#/usage` | `#page-usage` | `#usageByModelList` | `panels/usage.js` | — | `/api/usage` |
 | 维护 | 本地版本 | `#/updates` | `#page-updates` | `#configRecovery` | `panel-config-recovery-ui.js` `panel-maintenance-ui.js` `panel-runtime-ui.js` | `panel-maintenance-ui.js`(renderMaintenancePage) | `/api/config-recovery` `/api/maintenance/repositories` `/api/panel-runtime` |
-| 设置 | 偏好设置 | `#/settings` | `#page-settings` | `#settingsFeedback` | `panel-auth-ui.js` `panel-settings.js` | — | `/api/panel-auth` `/api/workspace-ui` |
+| 设置 | 偏好设置 | `#/settings` | `#page-settings` | `#memLimit` | `panel-auth-ui.js` `panel-settings.js` `panels/extensions.js` | `panels/extensions.js`(BUILTIN_EXPERTS_ARR/_allBuiltinExperts) | `/api/experts` `/api/extensions/skills/config-mcp` `/api/extensions/skills/install-package` `/api/extensions/skills/local` |
 <!-- /AUTO:业务表 -->
 
 ### 0.3 覆盖链：改了不生效的那些文件（2026-11-13 新增）
 
-这个前端没有打包器、没有模块系统：66 个 `<script>` 手写顺序加载，所有顶层 `function`
+这个前端没有打包器、没有模块系统：76 个 `<script>` 手写顺序加载，所有顶层 `function`
 和 `window.X` 都挂在同一个全局对象上。于是**同一个名字被两个文件定义时，后加载的静默覆盖
 前一个**，前面的变成永不执行的死代码。不报错、不警告、控制台干净。
 
@@ -108,15 +110,32 @@
 
 | 符号 | 你以为改这里 | 实际生效的是 | 后果 |
 |---|---|---|---|
-| `switchPage` | `core/router.js` | `fusion-v030.js` | 改核心路由文件完全无效，真逻辑在 `fusion-v030.js` 的包装钩子里 |
+| `switchPage` | `core/router.js` | `panel-model-v2.js` | 三层包装：`core/router.js` → `fusion-v030.js` → `panel-model-v2.js`（11-15 加的模型面板自动启动钩子，靠 `__mv2Wrapped` 防重复）。改前两个文件都不生效 |
 | `toast` | `core/utils.js` | `core/ui-kit.js` | 早期工具层改了没用 |
 | `loadSessionMessages` | `chat/tabs.js` | `panel-workspace-ui.js` | 改会话加载逻辑无效 |
 | `renderExpertsPage` 等 5 个 | `panels/extensions.js` | `panel-experts-ui.js` | 整个专家页在 `panels/` 里是死的 |
 
-**规模（脚本实测，非估算）**：60 组符号跨文件重复定义，共 70 处死份。按文件分布：
+**规模（脚本实测，非估算）**：58 组符号跨文件重复定义，共 69 处死份。按文件分布：
 `core/init.js` 11、`panels/extensions.js` 11、`panel-workspace-ui.js` 7、`chat/compose.js` 7、
-`panels/channels.js` 6、`core/mini-popup.js` 6、`chat/message-ops.js` 5、`chat/tabs.js` 5。
-`panels/` 系列占 19 处——它是「原样搬运」层，被后来的补丁层大面积顶掉。
+`panels/channels.js` 6、`core/mini-popup.js` 6、`fusion-v030.js` 5、`chat/message-ops.js` 5、
+`chat/tabs.js` 5。
+`panels/` 系列占 17 处——它是「原样搬运」层，被后来的补丁层大面积顶掉。
+
+**待还的 18 条**（2026-11-17 `arch_lint` 实测的新增段）
+
+11-15 ~ 11-17 新做的画布、档案、模型 v2 三个模块带进来 18 条，还没还：
+
+| 规则 | 内容 | 处数 |
+|---|---|---|
+| C9 | `chat/canvas.js` 属性插值用 `esc()`——它不转引号，值里带引号能逃出属性 | 4 |
+| C6 | 新造按钮类名：`.arc-btn` `.arc-arch-btn` `.arc-empty-btn` `.arc-icon-btn` `.arc-rail-btn` `.arc-view-btn` `.cv-icon-btn` `.ico-btn` `.mv2-btn` | 9 |
+| C5 | 新造卡片类名：`.arc-lock-card` | 1 |
+| C3 | 自建 `toast`：`js/archive/archive-core.js:577`、`js/panel-model-v2.js:247` | 2 |
+| C2 | 自建 `esc`：`js/chat/canvas.js:53` | 1 |
+| C10 | `switchPage` 第三层包装（有意为之，见上表） | 1 |
+
+C9 是安全项，优先修——画布节点的图片地址来自工作区，理论上带引号的文件名就能逃出 `src` 属性。
+C6 / C5 是样式命名，要么并进 `.btn` / `.card`，要么在 `arch_lint_baseline.json` 里登记理由后 `--update`。
 
 **改东西前先查一句**（这是这节的唯一用途）
 
@@ -129,7 +148,7 @@ python3 dev/arch_symbols.py --json     # 机器读
 业务表里「改了不生效（被覆盖的符号）」那一列，就是同一份数据按页面归的。
 
 **门禁**：`dev/arch_lint.py` 的 C10 拦新增覆盖——同一个全局符号再多一个文件定义，
-直接 `exit 1` 点名。存量 60 组进基线，只减不增。想新增一份覆盖必须先把基线改了
+直接 `exit 1` 点名。存量 58 组进基线，只减不增。想新增一份覆盖必须先把基线改了
 （`--update`），这相当于逼你说一句「我知道我在覆盖谁」。
 
 完整清单（自动生成，勿手改）：
@@ -146,8 +165,8 @@ python3 dev/arch_symbols.py --json     # 机器读
 | `renderExpertsPage` | `panels/extensions.js` → `panel-workspace-ui.js` → `panel-experts-ui.js` | `panel-experts-ui.js` | `panels/extensions.js` `panel-workspace-ui.js` |
 | `renderMineExperts` | `panels/extensions.js` → `panel-workspace-ui.js` → `panel-experts-ui.js` | `panel-experts-ui.js` | `panels/extensions.js` `panel-workspace-ui.js` |
 | `roomSend` | `core/init.js` → `fusion-v030.js` → `panel-rooms-ui.js` | `panel-rooms-ui.js` | `core/init.js` `fusion-v030.js` |
+| `switchPage` | `core/router.js` → `fusion-v030.js` → `panel-model-v2.js` | `panel-model-v2.js` | `core/router.js` `fusion-v030.js` |
 | `BUILTIN_EXPERTS_ARR` | `panels/extensions.js` → `panel-workspace-ui.js` | `panel-workspace-ui.js` | `panels/extensions.js` |
-| `__hermesConfigured` | `panels/models.js` → `panel-models-ui.js` | `panel-models-ui.js` | `panels/models.js` |
 | `_allBuiltinExperts` | `panels/extensions.js` → `panel-workspace-ui.js` | `panel-workspace-ui.js` | `panels/extensions.js` |
 | `_expertCardHtml` | `panels/extensions.js` → `panel-workspace-ui.js` | `panel-workspace-ui.js` | `panels/extensions.js` |
 | `_setSessionModel` | `core/mini-popup.js` → `panel-durable.js` | `panel-durable.js` | `core/mini-popup.js` |
@@ -175,7 +194,6 @@ python3 dev/arch_symbols.py --json     # 机器读
 | `renderAttachChips` | `chat/compose.js` → `panel-durable.js` | `panel-durable.js` | `chat/compose.js` |
 | `renderChannels` | `panels/channels.js` → `panel-channels-ui.js` | `panel-channels-ui.js` | `panels/channels.js` |
 | `renderMaintenancePage` | `panel-maintenance-ui.js` → `panel-config-recovery-ui.js` | `panel-config-recovery-ui.js` | `panel-maintenance-ui.js` |
-| `renderMemoryPage` | `panels/memory.js` → `panel-library-ui.js` | `panel-library-ui.js` | `panels/memory.js` |
 | `renderRoomMessages` | `core/init.js` → `fusion-v030.js` | `fusion-v030.js` | `core/init.js` |
 | `renderRoomsPage` | `core/init.js` → `panel-rooms-ui.js` | `panel-rooms-ui.js` | `core/init.js` |
 | `restoreDraft` | `chat/tabs.js` → `panel-durable.js` | `panel-durable.js` | `chat/tabs.js` |
@@ -191,7 +209,6 @@ python3 dev/arch_symbols.py --json     # 机器读
 | `streamChat` | `chat/compose.js` → `panel-durable.js` | `panel-durable.js` | `chat/compose.js` |
 | `streamChatSSE` | `chat/compose.js` → `panel-durable.js` | `panel-durable.js` | `chat/compose.js` |
 | `streamChatXhr` | `chat/compose.js` → `panel-durable.js` | `panel-durable.js` | `chat/compose.js` |
-| `switchPage` | `core/router.js` → `fusion-v030.js` | `fusion-v030.js` | `core/router.js` |
 | `toast` | `core/utils.js` → `core/ui-kit.js` | `core/ui-kit.js` | `core/utils.js` |
 | `toggleRail` | `chat/new-dialog.js` → `fusion-v030.js` | `fusion-v030.js` | `chat/new-dialog.js` |
 | `useExpert` | `panels/extensions.js` → `panel-workspace-ui.js` | `panel-workspace-ui.js` | `panels/extensions.js` |
@@ -719,7 +736,7 @@ python3 dev/arch_lint.py --update   # 收紧基线（只在真的修掉存量后
 `dev/hermes-dev.sh probe` 走 8650 的真实页面：
 
 - **全站逐页**全部 `hits: []`（无横向溢出），逐页可达（当轮 DOM 里 23 个容器，
-  现为 22 个可导航页 ＋ 3 个废弃别名）
+  现为 21 个可导航页 ＋ 2 个非导航容器）
 - 弹窗行为 9 项全 true：挂载 / `.modal-overlay` 类 / legacy `.modal` 类 / bodyHTML /
   footerHTML / `role=dialog` / 滚动锁 / Esc 关闭 / 关闭后解锁
 - 真实业务弹窗（定时任务 → 创建任务）：`adopted: true`、`z-index: 6001`、`locked: true`

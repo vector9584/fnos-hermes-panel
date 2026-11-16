@@ -151,23 +151,115 @@
     var _railTimer=null;
     window.addEventListener('resize',function(){clearTimeout(_railTimer);_railTimer=setTimeout(function(){syncRailToggle(activePage);},150);});
     window.addEventListener('hashchange',function(){var page=(location.hash.replace(/^#\/?/,'').split('/')[0]||'chat');page=aliases[page]||page;if(page!==activePage&&document.getElementById('page-'+page))navigate(page);});
-    function viewportChanged(){
+    /* 视口变化（2026-11-17 修「首次点输入框，输入框直接飞到最上面」）
+       根因：focusin 在键盘弹出**之前**触发，此刻 visualViewport.height 还是旧值，
+       部分 WebView 初始化阶段甚至给 0 —— 于是 --visible-height 被写成 0px，
+       .app 高度跟着塌成 79px，composer 是 absolute bottom:0，就贴着 header 站住了。
+       第二次再来时 visualViewport 已经稳定，所以「只有第一次坏」。
+       两道处理：① focusin 延后一拍再算；② 读到的值先过可信性校验，0 和离谱小值一律不信。 */
+    var _vpTimer=null;
+    function viewportChanged(delay){
+      clearTimeout(_vpTimer);
+      if(delay){ _vpTimer=setTimeout(applyViewport,delay); return; }
+      applyViewport();
+    }
+    function applyViewport(){
       var viewport=window.visualViewport;
       var focused=document.activeElement;
       var editing=!!(focused&&focused.matches('input,textarea,[contenteditable=true]'));
       var narrow=innerWidth<=768;
-      var shrink=viewport?Math.max(0,innerHeight-viewport.height):0;
+      var vh=viewport?viewport.height:0;
+      /* 可信判据：小于 240px，或比 innerHeight 小三成以上，都不是真实视口 */
+      var vhOk=vh>240&&vh>=innerHeight*0.35;
+      var shrink=vhOk?Math.max(0,innerHeight-vh):0;
       // 输入期间底部导航一律收起（2026-11-12）：原来只认「视口缩了 140px 以上」，
       // 但部分 Android/iOS WebView 的 visualViewport 不跟着键盘缩，
       // 导航条就留在原位置和输入区抢地，敲字时一碰就弹「前往」页。
       var keyboard=narrow&&(editing||shrink>140);
       document.body.classList.toggle('mobile-keyboard-open',keyboard);
-      if(keyboard&&viewport&&shrink>140)document.documentElement.style.setProperty('--visible-height',viewport.height+'px');
+      if(keyboard&&vhOk&&shrink>140)document.documentElement.style.setProperty('--visible-height',Math.round(vh)+'px');
       else document.documentElement.style.removeProperty('--visible-height');
     }
-    if(window.visualViewport)window.visualViewport.addEventListener('resize',viewportChanged);
-    document.addEventListener('focusin',viewportChanged);
-    document.addEventListener('focusout',function(){requestAnimationFrame(viewportChanged);});
+    if(window.visualViewport)window.visualViewport.addEventListener('resize',function(){viewportChanged(0);});
+    /* 键盘弹出要 100~300ms，focusin 时还是旧视口，等 80ms 再取一次 */
+    document.addEventListener('focusin',function(){viewportChanged(80);});
+    document.addEventListener('focusout',function(){requestAnimationFrame(function(){viewportChanged(0);});});
+    /* 底部导航自动收起（2026-11-17）
+       平时收起，输入框沉到底，跟画板模式同一位置。拉到底之后继续往下拉一次，
+       导航滑出来 1 秒，app 让出 64px、输入框被顶上去，一秒后缓落回去。
+       画板模式由 CSS 直接 display:none，不参与这套。 */
+    (function bindNavReveal(){
+      var bodyEl=document.getElementById('chatBody');
+      if(!bodyEl||!('ontouchstart' in window))return;
+      var bottomY=null,timer=null;
+      function reveal(){
+        document.body.classList.add('nav-revealed');
+        clearTimeout(timer);
+        timer=setTimeout(function(){document.body.classList.remove('nav-revealed');},2000);
+      }
+      /* 到底判定必须覆盖两种可能：内容滚在 #chatBody 里，或者 #chatBody 被撑开、
+         真正滚动的是页面本身（iOS 上 100dvh 抖动时就会变成后者）。
+         只认 #chatBody 一个容器的话，真机上会永远判成「没到底」，怎么拉都不出。 */
+      function atBottom(){
+        var TOL=24;                       /* iOS 惯性滚动停下常差几像素，8px 太苛刻 */
+        var de=document.documentElement;
+        /* 短会话兜底（2026-11-17 用户：「对于会话本身短的来说滑动面板没有效果，出不来」）：
+           内容撑不满一屏时 scrollHeight≈clientHeight，永远等不到「滚到底」这个事件，
+           于是怎么拉都不出。不可滚本身就是「到底」——直接认。 */
+        var bodyScrollable=bodyEl.scrollHeight-bodyEl.clientHeight>TOL;
+        var pageScrollable=de.scrollHeight-(window.innerHeight||de.clientHeight)>TOL;
+        if(!bodyScrollable && !pageScrollable) return true;
+        if(bodyScrollable){
+          var g1=bodyEl.scrollHeight-bodyEl.scrollTop-bodyEl.clientHeight;
+          if(g1<TOL) return true;
+        }
+        var sy=window.scrollY||de.scrollTop||0;
+        var g2=de.scrollHeight-sy-(window.innerHeight||de.clientHeight);
+        if(pageScrollable && g2<TOL) return true;
+        return false;
+      }
+      function cvMode(){ return document.body.classList.contains('cv-mode'); }
+
+      /* 触底后「继续向上拉」才唤出 —— 2026-11-17 真机第二轮反馈改的：
+         ① 只认向上拉（clientY 减小）。触底之后往下滑是「回看旧消息」的手势，
+            弹菜单属于打扰。上一版图省事写成 Math.abs 双向判定，
+            真机当场就被否了（「触底之后往下滑他也会弹出来」）。
+         ② 阈值 110px（先 24、再 70，用户仍说「现在还是敏感，出来的距离再大一点」）。
+            24px 是手指打个哆嗦的距离；70px 依然抬手就出。他要的是「多拉一段才出来」，
+            不是动画变慢 —— 动的始终是距离，不是时长。
+         ③ 删掉了原来的「触底即唤出」那一路。滚到底松手、手指随便一落就弹，
+            正是「太敏感」的另一半来源。现在认的是真实的上拉动作。 */
+      var PULL_THRESHOLD=110;
+      document.addEventListener('touchstart',function(ev){
+        if(ev.touches.length!==1||cvMode())return;
+        /* 落下时已经贴底就先记基准，省得头一次 touchmove 只用来定基准、白吃一段位移 */
+        bottomY = atBottom() ? ev.touches[0].clientY : null;
+      },{passive:true,capture:true});
+
+      /* 基准取「贴底那一帧」的 Y：到底时手指早从 700 移到 480 了，
+         拿 touchstart 的起点当基准只会算出负位移，永远凑不够阈值（第一轮拉不出的元凶）。 */
+      document.addEventListener('touchmove',function(ev){
+        if(ev.touches.length!==1||cvMode())return;
+        if(!atBottom()){bottomY=null;return;}
+        var y=ev.touches[0].clientY;
+        if(bottomY===null){bottomY=y;return;}
+        if(bottomY-y>PULL_THRESHOLD){reveal();bottomY=y;}
+      },{passive:true,capture:true});
+      document.addEventListener('touchend',function(){bottomY=null;},{passive:true,capture:true});
+
+      /* 点击顶部 CHATÈS 词标也唤出（2026-11-17 用户要求）。
+         滑动是最容易失手的那条路：短会话没得滑、戴手套、列表卡在动画里都拉不出来。
+         给一个「想找菜单就点一下顶部」的确定性入口，比调灵敏度靠谱。
+         不拦默认事件 —— 词标本身还挂着连接状态文案的点击语义。 */
+      var brand=document.getElementById('brandLogo');
+      if(brand){
+        brand.addEventListener('click',function(){
+          if(cvMode()) return;
+          if(!('ontouchstart' in window) && window.innerWidth>900) return;
+          reveal();
+        },false);
+      }
+    })();
     var initial=(location.hash.replace(/^#\/?/,'').split('/')[0]||'chat');select(initial);
   }
   if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();

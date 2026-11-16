@@ -597,16 +597,65 @@
     /* 输入框玻璃参数（2026-11-16）：浅色=白玻璃，深色=黑玻璃。
        单独提出来是因为画板模式要复用同一套，写在主题块里比在 canvas.css 里再抄一份稳。 */
     :root{
-        --composer-glass-bg:rgba(255,255,255,.24);
+        --composer-glass-bg:rgba(255,255,255,.20);
         --composer-glass-border:rgba(255,255,255,.62);
-        --composer-glass-refract:rgba(122,92,255,.20);
-        --composer-glass-shadow:0 10px 34px rgba(31,38,135,.11),inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(255,255,255,.34),inset 0 0 0 1px rgba(255,255,255,.16);
+        --composer-glass-refract:rgba(122,92,255,.05);
+        --composer-glass-shadow:0 6px 18px rgba(22,26,44,.055),inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(255,255,255,.40),inset 0 0 0 1px rgba(255,255,255,.18);
+
+        /* ── 玻璃光学参数（2026-11-17）─────────────────────────────────
+           用户：「输入框在深色模式下左上角太亮甚至影响了麦克风和字体，浅色模式下输入框
+           右下角又太黑，感觉脏的一样，你没有考虑到两种主题色下的玻璃感怎么弄」
+
+           病根：四层渐变和三道边缘高光全是写死的绝对数值，深浅两套主题共用同一组
+           「左上白 .28 / 右下黑 .18」。这组数在物理上只对一种情况成立：
+             · 白玻璃（浅色）背后是亮的，反射面加白没问题 —— 但背光面加黑会把浅色底
+               压成灰泥，就是用户说的「脏」。浅色玻璃的暗部应该靠**减少白 + 掺一点
+               背景色的补色**，不是加黑。
+             · 黑玻璃（深色）本身反射率低，白 .28 落在深底上相当于零点几的镜面反射，
+               视觉上直接是一块亮斑；左上那粒 .85 焦点 + screen 混合又叠在麦克风和
+               首字上，字就被糊白了。
+           所以两套必须各配一套数：
+             浅色 = 高反照率玻璃，亮部敢给、暗部用冷紫压而不是用黑压；
+             深色 = 低反照率玻璃，亮部全部砍到 1/3 以下，靠细边光和薄荷绿折射
+                    表达「玻璃」，靠亮度差而不是靠面积表达「体积」。
+           下面 --glass-* 是浅色（默认）值，body.theme-dark 里整套覆盖。 */
+        /* ① 整体曲率：左上受光 → 右下背光 */
+        --glass-curve:linear-gradient(162deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.10) 34%,rgba(255,255,255,.035) 66%,rgba(255,255,255,.015) 88%,rgba(255,255,255,.005) 100%);
+        /* ② 顶部水滴高光 */
+        --glass-drop:radial-gradient(88% 132% at 50% -40%,rgba(255,255,255,.44) 0%,rgba(255,255,255,.14) 38%,rgba(255,255,255,0) 66%);
+        /* ③ 左上焦散点 */
+        --glass-caustic:radial-gradient(13% 22% at 7% 5%,rgba(255,255,255,.88) 0%,rgba(255,255,255,.14) 58%,rgba(255,255,255,0) 100%);
+        /* ③b 左侧竖向反光柱 */
+        --glass-column:linear-gradient(94deg,rgba(255,255,255,.20) 0%,rgba(255,255,255,.05) 2.4%,rgba(255,255,255,0) 5.5%);
+        /* ④ 右下反折光（带主题色） */
+        --glass-refract-img:radial-gradient(56% 70% at 98% 122%,var(--composer-glass-refract) 0%,rgba(255,255,255,0) 48%);
+        /* 边缘三层：顶棱弧光 / 左上焦点 / 底部内反光 */
+        --glass-rim-top:radial-gradient(135% 52% at 50% -6%,rgba(255,255,255,.54) 0%,rgba(255,255,255,.14) 26%,rgba(255,255,255,0) 52%);
+        --glass-rim-dot:radial-gradient(15% 26% at 9% 7%,rgba(255,255,255,.66) 0%,rgba(255,255,255,.12) 62%,rgba(255,255,255,0) 100%);
+        --glass-rim-bottom:radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 58%);
+        --glass-rim-opacity:.9;
+        /* 内边描边：上缘最亮、右缘最暗，不对称才读得出光照方向 */
+        --glass-edge:inset 0 1.5px 0 rgba(255,255,255,.52),inset 1.5px 0 0 rgba(255,255,255,.26),inset 0 -1px 0 rgba(255,255,255,.22),inset -1px 0 0 rgba(255,255,255,.14);
     }
     body.theme-dark{
-        --composer-glass-bg:rgba(22,26,32,.16);
+        --composer-glass-bg:rgba(22,26,32,.12);
         --composer-glass-border:rgba(255,255,255,.14);
         --composer-glass-refract:rgba(113,219,192,.22);
         --composer-glass-shadow:0 14px 40px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(255,255,255,.04);
+
+        /* 黑玻璃：亮部一律砍到浅色的 1/3 上下，暗部才敢用纯黑（底下本来就是黑的，黑吃黑不脏）。
+           左上焦点位置从 8%/6% 收到 5%/4% 之外还缩了尺寸 —— 左上第一列就是麦克风按钮，
+           原来 16%×30% 那块亮斑整个盖在它上面。 */
+        --glass-curve:linear-gradient(162deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.012) 30%,rgba(0,0,0,.05) 70%,rgba(0,0,0,.16) 100%);
+        --glass-drop:radial-gradient(88% 118% at 50% -42%,rgba(255,255,255,.08) 0%,rgba(255,255,255,.025) 36%,rgba(255,255,255,0) 64%);
+        --glass-caustic:radial-gradient(8% 13% at 4.5% 3.5%,rgba(255,255,255,.18) 0%,rgba(255,255,255,.03) 58%,rgba(255,255,255,0) 100%);
+        --glass-column:linear-gradient(94deg,rgba(255,255,255,.07) 0%,rgba(255,255,255,.015) 2.4%,rgba(255,255,255,0) 5.5%);
+        --glass-refract-img:radial-gradient(70% 88% at 95% 116%,var(--composer-glass-refract) 0%,rgba(255,255,255,0) 58%);
+        --glass-rim-top:radial-gradient(135% 34% at 50% -8%,rgba(255,255,255,.12) 0%,rgba(255,255,255,.03) 24%,rgba(255,255,255,0) 46%);
+        --glass-rim-dot:radial-gradient(10% 16% at 5.5% 4.5%,rgba(255,255,255,.13) 0%,rgba(255,255,255,.022) 62%,rgba(255,255,255,0) 100%);
+        --glass-rim-bottom:radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.08) 0%,rgba(255,255,255,0) 58%);
+        --glass-rim-opacity:.42;
+        --glass-edge:inset 0 1px 0 rgba(255,255,255,.14),inset 1px 0 0 rgba(255,255,255,.07),inset 0 -1px 0 rgba(255,255,255,.05),inset -1px 0 0 rgba(255,255,255,.03);
     }
     .rt-status{align-self:center;display:flex;align-items:center;gap:8px;padding:6px 16px;border-radius:20px;background:var(--bg3);font-size:12px;color:var(--text2)}
     .rt-status .rt-pulse{width:8px;height:8px;border-radius:50%;background:var(--warning);animation:pulse 1s infinite}
@@ -641,23 +690,7 @@
            靠四层渐变自己造出体积，不再指望背后有东西可透。
            四层从外到内：整体曲率明暗 → 顶部水滴高光 → 左上焦散点 → 右下带色反折光。 */
         background-color:var(--composer-glass-bg);
-        background-image:
-            /* ① 整体曲率：左上受光、右下背光，模拟水珠鼓起来的斜面。
-               明暗差原来只有 .13→.10，几乎是一条平线，所以看着像「平贴的磨砂片」。
-               拉到 .28→.18 才立得起来 —— 纯色背景下没有东西可模糊，
-               体积感只剩这一层自己在做，薄了就是死。 */
-            linear-gradient(162deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.02) 34%,rgba(0,0,0,.05) 68%,rgba(0,0,0,.18) 100%),
-            /* ② 顶部水滴高光：一大团椭圆亮斑从顶边压下来，这是「水滴」的主特征 */
-            radial-gradient(88% 132% at 50% -40%,rgba(255,255,255,.46) 0%,rgba(255,255,255,.15) 38%,rgba(255,255,255,0) 66%),
-            /* ③ 左上焦散：水珠边缘聚出来的那点锐利反光。
-               原来 34%×56%+.30 摊成一片雾，和顶部高光糊在一起看不出「点」；
-               收到 13%×24%、亮度 .85，才在左上圆角内侧立起一粒真正的焦点。 */
-            radial-gradient(13% 24% at 8% 6%,rgba(255,255,255,.85) 0%,rgba(255,255,255,.16) 56%,rgba(255,255,255,0) 100%),
-            /* ③b 左侧竖向反光柱：液体贴着曲面总有一条被拉长的亮线，
-               塑料和玻璃的分界就在这条线上。1.8% 宽，刚好一条边。 */
-            linear-gradient(94deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.06) 2.4%,rgba(255,255,255,0) 5.5%),
-            /* ④ 右下反折光：带主题色，深色薄荷绿 / 浅色紫，负责「有色玻璃」的味 */
-            radial-gradient(74% 94% at 94% 112%,var(--composer-glass-refract) 0%,rgba(255,255,255,0) 64%);
+        background-image:var(--glass-curve),var(--glass-drop),var(--glass-caustic),var(--glass-column),var(--glass-refract-img);
         -webkit-backdrop-filter:blur(24px) saturate(185%);
         backdrop-filter:blur(24px) saturate(185%);
         border:1px solid var(--composer-glass-border);
@@ -670,12 +703,11 @@
            不要穿出去和消息流/画布背景混色 */
         isolation:isolate;
     }
-    /* ── 水滴边缘（2026-11-16 二次加强）───────────────────────────
-       光有 background-image 还是像「磨砂色块」—— 视觉复核原话：
-       「缺少明显的折射、厚度、强高光和液体边缘层次」。
-       真正的玻璃感靠三件事，全在边缘上：顶边一道锐利弧光（水珠受光的那条棱）、
-       左上角一个极亮的焦点（光线在水珠里聚出来的点）、底部一圈内反光（透过去的背景折回来）。
-       这三层贴在本体上，纯色背景也成立 —— 它们是「自己发光」，不是「透出后面」。 */
+    /* ── 水滴边缘（2026-11-16 加强，2026-11-17 参数化）──────────────
+       光有 background-image 还是像「磨砂色块」，真正的玻璃感靠边缘三件事：
+       顶边一道锐利弧光（水珠受光的那条棱）、左上角一个焦点、底部一圈内反光。
+       三层现在全部走 --glass-rim-* 变量，深浅两套各配一套强度：
+       浅色 rim-opacity .9 / 深色 .5 —— 同一组白在深底上叠 screen 会直接曝掉。 */
     .input-outer::before{
         content:'';
         position:absolute;
@@ -683,18 +715,13 @@
         border-radius:inherit;
         pointer-events:none;
         z-index:0;
-        background:
-            /* 顶边锐利弧光：贴着圆角走，只占顶部 26% */
-            radial-gradient(135% 52% at 50% -6%,rgba(255,255,255,.62) 0%,rgba(255,255,255,.16) 26%,rgba(255,255,255,0) 52%),
-            /* 左上角焦点：小而亮，模拟光在水珠里的聚光点 */
-            radial-gradient(16% 30% at 11% 9%,rgba(255,255,255,.72) 0%,rgba(255,255,255,.14) 62%,rgba(255,255,255,0) 100%),
-            /* 底部内反光：背景光从下方折回来那一抹 */
-            radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.26) 0%,rgba(255,255,255,0) 58%);
+        background:var(--glass-rim-top),var(--glass-rim-dot),var(--glass-rim-bottom);
         mix-blend-mode:screen;
-        opacity:.92;
+        opacity:var(--glass-rim-opacity);
     }
     /* 内边描边：玻璃边缘比中间亮一圈，这是「有厚度」的关键。
-       1px 白线压在最外层，动的是 inset 阴影不是 border，免得影响盒模型。 */
+       四条边分开写、亮度递减，一圈等亮就变成塑料倒角 —— 只有不对称才读得出光照方向。
+       数值走 --glass-edge，深浅两套各配。 */
     .input-outer::after{
         content:'';
         position:absolute;
@@ -702,13 +729,17 @@
         border-radius:inherit;
         pointer-events:none;
         z-index:0;
-        /* 四条边分开写、亮度递减：上缘迎光最亮，左侧顺着反光柱次之，
-           底缘是折回来的弱光，右缘背光最暗。
-           一圈等亮就变成塑料倒角 —— 只有不对称才读得出光照方向＝厚度。 */
-        box-shadow:inset 0 1.5px 0 rgba(255,255,255,.48),
-                   inset 1.5px 0 0 rgba(255,255,255,.24),
-                   inset 0 -1px 0 rgba(255,255,255,.20),
-                   inset -1px 0 0 rgba(255,255,255,.12);
+        box-shadow:var(--glass-edge);
+    }
+    /* ── 桌面端：白玻璃要更白（2026-11-17 实测）──────────────────────
+       移动端浅色主题背景是纯色消息流，白蒙版 .20 就够干净；
+       桌面端背景带深色流体光斑，backdrop-filter 会把底下那团黑**透过玻璃**透上来，
+       右下角立刻发浑发脏。这不是暗部渐变的问题（那块已经改成中性灰 4%），
+       是「白玻璃放在黑底上，物理上就会透黑」。唯一解法是把白蒙版提上去压住底色——
+       继续加黑、继续调阴影都没用，因为黑不是我们画上去的，是背景透上来的。
+       深色桌面不用改：底色本来就深，.12 的黑玻璃透黑等于没变化。 */
+    @media (min-width:769px){
+        :root{ --composer-glass-bg:rgba(255,255,255,.52); }
     }
     /* 输入内容必须在两层伪元素之上 */
     .input-outer > *{position:relative;z-index:1}
@@ -733,7 +764,7 @@
        这里再写一条 linear-gradient 会整条盖掉（层叠里后写的赢），水滴感当场消失。
        同理 ::before 的弧光也不在这里重写，靠 opacity 微调就够：
        黑玻璃上同样的白 .62 会显脏，压到 .82 相当于视觉上和浅色对齐。 */
-    body.theme-dark .input-outer::before{opacity:.82}
+    /* 深色 ::before 的强度已并入 --glass-rim-opacity，不再单独覆盖 */
     .skill-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px 8px}
     .skill-chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-bg);color:var(--accent);border:0;border-radius:var(--radius-xl);padding:4px 9px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit}
     .skill-chip .x{font-weight:700;opacity:.65}
@@ -938,7 +969,10 @@
       .msg-bubble{padding:10px 12px;font-size:14px}
       /* 2026-11-16：composer 已是贴底浮层，不该再有内边距（那圈内边距就是用户嫌的底板）。
          安全区不再靠 padding 顶，直接抬 bottom。 */
-      .chat-composer{padding:0;bottom:calc(12px + env(safe-area-inset-bottom))}
+      /* 2026-11-17：原来这里加了 env(safe-area-inset-bottom)，画板那条
+         (#chatComposer.cv-floating) 却是写死的 12px，两个视图的输入框永远差一个安全区。
+         统一成 12px，跟画板一致——安全区由底部导航自己让（它 min-height 里含了）。 */
+      .chat-composer{padding:0;bottom:12px}
       .input-outer{padding:10px 12px 8px;border-radius:18px}
       .input-wrap textarea{font-size:16px}
       .input-btns .gen-send{width:30px;height:30px}

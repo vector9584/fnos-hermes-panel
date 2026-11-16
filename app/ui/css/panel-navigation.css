@@ -76,10 +76,31 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
 }
 @media(max-width:768px) {
   .global-sidebar.workbench-sidebar { display:none; }
-  .workbench-navigation .app { height:calc(100dvh - 64px - env(safe-area-inset-bottom)); }
+  /* 导航条占的高度抽成变量（2026-11-17）：对话模式下它平时收起，
+     输入框直接沉到跟画板模式同一位置（画板那边 composer 就是 bottom:12px）。
+     拉到底再往下拉一次，--nav-h 抬回 64px，整个 app 被顶上去、输入框跟着上移，
+     一秒后自己缓落回来。见 panel-navigation.js 的 bindNavOverscroll。 */
+  /* 2026-11-17 修：原来这里还减了一次 env(safe-area-inset-bottom)，
+     而 .mobile-navigation 自己的 min-height 里已经含了安全区，等于扣两遍。
+     结果 iPhone 上对话模式输入框比画板高整整一个安全区（34px），肉眼一眼能看出来。
+     高度全部交给 --nav-h 表达，收起时 0，跟画板模式完全同高。 */
+  .workbench-navigation { --nav-h:0px; }
+  /* 收起慢、展开快（2026-11-17 用户：「回去的时候动作再慢一点」）。
+     transition 认的是"目标状态"上写的那个，所以两边分开写：
+     默认态（收起）给长时长，.nav-revealed（展开）给短时长。
+     height 和 transform 必须同一条曲线同一条时长，不然输入框和导航条会错位。 */
+  .workbench-navigation .app { height:calc(100dvh - var(--nav-h)); transition:height .78s cubic-bezier(.22,.68,.32,1); }
+  .workbench-navigation.nav-revealed .app { transition:height .3s cubic-bezier(.4,0,.2,1); }
   /* 底部导航条：height 里已经算过 env(safe-area-inset-bottom)，padding-bottom 又算一次，
      两处相加把内容顶上去、底下留出一条空带。改成 min-height 让 padding 自然撑开。 */
-  .mobile-navigation { position:fixed; z-index:150; bottom:0; left:0; right:0; display:flex; justify-content:space-around; box-sizing:border-box; min-height:calc(60px + env(safe-area-inset-bottom)); padding:4px 4px calc(4px + env(safe-area-inset-bottom)); background:var(--bg1); border-top:1px solid var(--border); }
+  .mobile-navigation { position:fixed; z-index:150; bottom:0; left:0; right:0; display:flex; justify-content:space-around; box-sizing:border-box; min-height:calc(60px + env(safe-area-inset-bottom)); padding:4px 4px calc(4px + env(safe-area-inset-bottom)); background:var(--bg1); border-top:1px solid var(--border); transform:translateY(calc(100% + 2px)); transition:transform .78s cubic-bezier(.22,.68,.32,1); }
+  /* 唤出态：滑出来 + 让出 64px */
+  .workbench-navigation.nav-revealed { --nav-h:calc(60px + env(safe-area-inset-bottom)); }
+  .workbench-navigation.nav-revealed .mobile-navigation { transform:translateY(0); transition:transform .3s cubic-bezier(.4,0,.2,1); }
+  /* 画板模式压根不给这条导航：输入框本来就贴底，多一条只是白占 64px */
+  /* 画板模式把 nav 高度也归零：切视图时 nav-revealed 可能还挂着，别把输入框压下去 */
+  .cv-mode { --nav-h:0px; }
+  .cv-mode .mobile-navigation { display:none; }
   .mobile-navigation .nav-btn { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; min-width:48px; min-height:48px; flex:1; border:0; border-radius:10px; background:transparent; color:var(--text2); font:12px var(--font); cursor:pointer; }
   .mobile-navigation .nav-btn.active { background:var(--accent-bg); color:var(--accent); }
   .mobile-navigation svg { width:21px; height:21px; fill:none; stroke:currentColor; stroke-width:1.8; }
@@ -93,8 +114,13 @@ body.theme-dark .workbench-wordmark .wb-logo-light { display:block; opacity:.86;
   .workbench-navigation .global-topbar { padding:0 12px; }
   .workbench-navigation .page-header button { min-height:44px; }
   .workbench-navigation.mobile-keyboard-open .mobile-navigation { display:none; }
-  .workbench-navigation.mobile-keyboard-open .app { height:var(--visible-height,100dvh); }
-  .workbench-navigation.mobile-keyboard-open .modal-overlay { height:var(--visible-height,100dvh); }
+  /* 键盘态高度：max(45dvh, …) 是兜底（2026-11-17）。
+     万一 --visible-height 还是被写坏（WebView 首帧报 0），最高优先级是别让输入框飞上去。
+     兜底取 240px 而不是 45dvh：比例值会夹掉真实的键盘高度（小屏机键盘弹出后可视高只有 330px，
+     45dvh=380 反而把输入框顶到键盘底下 —— 2026-11-17 自测里撞到的）。
+     另外键盘态用短过渡：拉导航那套 .78s 是给"收起"的，套在键盘弹出上会让人以为在飘。 */
+  .workbench-navigation.mobile-keyboard-open .app { height:max(240px,var(--visible-height,100dvh)); transition:height .18s ease-out; }
+  .workbench-navigation.mobile-keyboard-open .modal-overlay { height:max(240px,var(--visible-height,100dvh)); }
   .workbench-navigation.mobile-keyboard-open .modal { max-height:calc(var(--visible-height,100dvh) - 24px); }
 }
 

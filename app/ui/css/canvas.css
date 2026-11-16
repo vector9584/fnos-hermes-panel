@@ -358,22 +358,33 @@ body.theme-light .cv-node.cv-node-active { animation-name: cv-sel-breathe-light;
   border: 0;
   border-radius: 0;
   box-shadow: none;
-  padding: 0;
+  /* 这里原本是 padding:0（连补白一起清掉）。它的权重 (1,1,0) 高于下方
+     #chatComposer{padding-bottom:8px}，于是画板 h=92、对话 h=100 差 8px。
+     两视图要同一个 box，补白必须在两边都留出来。 */
+  padding: 0 0 8px 0;
 }
 /* 画板里「本轮能力」chip 行原来在输入框内部占流高（36px），把输入框从 58 撑到 92，
    bottom 不变 → 顶边自己上移 34px，切视图就跳（2026-11-17 用户报「输入框太偏上了」）。
-   这里让它脱离文档流、浮在输入框上沿之上：视觉上还在，但不占输入框高度，
-   两个视图的输入框恢复成同一个 box。 */
-#chatComposer.cv-floating .skill-chips {
+   chip 现在两个视图都脱离文档流了，规则见下面那条。 */
+/* 能力行无条件脱离输入框（2026-11-17 用户第 4 条原话：「你只把画板的chip拿出去了，
+   会话的chip还在里面，也都拿出去，离输入框近一点」）。
+   实测差在这：对话视图 h=134（chip 当第一行占 36px + 8px padding 全算进输入框），
+   画板视图 h=58（绝对定位浮在外面）。同一个会话切个视图，输入框高度自己涨 76px。
+   所以不再挂 .cv-floating 限定，两个视图共用一个 box：chip 一律浮在输入框上沿之上，
+   不占它高度；间距从 6px 收到 4px，下 padding 的 8px 也去掉 —— 那个 8px 是它看着「太高」
+   的真正来源，光调 margin 治不了。 */
+#chatComposer .skill-chips {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;
-  margin: 0 0 6px 0;
+  margin: 0 0 4px 0;
+  padding: 0 2px;
 }
 /* chip 脱离流之后，`.chat-composer` 那条 column-gap 也跟着少了 8px，
-   画板输入框比对话矮 8px、顶边反而往下掉。补回来，两边严格同高同位置。 */
-#chatComposer.cv-floating { padding-bottom: 8px; }
+   输入框会比 chip 没脱离时矮 8px、顶边反而往下掉。两个视图现在都脱离了，
+   所以这条补白也一视同仁 —— 只挂 .cv-floating 的话画板 h=100、对话 h=92，还是差 8px。 */
+#chatComposer { padding-bottom: 8px; }
 
 /* 左上角工具条（2026-11-16 用户要求）：生图模型下拉挪到画布左上。
    原来跟放大缩小挤在右下角一堆，一个是「用哪个模型」一个是「视图缩放」，
