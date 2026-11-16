@@ -25,7 +25,7 @@ function extract(data,mode){
  if(mode==='codex_responses')return data.output_text||(data.output||[]).filter(p=>p.type==='message').map(p=>textContent(p.content)).join('');
  return textContent(data.choices?.[0]?.message?.content);
 }
-export async function checkModelResponse(target,{signal,fetcher=fetch,timeoutMs=60000,prompt=PROMPT,maxTokens=2048,maxChars=16000}={}){
+export async function probeOnce(target,{signal,fetcher=fetch,timeoutMs=60000,prompt=PROMPT,maxTokens=2048,maxChars=16000}={}){
  const controller=new AbortController(),onAbort=()=>controller.abort(signal?.reason);let timedOut=false;
  if(signal?.aborted)onAbort();else signal?.addEventListener('abort',onAbort,{once:true});
  const timer=setTimeout(()=>{timedOut=true;controller.abort();},timeoutMs),started=Date.now();
@@ -43,12 +43,24 @@ export async function checkModelResponse(target,{signal,fetcher=fetch,timeoutMs=
    delete payload.tools;delete payload.tool_choice;delete payload.functions;delete payload.function_call;delete payload.messages;delete payload.instructions;delete payload.max_tokens;delete payload.max_completion_tokens;
   }
   const response=await fetcher(endpoint(target.base_url,route),{method:'POST',headers,body:JSON.stringify(payload),signal:controller.signal,redirect:'error'});
-  if(!response.ok)throw stateError(response.status===401||response.status===403?'服务拒绝凭证（HTTP '+response.status+'）':response.status===429?'服务请求限流（HTTP 429）':'服务返回 HTTP '+response.status,502);
-  let raw='',size=0;
+  /* 2026-11-16：上游的错误体才是真答案（Content blocked / 451 缓存 / 模型不存在），
+     以前这里只报「服务返回 HTTP 502」，等于把病历撕了只留体温 —— 面板上一片红
+     却看不出为什么，就被当成密钥坏了。现在把 error.message 前 300 字带出来。 */
+  if(!response.ok){
+   let detail='';
+   try{const body=await response.text();const parsed=JSON.parse(body);detail=String(parsed?.error?.message||parsed?.message||'').slice(0,300);}catch(_){}
+   const base=response.status===401||response.status===403?'服务拒绝凭证（HTTP '+response.status+'）':response.status===429?'服务请求限流（HTTP 429）':'服务返回 HTTP '+response.status;
+   throw stateError(detail?base+'：'+detail:base,502);
+  }
+  let raw='',size=0,imageSeen=false;
   if(!response.body)throw stateError('服务未返回响应内容',502);
   const reader=response.body.getReader(),decoder=new TextDecoder();
-  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;if(size>1024*1024)throw stateError('服务响应超过验证大小限制',502);raw+=decoder.decode(value,{stream:true});}raw+=decoder.decode();}
+  /* 2026-11-16：生图响应是一大段 base64 data URL，动辄几 MB，撞到下面这个 1MB
+     验证上限就被判「响应过大」—— 明明成功了却报错，面板上一片红。看到 data:image/
+     就说明端点、密钥、模型都对，记个标记立刻停，不把整张图读进内存。 */
+  try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.length;raw+=decoder.decode(value,{stream:true});if(raw.includes('data:image/')){imageSeen=true;break;}if(size>1024*1024)throw stateError('服务响应超过验证大小限制',502);}raw+=decoder.decode();}
   finally{await reader.cancel().catch(()=>{});}
+  if(imageSeen)return {output:'（生图模型：请求成功，返回了一张图片）',truncated:false,exact_match:false,finish_reason:'image',response_model:target.model,latency_ms:Date.now()-started,usage:null,image_mode:true};
   let data;try{data=JSON.parse(raw);}catch(_){throw stateError('服务没有返回可解析的 JSON 回复',502);}
   const output=extract(data,target.api_mode);
   if(!output.trim())throw stateError('服务请求成功，但没有返回可显示的回复',502);
@@ -61,8 +73,32 @@ export async function checkModelResponse(target,{signal,fetcher=fetch,timeoutMs=
   if(error.status)throw error;
   throw stateError('无法连接模型服务，请检查端点、网络和服务状态',502);
  }finally{clearTimeout(timer);signal?.removeEventListener('abort',onAbort);}
-}
-const active=job=>job.status==='running';
+ }
+ /* 2026-11-16：生图模型没法用「回一句话」验证。上游把纯文本指令当成内容冲突，
+   直接回 Content blocked；ZeroAPI 这类中转还有 24 小时 451 快照缓存 —— 同一个
+   prompt 被拒一次，之后所有请求（连带别的模型）全部 451，看上去像整把密钥废了。
+   实测同一把 key、同一个 nano-banana-pro，换成一句画图请求立刻 200 出图。
+   所以被拦时换一句带随机 nonce 的画图请求重试一次：出图就判「通过 · 生图」，
+   两次都被拦才算真失败。nonce 不能省，不带就等于去撞那 24 小时缓存。 */
+ const IMAGE_PROBE = 'Draw a single blue circle centered on a white background. Nonce ';
+ const IMAGE_BLOCKED = /content blocked|content polic|neither a usable image|rejected by the upstream|prohibited|HTTP 451/i;
+ const IMAGE_MARK = /data:image\//i;
+ export async function checkModelResponse(target,opts={}){
+ try{return await probeOnce(target,opts);}
+ catch(error){
+ if(!IMAGE_BLOCKED.test(String(error&&error.message||'')))throw error;
+ const nonce=Math.random().toString(36).slice(2,10);
+ const out=await probeOnce(target,{...opts,prompt:IMAGE_PROBE+nonce+'. Draw something new; do not reuse or paraphrase any earlier prompt.',maxTokens:1024});
+ /* probeOnce 读到 data:image/ 时已经置了 image_mode，这里不能再拿正则重算一遍 ——
+    output 这时已经是下面那句中文描述，正则必然不中，等于把 true 覆盖成 false。 */
+ out.image_mode=!!out.image_mode||IMAGE_MARK.test(String(out.output||''));
+ /* 生图回的是 base64 data URL，几百 KB 到几 MB，绝不能原样塞进面板 */
+ out.output=out.image_mode?'（生图模型：请求成功，返回了一张图片）':String(out.output||'').slice(0,120);
+ out.truncated=false;out.exact_match=false;
+ return out;
+ }
+ }
+ const active=job=>job.status==='running';
 export class ModelChecks{
  constructor({root,source,probe=checkModelResponse}){Object.assign(this,{root,source,probe});this.jobs=new Map();this.workers=new Map();this.creating=false;}
  file(id){return new StateFile(join(this.root,safeId(id)+'.json'),()=>null,{validate:j=>j&&j.version===1&&j.id===id&&typeof j.provider==='string'&&typeof j.model==='string'&&typeof j.status==='string'});}
@@ -125,7 +161,7 @@ export function createModelChecksHandler({checks,checkToken}){
       if(/没有返回可显示的回复/.test(error.message||''))result=await checkModelResponse(target,{timeoutMs:40000,maxTokens:512,prompt:'只回复两个字：收到'});
       else throw error;
      }
-     return reply({ok:true,latency_ms:result.latency_ms||Date.now()-started,response_model:result.response_model||'',output:String(result.output||'').slice(0,300)});
+     return reply({ok:true,latency_ms:result.latency_ms||Date.now()-started,response_model:result.response_model||'',image_mode:!!result.image_mode,output:String(result.output||'').slice(0,300)});
     }catch(error){
      if(error.status)throw error;
      throw stateError(error.message?('测试失败：'+error.message):'测试失败，检查地址与密钥',502);

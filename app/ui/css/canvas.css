@@ -1,0 +1,825 @@
+/* 画板模式（Canvas Mode）样式 — 独立文件，2026-11-16
+ *
+ * 设计约束：
+ * - 只作用于 .cv-* 与 #canvasStage 内部，不碰 Hermes 原有 class，
+ *   避免污染普通对话的样式。
+ * - 画布铺满 #chatBody 的容器区域；原消息流保留在 DOM 里但隐藏，
+ *   因为发送链路（sendRaw / SSE / 工具调用）依赖 #chatBody 存在。
+ *
+ * 主题适配（2026-11-16 用户指出「没有做好主题适配」后重写）：
+ * 原版直接引用了 --panel / --bg 两个**根本不存在**的变量，靠 fallback
+ * 里的 #1c1f25 / #14161a 硬撑，暗色勉强能看、亮色直接糊。
+ * 现在一律走 base.css 里真实存在的主题变量（--bg0/--bg2/--bg3、--text 系列、
+ * --border、--accent、--shadow-card），accent 的透明度档位在本文件顶部
+ * 自带一套 --cv-accent-aXX，:root 给亮色、body.theme-dark 给暗色。
+ * 不用 color-mix（老 WebView 上整条声明会失效），宁可多写十几行。
+ */
+
+/* ── 画板专属主题变量：亮色（跟随 :root） ── */
+:root {
+  --cv-grid: rgba(15, 23, 42, .10);
+  --cv-accent: #5e64f3;
+  --cv-accent-a06: rgba(94, 100, 243, .06);
+  --cv-accent-a14: rgba(94, 100, 243, .14);
+  --cv-accent-a16: rgba(94, 100, 243, .16);
+  --cv-accent-a22: rgba(94, 100, 243, .22);
+  --cv-accent-a26: rgba(94, 100, 243, .26);
+  --cv-accent-a45: rgba(94, 100, 243, .45);
+  --cv-accent-a55: rgba(94, 100, 243, .55);
+  --cv-accent-a70: rgba(94, 100, 243, .70);
+  --cv-accent-a80: rgba(94, 100, 243, .80);
+  --cv-accent-a85: rgba(94, 100, 243, .85);
+  --cv-accent-a90: rgba(94, 100, 243, .90);
+  --cv-accent-a95: rgba(94, 100, 243, .95);
+  --cv-on-accent: #ffffff;
+  --cv-img-bg: #f4f5f7;
+  /* 画布底色（2026-11-16）：亮色走白紫，不是面板那种中性白灰 */
+  --cv-stage-bg: #f9f8ff;
+  --cv-stage-glow: rgba(94, 100, 243, .10);
+  --cv-img-label: #374151;
+  --cv-img-scrim: linear-gradient(transparent, rgba(15, 23, 42, .78));
+  --cv-overlay: rgba(15, 23, 42, .38);
+}
+
+/* ── 画板专属主题变量：暗色（跟随面板 theme-dark） ── */
+body.theme-dark {
+  --cv-grid: rgba(255, 255, 255, .09);
+  --cv-accent: #71dbc0;
+  --cv-accent-a06: rgba(113, 219, 192, .06);
+  --cv-accent-a14: rgba(113, 219, 192, .14);
+  --cv-accent-a16: rgba(113, 219, 192, .16);
+  --cv-accent-a22: rgba(113, 219, 192, .22);
+  --cv-accent-a26: rgba(113, 219, 192, .26);
+  --cv-accent-a45: rgba(113, 219, 192, .45);
+  --cv-accent-a55: rgba(113, 219, 192, .55);
+  --cv-accent-a70: rgba(113, 219, 192, .70);
+  --cv-accent-a80: rgba(113, 219, 192, .80);
+  --cv-accent-a85: rgba(113, 219, 192, .85);
+  --cv-accent-a90: rgba(113, 219, 192, .90);
+  --cv-accent-a95: rgba(113, 219, 192, .95);
+  --cv-on-accent: #10231e;
+  --cv-img-bg: #0f1115;
+  --cv-stage-bg: #14161a;
+  --cv-stage-glow: rgba(113, 219, 192, .05);
+  --cv-img-label: #d6dbe2;
+  --cv-img-scrim: linear-gradient(transparent, rgba(0, 0, 0, .78));
+  --cv-overlay: rgba(0, 0, 0, .55);
+}
+
+/* ── 外层舞台：接管右侧会话面板的正文区 ── */
+#canvasStage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  /* 底色不是面板的 --bg0（那是白灰），走画板自己的 --cv-stage-bg：
+     亮色白紫、暗色黑绿，再叠一层顶部光雾，整块画布才有「画板」的样子 */
+  background:
+    radial-gradient(circle at 1px 1px, var(--cv-grid) 1px, transparent 0) 0 0 / 24px 24px,
+    radial-gradient(ellipse 90% 55% at 50% 0%, var(--cv-stage-glow), transparent 70%),
+    var(--cv-stage-bg);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+}
+#canvasStage.cv-panning { cursor: grabbing; }
+#canvasStage.cv-hidden { display: none !important; }
+
+/* ── 世界层：所有节点与连线都在这一层里随平移缩放变换 ── */
+#canvasWorld {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 0;
+  height: 0;
+  transform-origin: 0 0;
+  will-change: transform;
+}
+
+/* 连线层压在最底下，节点浮在上面 */
+#canvasLinks {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+  z-index: 0;
+}
+.cv-link {
+  fill: none;
+  stroke: var(--cv-accent-a55);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke .15s ease, stroke-width .15s ease;
+}
+/* 生成中的连线流动感：只对「正在跑」的那条加 */
+.cv-link.cv-link-live {
+  stroke-dasharray: 7 6;
+  animation: cv-link-flow 1s linear infinite;
+}
+@keyframes cv-link-flow {
+  to { stroke-dashoffset: -13; }
+}
+
+/* 连线的点击热区：比线宽很多，盖在可见线上（2026-11-16 加） */
+.cv-link-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.cv-link-hit:hover { stroke: var(--cv-accent-a14); }
+/* 悬停时让对应的可见线变亮 —— 由 JS 加 class */
+.cv-link.cv-link-hover {
+  stroke: var(--cv-accent-a95);
+  stroke-width: 3;
+}
+
+/* ── 节点通用 ── */
+.cv-node {
+  position: absolute;
+  z-index: 1;
+  border-radius: 14px;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-card);
+  transition: box-shadow .18s ease, border-color .18s ease;
+}
+/* 选中 = 发光边框（2026-11-17 用户第 5 条）：
+   「图片上的点击继续编辑文字删除，只需要让这个发光边框看起来被选中就行了，
+     我就知道是基于什么图在写提示词了」。
+   光靠 border-color 变一下在深色背景上几乎看不出来，要叠两层外发光：
+   贴边一层紧的（2px，几乎实色）+ 一层散的（22px，低透明）才叫"亮着的"。
+
+   两种主题分开写（用户第 6 条「发光边框区分两种主题」）：
+   暗色用薄荷绿 #71dbc0 —— 跟面板品牌色一致，深底上够亮又不刺眼；
+   亮色用紫 #7e60d6 —— 薄荷绿在浅底上会糊成灰白，紫色才有对比。 */
+.cv-node.cv-node-active {
+  border-color: #71dbc0;
+  box-shadow:
+    0 0 0 2px rgba(113, 219, 192, .85),
+    0 0 22px 4px rgba(113, 219, 192, .40),
+    0 8px 28px rgba(0, 0, 0, .35);
+  animation: cv-sel-breathe 2.4s ease-in-out infinite;
+}
+@keyframes cv-sel-breathe {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(113, 219, 192, .85),
+      0 0 22px 4px rgba(113, 219, 192, .40),
+      0 8px 28px rgba(0, 0, 0, .35);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(113, 219, 192, 1),
+      0 0 30px 7px rgba(113, 219, 192, .58),
+      0 8px 28px rgba(0, 0, 0, .35);
+  }
+}
+/* 亮色主题：换紫色系，阴影也要收（浅底上 0.35 的黑太重，看着像脏） */
+body.theme-light .cv-node.cv-node-active {
+  border-color: #7e60d6;
+  box-shadow:
+    0 0 0 2px rgba(126, 96, 214, .90),
+    0 0 22px 4px rgba(126, 96, 214, .34),
+    0 6px 20px rgba(80, 60, 140, .16);
+}
+@keyframes cv-sel-breathe-light {
+  0%, 100% {
+    box-shadow:
+      0 0 0 2px rgba(126, 96, 214, .90),
+      0 0 22px 4px rgba(126, 96, 214, .34),
+      0 6px 20px rgba(80, 60, 140, .16);
+  }
+  50% {
+    box-shadow:
+      0 0 0 2px rgba(126, 96, 214, 1),
+      0 0 30px 7px rgba(126, 96, 214, .50),
+      0 6px 20px rgba(80, 60, 140, .16);
+  }
+}
+body.theme-light .cv-node.cv-node-active { animation-name: cv-sel-breathe-light; }
+/* 系统偏好减少动效时不做呼吸，只留静态发光 */
+@media (prefers-reduced-motion: reduce) {
+  .cv-node.cv-node-active { animation: none; }
+}
+/* 拖动中禁掉过渡，否则跟手会飘 */
+.cv-node.cv-node-dragging { transition: none; }
+
+/* ── 起始圆加号 ── */
+.cv-plus {
+  width: 92px;
+  height: 92px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: var(--cv-accent-a06);
+  border: 2px dashed var(--cv-accent-a55);
+  box-shadow: none;
+  transition: background .18s ease, transform .18s ease, border-color .18s ease;
+}
+.cv-plus:hover {
+  background: var(--cv-accent-a16);
+  border-color: var(--cv-accent-a90);
+  transform: scale(1.04);
+}
+.cv-plus-icon {
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 300;
+  color: var(--cv-accent-a95);
+  pointer-events: none;
+}
+/* 「开始」标签（2026-11-16 用户：字太小、要挪到圆的上面去）
+   原来是 11px 挂在圆下方 -22px，被输入框一挡就看不见。现在 15px 加粗、
+   移到圆上方 -30px，跟着起始圆的紫色走，一眼就能看到起点在哪。 */
+.cv-plus::after {
+  content: '开始';
+  position: absolute;
+  top: -30px;
+  left: 50%;
+  transform: translateX(-50%);
+  /* 17px / 700、走全色不透明度（2026-11-16 二改）：
+     进画板会自动适配视野，缩放一般在 0.85 上下，15px 折下来只剩 12.5 像 11px，
+     用户第一次提的就是「字太小」。抬到 17px 折完还有 14px 左右，够看。 */
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  color: var(--cv-accent);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+/* ── 图片节点 ── */
+.cv-image {
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--cv-img-bg);
+}
+.cv-image img {
+  display: block;
+  max-width: 300px;
+  max-height: 300px;
+  object-fit: contain;
+  pointer-events: none;
+}
+/* 「点击继续编辑」那行字整段删了（2026-11-17 用户第 5 条）：
+   选中态已经有发光边框，图不用再自带说明书。
+   上传中的状态改由这里接管 —— 只在真正上传时出现，不是常态压在图上。 */
+.cv-image.cv-pending-upload::after {
+  content: '上传中…';
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  letter-spacing: .5px;
+  color: #fff;
+  background: rgba(0, 0, 0, .42);
+  backdrop-filter: blur(2px);
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+/* 生图进行中的占位节点 */
+.cv-pending {
+  width: 200px;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text2);
+  font-size: 12px;
+  cursor: default;
+  border-style: dashed;
+}
+.cv-pending .cv-spin {
+  width: 22px;
+  height: 22px;
+  border: 2px solid var(--cv-accent-a26);
+  border-top-color: var(--cv-accent-a95);
+  border-radius: 50%;
+  animation: cv-spin .9s linear infinite;
+}
+@keyframes cv-spin { to { transform: rotate(360deg); } }
+
+/* ── 文本提示节点（用户说的话） ── */
+.cv-text {
+  max-width: 280px;
+  /* 绝对定位 + 无宽度约束时，中文会被 compress 成一列竖排（2026-11-16 实测截图）。
+     给一个下限并用 max-content 让短句按内容撑开，长句到 280px 再折行。 */
+  min-width: 180px;
+  width: max-content;
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--text);
+  cursor: text;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.cv-text .cv-text-tag {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--cv-accent-a80);
+}
+
+/* ── 输入区：复用面板原生会话输入框（2026-11-16） ──
+   以前这里给画板自建了一套 textarea + 两个 select，没有麦克风、没有附件、
+   没有模型/能力/技能按钮，跟面板不是一个东西，用户原话「太丑了」。
+   现在不画任何新控件：直接把 #chatComposer 浮到画布底部，内部结构零改动。
+   下面只调整浮动时的定位、层级和一层底衬，颜色圆角全部继承面板原有样式。 */
+/* 2026-11-16 用户第 42 条：「会话框 input-outer 外部好像还有一圈圆角底板，那个就不要了，
+   只要 input-outer 这个就行，整个这个发消息的框变成玻璃感的透明感。画板的同步过去。」
+
+   画板模式原来在这给浮层铺了一层 bg1 实底 + 边框 + 8px padding 当「底衬」，
+   理由是怕虚线网格从字缝里透出来 —— 于是又变成「底板套卡片」，
+   正是用户嫌的那一圈。现在 .input-outer 自己做 backdrop-filter 模糊（base.css），
+   模糊本身就压得住网格，不需要实底。这条只留画板侧的定位微调，颜色一律交给玻璃层。 */
+#chatComposer.cv-floating {
+  /* 2026-11-16 用户第 45 条：「就和在对话一样就放在下面吧」。
+     跟随画布那套已经删了，这里就只管把它按在底部；
+     宽度也跟对话对齐（原来是 calc(100% - 140px)，为的是避开右下角缩放按钮，
+     结果两边收得比对话窄一圈，切换视图时会看到输入框突然变宽变窄）。 */
+  bottom: 16px;
+  width: min(760px, calc(100% - 48px));
+  background: none;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+/* 左上角工具条（2026-11-16 用户要求）：生图模型下拉挪到画布左上。
+   原来跟放大缩小挤在右下角一堆，一个是「用哪个模型」一个是「视图缩放」，
+   语义差得远；左上正好是读图的起点那一侧。 */
+.cv-topleft {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 15;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+/* 生图模型按钮（2026-11-16 用户第 45 条：「这个太丑了」重做）
+   旧版是 32px 高的方块，内容挤成一行 22 个字符被 ellipsis 切尾，
+   和面板里那套玻璃输入框完全不像一家人。
+   新版：胶囊 + 同款玻璃底 + 薄荷绿星芒图标 + 模型名 + 迷你下拉箭头。
+   底色直接复用 --composer-glass-* 变量，和输入框是同一块玻璃的延伸。 */
+.cv-topleft button.cv-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 9px 0 10px;
+  line-height: 1;
+  background-color: var(--composer-glass-bg, var(--bg1));
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid var(--composer-glass-border, var(--border));
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .10), inset 0 1px 0 rgba(255, 255, 255, .14);
+}
+.cv-topleft button.cv-target:hover {
+  color: var(--text1);
+  border-color: var(--cv-accent-a55);
+  background-color: var(--cv-accent-a06);
+}
+.cv-target-ico {
+  width: 13px;
+  height: 13px;
+  flex: none;
+  color: var(--cv-accent);
+}
+.cv-target-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 148px;
+  font-weight: 500;
+}
+.cv-target-caret {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  opacity: .5;
+  transition: transform .16s ease;
+}
+.cv-target-caret svg { width: 10px; height: 10px; }
+.cv-topleft button.cv-target:hover .cv-target-caret { opacity: .85; }
+
+/* 生图目标 chip（2026-11-16）：一个按钮，点开弹列表，
+   替掉原来摞在输入框上面的两个 <select>。对话模型不再由画板选，
+   用输入框工具条里原生的「选择模型」。 */
+.cv-controls button.cv-target,
+.cv-topleft button.cv-target {
+  width: auto;
+  max-width: 220px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.cv-controls button.cv-target.cv-target-empty,
+.cv-topleft button.cv-target.cv-target-empty { color: var(--text3); }
+.cv-target-menu {
+  position: absolute;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px;
+  min-width: 170px;
+  max-width: 250px;
+  background: var(--bg1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .16);
+}
+body.theme-dark .cv-target-menu { box-shadow: 0 12px 30px rgba(0, 0, 0, .6); }
+.cv-target-menu button {
+  width: 100%;
+  text-align: left;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--text1);
+  font-size: 12.5px;
+  line-height: 1.3;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-target-menu button:hover { background: var(--cv-accent-a16); }
+.cv-target-menu button.on { color: var(--cv-accent); font-weight: 600; }
+
+/* ── 画板模式压掉「回到最新消息」（2026-11-16 用户第 45 条）────────
+   「这个元素在画图下不要有了」。
+   画板没有消息流可滚，#chatJumpBottom 的定位还按 #chatBody 算，
+   结果飘在输入框上方当装饰。用 body.cv-mode + !important 压 ——
+   tabs.js 的 hideScrollBtn / updateScrollBtn 会持续改 el.hidden，
+   单靠那个属性压不住。 */
+body.cv-mode #chatJumpBottom { display: none !important; }
+
+/* ── 画板内的拖放高亮 ── */
+#canvasStage.cv-drop-active::before {
+  content: '松手放到画布上';
+  position: absolute;
+  inset: 12px;
+  border: 2px dashed var(--cv-accent-a70);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  color: var(--cv-accent-a95);
+  background: var(--cv-accent-a06);
+  z-index: 30;
+  pointer-events: none;
+}
+
+/* ── 右下角视图控制 ── */
+.cv-controls {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+  z-index: 15;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cv-controls button {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg2);
+  color: var(--text2);
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .15s ease, color .15s ease;
+}
+.cv-controls button:hover {
+  background: var(--cv-accent-a16);
+  color: var(--cv-accent);
+}
+
+/* ══════════════════════════════════════════════════════════════
+   生成图目录（2026-11-16 新增）：右侧抽屉，列出本会话全部生成图
+   ══════════════════════════════════════════════════════════════ */
+.cv-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 300px;
+  z-index: 18;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border-left: 1px solid var(--border);
+  box-shadow: -8px 0 28px var(--cv-overlay);
+  transform: translateX(100%);
+  transition: transform .22s ease;
+  user-select: none;
+}
+.cv-drawer.cv-open { transform: translateX(0); }
+.cv-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.cv-drawer-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cv-drawer-count {
+  font-size: 11px;
+  color: var(--text3);
+  margin-left: 6px;
+  font-weight: 400;
+}
+.cv-drawer-close {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text3);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cv-drawer-close:hover { background: var(--bg3); color: var(--text); }
+.cv-drawer-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cv-drawer-item {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background .14s ease, border-color .14s ease;
+}
+.cv-drawer-item:hover {
+  background: var(--cv-accent-a06);
+  border-color: var(--border);
+}
+.cv-drawer-thumb {
+  width: 46px;
+  height: 46px;
+  flex: 0 0 auto;
+  border-radius: 7px;
+  overflow: hidden;
+  background: var(--cv-img-bg);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.cv-drawer-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.cv-drawer-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.cv-drawer-name {
+  font-size: 11.5px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cv-drawer-sub {
+  font-size: 10px;
+  color: var(--text3);
+  margin-top: 2px;
+}
+.cv-drawer-acts {
+  display: flex;
+  gap: 3px;
+  flex: 0 0 auto;
+}
+.cv-icon-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text3);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .14s ease, color .14s ease, border-color .14s ease;
+}
+.cv-icon-btn:hover { background: var(--bg3); color: var(--text); }
+.cv-icon-btn.cv-danger:hover {
+  background: var(--red-bg);
+  border-color: var(--red);
+  color: var(--red);
+}
+.cv-drawer-empty {
+  padding: 28px 16px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--text3);
+  line-height: 1.6;
+}
+
+/* ══════════════════════════════════════════════════════════════
+   提示词弹层（2026-11-16 新增）：点连线看这一轮到底注入了什么
+   ══════════════════════════════════════════════════════════════ */
+.cv-modal {
+  position: absolute;
+  inset: 0;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cv-overlay);
+  padding: 24px;
+}
+.cv-modal.cv-hidden { display: none !important; }
+.cv-modal-box {
+  width: min(620px, 100%);
+  max-height: 76%;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.cv-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+.cv-modal-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.cv-modal-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 14px 16px;
+}
+.cv-modal-label {
+  font-size: 10.5px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--text3);
+  margin-bottom: 5px;
+}
+.cv-modal-pre {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 9px;
+  background: var(--bg0);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--font);
+}
+.cv-modal-pre:last-child { margin-bottom: 0; }
+
+/* ── 视图切换按钮（画布 / 对话） ──
+   2026-11-16 用户报「画布、对话按钮遮盖了现在的元素」：原来它是一个绝对定位的
+   小浮层，靠 JS 量 header 底边往下推 top，推来推去都是在挤别人的位置。
+   现在它进 header 右侧图标组，用和其他图标一样的 .tool-btn，位置由 flex 排，
+   永远不会压在别的东西上 —— 所以这里只需要管「当前在画布视图」的高亮。
+   图标含义是「点下去会去哪」：在画布上显示对话气泡，在对话里显示网格。 */
+#cvViewSwitch { flex-shrink: 0; }
+#cvViewSwitch.cv-on { color: var(--cv-accent); }
+#cvViewSwitch svg {
+  width: 17px; height: 17px;
+  stroke: currentColor; fill: none;
+  stroke-width: 2; stroke-linecap: round; stroke-linejoin: round;
+}
+
+/* ── 移动端：节点小一号，输入框铺宽 ── */
+@media (max-width: 768px) {
+  .cv-plus { width: 92px; height: 92px; }
+  .cv-plus-icon { font-size: 32px; }
+  .cv-image img { max-width: 220px; max-height: 220px; }
+  /* 窄屏：浮动输入框贴边铺宽，别把两侧控制条挤掉 */
+  #chatComposer.cv-floating { width: calc(100% - 24px); bottom: 12px; }
+  .cv-controls { right: 10px; bottom: 10px; }
+  .cv-drawer { width: min(280px, 82vw); }
+}
+
+
+/* 图片节点定位（分支「＋」按钮已于 2026-11-16 用户第 43 条删除：
+   「点击图片，在图片下方弹出输入框，就等于引用了，不要增加没必要的交互」） */
+.cv-node.cv-image { position: absolute; }
+
+/* ── 提示词悬停浮层（2026-11-16 用户第 46 条）──
+   原来点连线弹模态框：要精确点中那条 2px 线，还得手动关窗。
+   现在鼠标停在图上就出来，贴在图片旁边，移开就收。
+   position:fixed 用视口坐标 —— 画布 pan/scale 怎么变都不影响它。 */
+.cv-prompt-tip {
+  position: fixed;
+  z-index: 240;
+  width: max-content;
+  max-width: 340px;
+  padding: 10px 13px 11px;
+  border-radius: 12px;
+  background: rgba(20, 24, 30, .94);
+  border: 1px solid rgba(113, 219, 192, .30);
+  box-shadow: 0 12px 34px rgba(0, 0, 0, .46), 0 0 0 1px rgba(255, 255, 255, .04) inset;
+  backdrop-filter: blur(16px) saturate(1.6);
+  -webkit-backdrop-filter: blur(16px) saturate(1.6);
+  pointer-events: none;
+  animation: cvTipIn .14s ease-out;
+}
+.cv-prompt-tip.cv-hidden { display: none !important; }
+
+@keyframes cvTipIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.cv-tip-label {
+  font-size: 10.5px;
+  letter-spacing: .04em;
+  color: rgba(113, 219, 192, .78);
+  margin-bottom: 5px;
+}
+.cv-tip-text {
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: rgba(238, 244, 242, .95);
+  word-break: break-word;
+  white-space: pre-wrap;
+  max-height: 220px;
+  overflow: hidden;
+}
+.cv-tip-empty {
+  font-size: 12px;
+  color: rgba(238, 244, 242, .45);
+}
+.cv-tip-meta {
+  margin-top: 7px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: 10.5px;
+  color: rgba(238, 244, 242, .42);
+}
+
+body.theme-light .cv-prompt-tip {
+  background: rgba(252, 250, 255, .96);
+  border-color: rgba(139, 110, 220, .26);
+  box-shadow: 0 12px 34px rgba(72, 56, 120, .18);
+}
+body.theme-light .cv-tip-label { color: rgba(126, 96, 214, .85); }
+body.theme-light .cv-tip-text { color: #2b2440; }
+body.theme-light .cv-tip-empty { color: rgba(43, 36, 64, .45); }
+body.theme-light .cv-tip-meta { color: rgba(43, 36, 64, .45); border-top-color: rgba(0, 0, 0, .07); }

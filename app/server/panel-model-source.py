@@ -24,23 +24,29 @@ def _read_source(config_path,var_root,request):
     except Exception:raise Failure('模型配置无法解析，原文件已保留')
     if not isinstance(config,dict):raise Failure('模型配置结构不正确')
     catalog=[];private={};origins={}
+    want=request.get('provider') or request.get('provider_id')
+    # 模型发现专用：目标服务商的清单可能本来就是空的（第一把生图 key 就是 0 个模型），
+    # 拉清单正是为了把它填上。这种请求不能因为「没有模型」就被踢出候选。
+    want_probe=request.get('action')=='resolve' and not request.get('model') and bool(want)
     for key,(origin,_,item) in entries(config).items():
         if not enabled(item):continue
         ids=available_models(item,origin)
-        if not ids:continue
+        if not ids and not (want_probe and key==want):continue
         catalog.append({'id':key,'name':str(item.get('name') or key),'models':ids})
         private[key]=item
         origins[key]=origin
     if request.get('action')=='catalog':return {'ok':True,'providers':catalog}
-    provider=request.get('provider');model=request.get('model')
-    if request.get('action')=='resolve' and not model:
-        provider=provider or request.get('provider_id')
+    provider=request.get('provider') or request.get('provider_id');model=request.get('model')
+    # 模型发现专用：调用方没给 model 时按 provider 反查一把密钥。
+    # 这里必须容忍「这把密钥的模型清单还是空的」——拉清单本来就是为了填它，
+    # 空清单时直接拒绝等于把人锁在门外（生图那把 key 一开始就是 0 个模型）。
+    probe=want_probe and provider==want
+    if probe:
         target=next((item for item in catalog if item['id']==provider),None)
         if not target:raise Failure('所选服务不存在或已停用')
-        model=next((value for value in target['models'] if isinstance(value,str)),None)
-        if not model:raise Failure('服务没有可用于模型发现的模型条目')
+        model=next((value for value in target['models'] if isinstance(value,str)),'')
     target=next((item for item in catalog if item['id']==provider),None)
-    if not target or model not in target['models']:raise Failure('所选服务或模型已不在配置中，请刷新列表')
+    if not target or (not probe and model not in target['models']):raise Failure('所选服务或模型已不在配置中，请刷新列表')
     item=private[provider]
     fields=provider_fields(item,origins[provider])
     base=fields['base_url'].rstrip('/')

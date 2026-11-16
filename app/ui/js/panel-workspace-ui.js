@@ -6,6 +6,12 @@ var _pwApi=null,ready,searchTimer,searchSeq=0,searchRows=[],expertList=[],speech
 var E=escapeHtml;
 async function request(path,method,body){var r=await api('/api/workspace-ui'+path,method||'GET',body);if(r.error||r.ok===false)throw Error(r.error||'操作失败');return r;}
 async function reload(){var next=await request('');if(!next.sessions||!Array.isArray(next.folders))throw Error('会话工作区数据未就绪，请刷新重试');state=next;renderRail();return state;}
+/* 对外只暴露两个只读入口（2026-11-16）：
+   state 与 reload 都在本 IIFE 内部，外部文件（tabs.js 的会话分流、
+   new-dialog.js 创建后刷新）拿不到。只放查询和刷新，不放整份 state——
+   避免别处直接改写导致渲染不同步。 */
+window.pwSessionType=function(sid){var ss=state.sessions||{};if(!ss[sid])return null;return ss[sid].type||'chat';};
+window.pwReload=reload;
 function modal(title,body,foot){
   /* 适配器：唯一实现是 core/ui-kit.js 的 UI.modal。
      id='pwOverlay' 和 .pw-modal 类名都保留——close() 靠 id 定位，CSS 靠类名。*/
@@ -53,8 +59,12 @@ window.pwRailHTML=function(){
    _tabStreaming 是本页内存里的实时态，s.state 是服务端落盘态（刷新后仍然准），两者取先到的那个。 */
  var dst=(s.needs_input||s.state==='needs_input')?'needs_input':((streaming||s.running)?'running':(s.state==='interrupted'?'interrupted':'idle')),
  title=s.title&&s.title!=='New Chat'?s.title:'新会话',id=E(s.id),
- meta=fmtDateTime(s.updated_at)+(s.message_count?' · '+s.message_count+' 条':'')+(s.queued_count>0?' · 排队 '+s.queued_count:'');
- return '<div class="session-item '+(s.id===currentSession?'active ':'')+(dst==='running'?'streaming ':'')+'" data-sid="'+id+'"><button class="session-open" type="button" onclick="railSessionClick(\''+id+'\',event)" title="双击编辑名称与归类" ondblclick="renameSession(\''+id+'\',event)" aria-current="'+(s.id===currentSession?'page':'false')+'"><span class="dot" data-state="'+dst+'" aria-label="'+({idle:'空闲',running:'正在回复',needs_input:'等你决定',interrupted:'上轮中断'}[dst])+'"></span><span class="si-body"><span class="title">'+E(title)+'</span><span class="meta">'+E(meta)+'</span></span></button><button class="del" type="button" aria-label="归档会话：'+E(title)+'" title="归档会话" onclick="delSession(\''+id+'\',event)">×</button></div>';}
+ meta=fmtDateTime(s.updated_at)+(s.message_count?' · '+s.message_count+' 条':'')+(s.queued_count>0?' · 排队 '+s.queued_count:''),
+ /* 画板会话单独标记（2026-11-16 用户需求）：左树一眼能分辨，点进去就是画板。
+    类型存在 workspace.sessions[sid].type，跟聊天会话同一份数据，没有第二套体系。 */
+ isCv=((state.sessions[s.id]||{}).type==='canvas'),
+ cvTag=isCv?'<span class="si-type" title="画板会话" aria-label="画板会话"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg></span>':'';
+ return '<div class="session-item '+(s.id===currentSession?'active ':'')+(dst==='running'?'streaming ':'')+(isCv?'is-canvas ':'')+'" data-sid="'+id+'" data-type="'+(isCv?'canvas':'chat')+'"><button class="session-open" type="button" onclick="railSessionClick(\''+id+'\',event)" title="双击编辑名称与归类" ondblclick="renameSession(\''+id+'\',event)" aria-current="'+(s.id===currentSession?'page':'false')+'"><span class="dot" data-state="'+dst+'" aria-label="'+({idle:'空闲',running:'正在回复',needs_input:'等你决定',interrupted:'上轮中断'}[dst])+'"></span><span class="si-body"><span class="title">'+cvTag+E(title)+'</span><span class="meta">'+E(meta)+'</span></span></button><button class="del" type="button" aria-label="归档会话：'+E(title)+'" title="归档会话" onclick="delSession(\''+id+'\',event)">×</button></div>';}
  function sessions(id){return _sessions.filter(s=>((state.sessions[s.id]||{}).folder_id||'')===id).map(item).join('');}
  function tree(parent,seen,d){d=d||0;return state.folders.filter(f=>(f.parent_id||'')===parent&&!seen.has(f.id)).map(f=>{var next=new Set(seen);next.add(f.id);return PwTree.node({key:'folder:'+f.id,depth:d,icon:PW_FOLDER_ICO,label:f.name,body:tree(f.id,next,d+1)+sessions(f.id),acts:'<button type="button" aria-label="编辑文件夹：'+E(f.name)+'" title="编辑文件夹" onclick="pwFolder(\''+f.id+'\')">⋯</button>'+'<button type="button" aria-label="新建子文件夹：'+E(f.name)+'" title="新建子文件夹" onclick="pwFolder(null,\''+f.id+'\')">＋</button>'});}).join('');}
  html+=tree('',new Set());html+=PwTree.node({key:'folder:none',icon:'🗂',label:'未分类',body:sessions(''),def:true}); 

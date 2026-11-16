@@ -58,3 +58,6 @@ dev/__pycache__/
 __pycache__/
 index.html.old-promo
 article.html.bak
+
+# 编辑前备份文件，永不入库
+*.bak.*

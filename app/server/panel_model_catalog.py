@@ -42,7 +42,10 @@ def provider_fields(item,origin):
   model=value.get('model') or value.get('default_model')
  else:
   base=value.get('api') or value.get('url') or value.get('base_url') or ''
-  model=value.get('default_model')
+  # 2026-11-16：providers 段的 default_model 已废弃（它不参与任何路由，只在
+  # 清单为空时当占位符，名字叫「默认」却从不起默认作用）。不再读它，让
+  # 「清单为空」这件事以 needs_models 的形式暴露出来，而不是被一个假默认遮住。
+  model=''
  raw_mode=value.get('api_mode') or value.get('transport')
  mode=raw_mode.strip().lower() if isinstance(raw_mode,str) else ''
  if mode not in ('chat_completions','codex_responses','anthropic_messages','bedrock_converse','codex_app_server'):mode=''

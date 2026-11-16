@@ -52,11 +52,22 @@ def main():
     ap.add_argument("--click", action="append", default=[])
     ap.add_argument("--fill", action="append", default=[], help="选择器|值")
     ap.add_argument("--shot-dir", default="/vol1/@apphome/hermes-agent/data/tmp/probe")
-    ap.add_argument("--wait", type=int, default=900)
+    ap.add_argument("--wait", type=int, default=900, help="goto 之后等多少毫秒")
+    ap.add_argument("--wait-after", type=int, default=0,
+                    help="执行完 --eval/--click/--fill 之后再等多少毫秒（等异步渲染落定）")
     ap.add_argument("--full", action="store_true", help="整页截图")
     ap.add_argument("--no-overflow", action="store_true")
+    ap.add_argument("--token-file", help="把文件里的面板 token 注入 window.monitorToken（走文件，不上命令行）")
     a = ap.parse_args()
     os.makedirs(a.shot_dir, exist_ok=True)
+    token = ""
+    if a.token_file:
+        try:
+            with open(a.token_file, encoding="utf-8") as fh:
+                token = fh.read().strip()
+        except OSError as error:
+            print(json.dumps({"error": f"token-file: {error}"}, ensure_ascii=False))
+            return 4
     rc = 0
     with sync_playwright() as p:
         b = p.chromium.launch(args=["--no-sandbox"])
@@ -65,6 +76,10 @@ def main():
             pg = b.new_page(viewport={"width": w, "height": h}, device_scale_factor=2)
             try:
                 pg.goto(a.url, wait_until="domcontentloaded", timeout=25000)
+                # 面板的 /api/* 全要 X-Monitor-Token；无头浏览器是新会话、没有登录 cookie，
+                # 不注入就只能看到「正在读取…」永远转圈。凭据从文件读，不进 argv。
+                if token:
+                    pg.evaluate("(t) => { window.monitorToken = t; }", token)
                 pg.wait_for_timeout(a.wait)
                 for sel in a.click:
                     pg.click(sel, timeout=8000)
@@ -90,6 +105,8 @@ def main():
                     else:
                         rec["eval"] = pg.evaluate(a.expr)
                 shot = os.path.join(a.shot_dir, f"probe_{w}.png")
+                if a.wait_after:
+                    pg.wait_for_timeout(a.wait_after)
                 pg.screenshot(path=shot, full_page=a.full)
                 rec["shot"] = shot
                 print(json.dumps(rec, ensure_ascii=False))

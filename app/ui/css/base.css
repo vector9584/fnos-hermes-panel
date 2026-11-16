@@ -268,7 +268,12 @@
     .chat-jump-bottom:hover{color:var(--accent);border-color:var(--accent)}
     .chat-jump-bottom:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
     #chatBody:focus{outline:none}
-    .chat-body{flex:1;min-height:0;overflow-y:auto;padding:20px 16px;display:flex;flex-direction:column;gap:16px}
+    /* padding-bottom 由 --composer-h 驱动（canvas.js 的 watchComposerHeight 实测写入）。
+       输入框是绝对定位的浮层，不吃布局，所以必须靠这段留白把最后一条气泡顶上去；
+       没有它就必然出现「滚到底了，最下面那条还被输入框盖住一半」。 */
+    .chat-body{flex:1;min-height:0;overflow-y:auto;padding:20px 16px;
+        padding-bottom:calc(var(--composer-h,108px) + 44px);
+        display:flex;flex-direction:column;gap:16px}
     .msg{max-width:85%;display:flex;flex-direction:column;gap:4px}
     .msg.user{align-self:flex-end;align-items:flex-end}
     .msg.assistant{align-self:flex-start;align-items:flex-start}
@@ -558,7 +563,14 @@
     .quote-block img{border-radius:6px}
     .msg.user .quote-block{background:rgba(255,255,255,.16);box-shadow:inset 3px 0 0 0 rgba(255,255,255,.6);color:rgba(255,255,255,.92)}
     .msg.user .quote-block .quote-label{color:rgba(255,255,255,.95)}
-    .quote-preview{display:none;align-items:center;gap:8px;padding:6px 12px;margin:0 16px 8px;border-radius:10px;background:var(--accent-bg);border:0;box-shadow:inset 3px 0 0 0 var(--accent);font-size:12px;color:var(--text2)}
+    /* 2026-11-16：输入框改贴底浮层后，引用条也得跟着浮到它正上方 ——
+       否则它还留在文档流里，会掉到列底部，跟输入框之间隔着一大片空白。 */
+    .quote-preview{display:none;align-items:center;gap:8px;padding:6px 12px;
+        position:absolute;left:50%;transform:translateX(-50%);
+        width:min(760px,calc(100% - 48px));
+        bottom:calc(var(--composer-h,108px) + 22px);z-index:29;
+        margin:0;border-radius:10px;background:var(--accent-bg);border:0;
+        box-shadow:inset 3px 0 0 0 var(--accent);font-size:12px;color:var(--text2)}
     .quote-preview.show{display:flex}
     .quote-preview .qp-text{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .quote-preview .qp-close{width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:0;background:transparent;cursor:pointer;color:var(--text3);font-size:16px;border-radius:6px}
@@ -582,15 +594,128 @@
     .rt-speaker .rt-sp-emoji{font-size:16px}
     .rt-divider{align-self:center;display:flex;align-items:center;gap:10px;width:100%;margin:8px 0;font-size:11px;color:var(--text3)}
     .rt-divider::before,.rt-divider::after{content:'';flex:1;height:1px;background:var(--border)}
+    /* 输入框玻璃参数（2026-11-16）：浅色=白玻璃，深色=黑玻璃。
+       单独提出来是因为画板模式要复用同一套，写在主题块里比在 canvas.css 里再抄一份稳。 */
+    :root{
+        --composer-glass-bg:rgba(255,255,255,.24);
+        --composer-glass-border:rgba(255,255,255,.62);
+        --composer-glass-refract:rgba(122,92,255,.20);
+        --composer-glass-shadow:0 10px 34px rgba(31,38,135,.11),inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(255,255,255,.34),inset 0 0 0 1px rgba(255,255,255,.16);
+    }
+    body.theme-dark{
+        --composer-glass-bg:rgba(22,26,32,.16);
+        --composer-glass-border:rgba(255,255,255,.14);
+        --composer-glass-refract:rgba(113,219,192,.22);
+        --composer-glass-shadow:0 14px 40px rgba(0,0,0,.46),inset 0 1px 0 rgba(255,255,255,.16),inset 0 -1px 0 rgba(255,255,255,.05),inset 0 0 0 1px rgba(255,255,255,.04);
+    }
     .rt-status{align-self:center;display:flex;align-items:center;gap:8px;padding:6px 16px;border-radius:20px;background:var(--bg3);font-size:12px;color:var(--text2)}
     .rt-status .rt-pulse{width:8px;height:8px;border-radius:50%;background:var(--warning);animation:pulse 1s infinite}
     .rt-condense{align-self:center;display:flex;align-items:center;justify-content:center;width:100%;margin:8px 0;padding:7px 12px;font-size:12px;color:var(--text3);cursor:pointer;border-radius:10px;background:var(--bg2);transition:color .15s,background .15s;user-select:none}
     .rt-condense:hover{color:var(--accent);background:var(--bg3)}
 
     /* 输入区 */
-    .chat-composer{border-top:1px solid var(--border);padding:14px 16px 16px;background:var(--bg2)}
-    .input-outer{background:var(--bg2);border:1px solid var(--border);border-radius:22px;padding:12px 14px 10px;box-shadow:0 2px 8px rgba(0,0,0,.06);transition:border-color .16s,box-shadow .16s}
-    body.theme-dark .input-outer{box-shadow:0 2px 8px rgba(0,0,0,.2)}
+    /* ── 输入区（2026-11-16 用户第 42 条） ─────────────────────────
+       原话：「会话框 input-outer 外部好像还有一圈圆角底板，那个就不要了，
+               只要 input-outer 这个就行，整个这个发消息的框变成玻璃感的透明感。
+               画板的同步过去。」
+       原来有两层可见壳体：.chat-composer 自己带 border-top + bg2 一整条底板，
+       里面 .input-outer 再带一圈边框圆角 —— 于是看起来是「底板套卡片」。
+       现在 .chat-composer 只当一个定位壳：不占流、不上色、不描边，
+       视觉上只剩 .input-outer 这一层。它绝对定位贴底悬浮，
+       消息区靠 #chatBody 的 padding-bottom（由 --composer-h 驱动）让开它。 */
+    .chat-composer{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);
+        width:min(760px,calc(100% - 48px));z-index:30;margin:0;padding:0;
+        border:0;background:none;box-shadow:none}
+
+    /* 玻璃感：半透明底 + 背景模糊 + 一圈高光内描边。
+       浅色取白玻璃，深色取黑玻璃；两套都靠 --composer-glass-* 变量，
+       画板模式直接继承，不用另写一份。 */
+    .input-outer{
+        /* ── 水滴玻璃（2026-11-16 用户第 44 条）───────────────────────
+           「输入框可以再透一点，那种渐变的水滴的感觉，因为在对应不同色系下，
+             只有下面有元素才能感觉到透感，在纯色背景下看不出来好看的样式」
+
+           病根：上一版全靠 backdrop-filter，背后是纯色就无事可模糊，
+           半透明色块于是一个样 —— 用户说的就是这个。
+           所以改成「自身带形状」：底下铺的透明度压到 .16/.24，
+           靠四层渐变自己造出体积，不再指望背后有东西可透。
+           四层从外到内：整体曲率明暗 → 顶部水滴高光 → 左上焦散点 → 右下带色反折光。 */
+        background-color:var(--composer-glass-bg);
+        background-image:
+            /* ① 整体曲率：左上受光、右下背光，模拟水珠鼓起来的斜面。
+               明暗差原来只有 .13→.10，几乎是一条平线，所以看着像「平贴的磨砂片」。
+               拉到 .28→.18 才立得起来 —— 纯色背景下没有东西可模糊，
+               体积感只剩这一层自己在做，薄了就是死。 */
+            linear-gradient(162deg,rgba(255,255,255,.28) 0%,rgba(255,255,255,.02) 34%,rgba(0,0,0,.05) 68%,rgba(0,0,0,.18) 100%),
+            /* ② 顶部水滴高光：一大团椭圆亮斑从顶边压下来，这是「水滴」的主特征 */
+            radial-gradient(88% 132% at 50% -40%,rgba(255,255,255,.46) 0%,rgba(255,255,255,.15) 38%,rgba(255,255,255,0) 66%),
+            /* ③ 左上焦散：水珠边缘聚出来的那点锐利反光。
+               原来 34%×56%+.30 摊成一片雾，和顶部高光糊在一起看不出「点」；
+               收到 13%×24%、亮度 .85，才在左上圆角内侧立起一粒真正的焦点。 */
+            radial-gradient(13% 24% at 8% 6%,rgba(255,255,255,.85) 0%,rgba(255,255,255,.16) 56%,rgba(255,255,255,0) 100%),
+            /* ③b 左侧竖向反光柱：液体贴着曲面总有一条被拉长的亮线，
+               塑料和玻璃的分界就在这条线上。1.8% 宽，刚好一条边。 */
+            linear-gradient(94deg,rgba(255,255,255,.22) 0%,rgba(255,255,255,.06) 2.4%,rgba(255,255,255,0) 5.5%),
+            /* ④ 右下反折光：带主题色，深色薄荷绿 / 浅色紫，负责「有色玻璃」的味 */
+            radial-gradient(74% 94% at 94% 112%,var(--composer-glass-refract) 0%,rgba(255,255,255,0) 64%);
+        -webkit-backdrop-filter:blur(24px) saturate(185%);
+        backdrop-filter:blur(24px) saturate(185%);
+        border:1px solid var(--composer-glass-border);
+        border-radius:22px;
+        padding:12px 14px 10px;
+        box-shadow:var(--composer-glass-shadow);
+        transition:border-color .16s,box-shadow .16s,background .16s;
+        position:relative;
+        /* isolate：让下面的 ::before 的 screen 混合只作用在这块玻璃内部，
+           不要穿出去和消息流/画布背景混色 */
+        isolation:isolate;
+    }
+    /* ── 水滴边缘（2026-11-16 二次加强）───────────────────────────
+       光有 background-image 还是像「磨砂色块」—— 视觉复核原话：
+       「缺少明显的折射、厚度、强高光和液体边缘层次」。
+       真正的玻璃感靠三件事，全在边缘上：顶边一道锐利弧光（水珠受光的那条棱）、
+       左上角一个极亮的焦点（光线在水珠里聚出来的点）、底部一圈内反光（透过去的背景折回来）。
+       这三层贴在本体上，纯色背景也成立 —— 它们是「自己发光」，不是「透出后面」。 */
+    .input-outer::before{
+        content:'';
+        position:absolute;
+        inset:0;
+        border-radius:inherit;
+        pointer-events:none;
+        z-index:0;
+        background:
+            /* 顶边锐利弧光：贴着圆角走，只占顶部 26% */
+            radial-gradient(135% 52% at 50% -6%,rgba(255,255,255,.62) 0%,rgba(255,255,255,.16) 26%,rgba(255,255,255,0) 52%),
+            /* 左上角焦点已挪进 .input-outer 的 background-image 第 ③ 层（13%×24%、.85）。
+               这里原来还有一份 16%×30%/.72 —— 两层焦散叠在一起互相冲淡，
+               谁都不够锐利，实测两处的亮心根本对不上（8%6% vs 11%9%）。
+               同一个光学特征只留一处，这是「玻璃要准」和「堆特效」的分界。 */
+            /* 底部内反光：背景光从下方折回来那一抹 */
+            radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.26) 0%,rgba(255,255,255,0) 58%);
+        mix-blend-mode:screen;
+        opacity:.92;
+    }
+    /* 内边描边：玻璃边缘比中间亮一圈，这是「有厚度」的关键。
+       1px 白线压在最外层，动的是 inset 阴影不是 border，免得影响盒模型。 */
+    .input-outer::after{
+        content:'';
+        position:absolute;
+        inset:1px;
+        border-radius:inherit;
+        pointer-events:none;
+        z-index:0;
+        /* 四条边分开写、亮度递减：上缘迎光最亮，左侧顺着反光柱次之，
+           底缘是折回来的弱光，右缘背光最暗。
+           一圈等亮就变成塑料倒角 —— 只有不对称才读得出光照方向＝厚度。 */
+        box-shadow:inset 0 1.5px 0 rgba(255,255,255,.48),
+                   inset 1.5px 0 0 rgba(255,255,255,.24),
+                   inset 0 -1px 0 rgba(255,255,255,.20),
+                   inset -1px 0 0 rgba(255,255,255,.12);
+    }
+    /* 输入内容必须在两层伪元素之上 */
+    .input-outer > *{position:relative;z-index:1}
+    /* 浏览器不支持模糊时退成近乎不透明，否则文字压在消息上会糊成一片 */
+    @supports not (backdrop-filter:blur(2px)){.input-outer{background:var(--bg2)}}
     /* 聚焦反馈只留一处：外框描边变色 + 一圈极淡柔光。
        以前同一个输入框能同时看到三圈线——.chat-composer 顶边线、.input-outer 边框、
        外加 panel-durable.css 里 `body.theme-dark :focus-visible` 那条 2px outline（offset 3px，
@@ -600,16 +725,28 @@
     .input-outer textarea:focus-visible,
     .input-outer input:focus,
     .input-outer input:focus-visible{outline:none!important;box-shadow:none!important}
-    .input-outer:focus-within{border-color:var(--accent);box-shadow:0 2px 12px rgba(94,100,243,.14),0 2px 8px rgba(0,0,0,.06)}
+    .input-outer:focus-within{border-color:var(--accent);box-shadow:0 8px 32px rgba(94,100,243,.18),inset 0 1px 0 rgba(255,255,255,.85)}
     /* 深色主题下 body.theme-dark .input-outer（0,2,1）权重高于 .input-outer:focus-within（0,2,0），
        会把聚焦反馈整条盖掉。补同级权重的一条。
        聚焦表现只保留「边框变色 + 一层柔和投影」——不再套 0 0 0 3px 的外扩光环，
        那圈环和边框叠在一起就是被嫌「好多亮框框」的原因。 */
-    body.theme-dark .input-outer:focus-within{border-color:var(--accent);box-shadow:0 2px 14px rgba(113,219,192,.18),0 2px 8px rgba(0,0,0,.2)}
+    body.theme-dark .input-outer:focus-within{border-color:var(--accent);box-shadow:0 10px 34px rgba(113,219,192,.22),inset 0 1px 0 rgba(255,255,255,.06)}
+    /* 深色不要再覆盖 background-image —— 水滴四层在 :root 与 theme-dark 的变量里已经分开配好，
+       这里再写一条 linear-gradient 会整条盖掉（层叠里后写的赢），水滴感当场消失。
+       同理 ::before 的弧光也不在这里重写，靠 opacity 微调就够：
+       黑玻璃上同样的白 .62 会显脏，压到 .82 相当于视觉上和浅色对齐。 */
+    body.theme-dark .input-outer::before{opacity:.82}
     .skill-chips{display:flex;flex-wrap:wrap;gap:6px;padding:0 2px 8px}
     .skill-chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-bg);color:var(--accent);border:0;border-radius:var(--radius-xl);padding:4px 9px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit}
     .skill-chip .x{font-weight:700;opacity:.65}
     .skill-chip:hover .x{opacity:1}
+    /* 能力 chip（2026-11-16）：和技能 chip 同尺寸，但语义不同 ——
+       技能是「参考什么」，能力是「这台机器上真配了什么」。联网关掉那条要显眼，
+       所以用琥珀色而不是品牌色：它是唯一会真的拦住请求的那一项。 */
+    .cap-chip{display:inline-flex;align-items:center;gap:5px;background:var(--accent-bg);color:var(--accent);border:1px solid transparent;border-radius:var(--radius-xl);padding:4px 9px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit}
+    .cap-chip:hover{filter:brightness(.96)}
+    .cap-chip-off{background:rgba(217,119,6,.12);color:#b45309;border-color:rgba(217,119,6,.3);font-weight:600}
+    body.theme-dark .cap-chip-off{background:rgba(251,191,36,.14);color:#fbbf24;border-color:rgba(251,191,36,.32)}
     .input-wrap{display:flex;align-items:flex-end;gap:10px;margin-bottom:10px}
     .input-wrap textarea{flex:1;border:none;background:transparent;outline:none;resize:none;font-size:15px;line-height:1.6;max-height:200px;padding:4px 2px;font-family:inherit;color:var(--text)}
     .input-wrap textarea::placeholder{color:var(--text3)}
@@ -801,7 +938,9 @@
       .chat-body{padding:14px 12px}
       .msg{max-width:92%}
       .msg-bubble{padding:10px 12px;font-size:14px}
-      .chat-composer{padding:10px 12px 12px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+      /* 2026-11-16：composer 已是贴底浮层，不该再有内边距（那圈内边距就是用户嫌的底板）。
+         安全区不再靠 padding 顶，直接抬 bottom。 */
+      .chat-composer{padding:0;bottom:calc(12px + env(safe-area-inset-bottom))}
       .input-outer{padding:10px 12px 8px;border-radius:18px}
       .input-wrap textarea{font-size:16px}
       .input-btns .gen-send{width:30px;height:30px}

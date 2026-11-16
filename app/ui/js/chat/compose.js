@@ -270,24 +270,30 @@ function onKey(e){
  * 由各自会话快照和后端能力承载；这里不再拼接全局团队/工作流提示词。
  */
 var _webNetOn = (localStorage.getItem('fnos_webnet') !== '0');
-var WEB_OFF_RULE = '\n\n【联网已关闭 · 用户手动关闭，硬约束】本轮禁止调用任何联网能力，包括 web_search、web_extract、browser_* 系列网页操作，以及用 terminal 里的 curl/wget/python requests 抓取外部网页。只能使用本地文件、记忆、技能和自身知识作答。若判断必须联网才能准确回答，直接回复「联网已关闭，需要我开启联网吗？」然后停止，不要尝试绕过。严禁编造搜索结果、严禁声称已检索网络、严禁虚构 URL 或引用来源。';
+var WEB_OFF_RULE = '\n\n【联网搜索已关闭 · 用户手动关闭】本轮不要调用 web_search 和 web_extract 去检索或抓取网络内容。可以直接用本地文件、记忆、已装技能和自身知识回答；其他工具（读写文件、代码执行、图像生成、语音、MCP 服务等）都不受此限制，照常用。如果判断必须上网搜索才能准确回答，直接说「联网搜索已关闭，要我打开吗？」然后停下，不要硬编。不要假装搜索过，不要编造链接和来源。';
 
 function webNetOn(){ return _webNetOn; }
+/* 2026-11-16：输入框右侧那个联网小球删了，联网并进了工具栏「能力」面板。
+   这里保留函数名（别处可能还在调），但动作换成刷新能力 chip ——
+   关联网时 chip 会顶在最前面提醒「联网已关」，比一个小圆球显眼。
+   旧页面上如果还留着 #btnWebNet（浏览器缓存），顺手也更新一下，不至于两边不一致。 */
 function renderWebNet(){
   var b = document.getElementById('btnWebNet');
-  if(!b) return;
-  b.style.color = _webNetOn ? 'var(--accent,#4f8cff)' : 'var(--muted,#999)';
-  b.style.opacity = _webNetOn ? '1' : '0.4';
-  var label = _webNetOn ? '联网：开（点击关闭）' : '联网：关（点击开启）';
-  b.setAttribute('data-tip', label);
-  b.setAttribute('aria-label', label);
-  b.title = label;
+  if(b){
+    b.style.color = _webNetOn ? 'var(--accent,#4f8cff)' : 'var(--muted,#999)';
+    b.style.opacity = _webNetOn ? '1' : '0.4';
+    var label = _webNetOn ? '联网搜索：开（点击关闭）' : '联网搜索：关（点击开启）';
+    b.setAttribute('data-tip', label);
+    b.setAttribute('aria-label', label);
+    b.title = label;
+  }
+  if(window.capabilityChipRefresh) window.capabilityChipRefresh();
 }
 function toggleWebNet(){
   _webNetOn = !_webNetOn;
   try { localStorage.setItem('fnos_webnet', _webNetOn ? '1' : '0'); } catch(e){}
   renderWebNet();
-  toast(_webNetOn ? '🌐 联网已开启：本轮可检索网络' : '🚫 联网已关闭：本轮只用本地知识');
+  toast(_webNetOn ? '🌐 联网搜索已开：本轮可以上网找资料' : '🚫 联网搜索已关：本轮不搜网，其他工具照用');
 }
 
 function sendChat(){
@@ -399,10 +405,17 @@ function sendRaw(text){
     // Expert and expression snapshots come from the server. Turn-specific context
     // belongs to the current user message, preserving the stable system prefix.
     var sys = '';
+    /* 联网关闭 → 硬约束进 system prompt（不污染对话历史，只作用于本轮）。
+       2026-11-16 之前 WEB_OFF_RULE 定义了却从没被任何地方引用：输入框右侧那个
+       小球点得动、toast 也弹、localStorage 也存，但请求里一个字都没带 —— 用户
+       关了半天以为不联网了，其实照样联网。这里把它真正接上线。 */
+    if (!_webNetOn) sys += WEB_OFF_RULE;
     var turnContext = [];
     if(_activeSkills.length)turnContext.push('本轮希望参考的已安装技能：'+_activeSkills.join('、')+'。请先确认实际可用。');
 
     if(_selectedConnector){var selectedConnection=(_connState.list||[]).find(c=>c.kind===_selectedConnector&&c.configured);if(selectedConnection)turnContext.push('本轮涉及已配置的连接器：'+selectedConnection.name+'。只使用实际工具定义里存在的对应能力。');}
+    /* 本轮在「能力」面板里勾的能力 —— 告诉模型这台机器上真配了什么，别答「我没有生图能力」 */
+    if(window.capabilityTurnContext){var _capCtx=window.capabilityTurnContext();if(_capCtx)turnContext.push(_capCtx);}
     var messageText=text+(turnContext.length?'\n\n【本轮参考上下文】\n'+turnContext.join('\n'):'');
     var payload = {
       session_id: sid,
@@ -417,6 +430,13 @@ function sendRaw(text){
       } else {
         payload.model = _sessModel;
       }
+    }
+    /* provider 提示（2026-11-16）：生图模型往往只挂在某个中转 provider 上，
+       光给模型名不带 provider，网关会拿默认 provider 去调，直接找不到模型。
+       画板通过 _cvProviderHint[sid] 传进来，不改 _selectedModelMap 的类型，
+       免得模型按钮那套把对象当字符串显示。 */
+    if(payload.model && !payload.provider && window._cvProviderHint && window._cvProviderHint[sid]){
+      payload.provider = window._cvProviderHint[sid];
     }
     streamChat(payload, {
       onDelta: function(d){
@@ -910,6 +930,9 @@ function uploadAttachment(f, url){
   var fd = new FormData();
   fd.append('file', f);
   fd.append('profile', _activeProfileId());
+  /* 会话隔离（2026-11-16）：带上当前会话 ID，后端就落 data/sessions/<归类>/<会话>/uploads，
+   * 不再往全局 uploads 里堆。currentSession 为空（新会话还没落地）时后端自动退全局目录。 */
+  if(typeof currentSession !== 'undefined' && currentSession) fd.append('session_id', currentSession);
   var hdrs = {}; if(monitorToken) hdrs['X-Monitor-Token']=monitorToken;
   return fetch(apiUrl(url), { method:'POST', body:fd, headers:hdrs })
     .then(function(r){ return r.json(); })

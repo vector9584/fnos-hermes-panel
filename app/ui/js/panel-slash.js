@@ -320,7 +320,9 @@
     var prov = '';
     try {
       var c = window._cfg || {};
-      if (!model) model = c.default_model || c.model || '';
+      /* 2026-11-16：c.default_model 已废除（它不参与路由，只在清单为空时当
+         占位符）。这里只留老格式 custom_providers 的 model 字段兜底。 */
+      if (!model) model = c.model || '';
       prov = c.active_provider || '';
     } catch (e) {}
 

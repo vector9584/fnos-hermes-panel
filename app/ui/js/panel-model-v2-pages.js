@@ -159,6 +159,21 @@
     hero.append(stats);
     out.append(hero);
 
+    /* 2026-11-16：模型清单为空的服务商 —— 配了一半的状态，必须一眼看见。
+       这类服务在对话页能被选中，但二级模型列表里一个模型都没有。
+       数据来自后端 catalog.alerts（needs_models 汇总）。 */
+    if ((cat.alerts || []).length) {
+      var alert = el('div', 'alertbar');
+      var abody = el('div', 'abody');
+      abody.append(el('b', null, '这些服务还没有可用模型'));
+      var aul = el('ul');
+      cat.alerts.forEach(function (a) { aul.append(el('li', null, a.text || a.name)); });
+      abody.append(aul);
+      alert.append(abody);
+      alert.append(btn('去补模型', 'btn sm', function () { M.go('providers'); }));
+      out.append(alert);
+    }
+
     /* 四个配置对象 */
     out.append(sec('四个配置对象'));
     var quick = el('div', 'quick');
@@ -245,10 +260,29 @@
   /* ── 模型选择 · 回退链 ──────────────────────────────── */
   function chainOf(S) { return ((S.catalog && S.catalog.fallbacks) || []); }
 
-  function saveChain(S, chain, doneMsg) {
+  /* 2026-11-16：点 ↑↓ 之后不能「什么都不动」干等服务器回话。
+     以前这里发了请求既不 await 也不看返回，mutate 撞上 409 会在内部 load()+render()
+     重绘回原顺序 —— 用户眼里就是「点了没效果」，那两秒里的 toast 一闪而过根本没看见。
+     现在先把新顺序画上去（乐观），失败时 mutate 内部的重绘会把真实顺序放回来，
+     再补一句「顺序没保存」，别让人以为是按钮坏了。 */
+  async function saveChain(S, chain, doneMsg) {
+    if (S.chainBusy) return;              /* 连点会并发写同一个 revision，第二个必 409 */
+    S.chainBusy = true;
     var entries = chain.map(function (f) { return { key: f.key }; });
-    M.mutate({ action: 'fallback', entries: entries, revision: (S.catalog || {}).revision },
-      { done: doneMsg || '回退链已更新', body: '写入 fallback_providers' });
+    var revision = (S.catalog || {}).revision;
+    if (S.catalog) S.catalog.fallbacks = chain.slice();
+    if (M.render) M.render();
+    try {
+      var out = await M.mutate({ action: 'fallback', entries: entries, revision: revision },
+        { done: doneMsg || '回退链已更新', body: '写入 fallback_providers' });
+      if (out && out.ok === false) M.toast('顺序没保存', out.error || '后端拒绝了这次调整', 'bad');
+    } catch (e) {
+      M.toast('顺序没保存', (e && e.message) || '保存失败', 'bad');
+      if (M.load) await M.load();
+      if (M.render) M.render();
+    } finally {
+      S.chainBusy = false;
+    }
   }
 
   function moveChain(S, index, dir) {
@@ -388,6 +422,177 @@
     return selectMain(S);
   };
 
+  /* 一张服务商卡里的一把密钥：只是「有一把 key，它管着几个模型」的一行状态。
+     2026-11-16 用户明确：卡片上只允许三个服务商级按钮（编辑/停用/删除），
+     key 级的编辑、启停、删除全部搬进编辑面板 —— 所以这里一个按钮都不放，
+     否则每加一把 key 就多出一组按钮。 */
+  /* 2026-11-16：原名也叫 keyRow，跟下面密钥子页那个函数重名 —— JS 后定义覆盖
+     前定义，于是服务商卡片实际跑的是「密钥子页」那套逻辑：它读 k.configured，
+     而卡片喂进来的数据结构里只有 api_key_configured，全是 undefined，
+     整页每一行都判成缺密钥。卡片和子页的行长得不一样（这边是 kdot+kcount，
+     那边是 kname+hint+改值按钮），本来就不该共用一个函数名。改名分开。 */
+  function svcKeyRow(S, k) {
+    var off = k.enabled === false;
+    var row = el('div', 'keyrow' + (off ? ' off' : ''));
+    var head = el('div', 'krow');
+    head.append(el('span', 'kdot' + (off ? ' off' : '')));
+    /* 兜底不再是 k.id：custom_xxx 是内核生成的，用户既没起过也改不了，
+       显示它等于把实现细节当名字。 */
+    head.append(el('span', 'klabel', k.key_label || k.name || '未命名密钥'));
+    /* 2026-11-16：模型数只算启用的。取消勾选的模型会归档成 enabled:false
+       留在数组里（不丢历史元数据），所以数 length 永远显示全量 —— 用户取消
+       了一个还显示 4 个，会以为保存没生效。 */
+    var live = (k.models || []).filter(function (m) { return typeof m === 'string' || m.enabled !== false; });
+    head.append(el('span', 'kcount', live.length + ' 模型'));
+    if (k.api_key_configured === false) head.append(badge('缺密钥'));
+    row.append(head);
+    return row;
+  }
+
+  /* ── 服务商级批量动作（2026-11-16）─────────────────────────
+     卡片上的「停用/删除」是服务商级：一个服务商 = 一个 group = N 条 provider，
+     也就是 N 把 key。后端 toggle/delete 都是单条 mv 语义，且每次写都会换
+     revision，所以必须串行、每步重新取最新 revision，不能 Promise.all。
+     逐把执行 → 汇总成功几把、哪把为什么失败，比「失败」两个字有用。 */
+  async function svcToggle(S, keys, turnOff, label) {
+    var target = !turnOff;
+    var todo = keys.filter(function (k) { return (k.enabled !== false) !== target; });
+    if (!todo.length) {
+      M.toast('没有变化', label + ' 已经是' + (target ? '全部启用' : '全部停用') + '状态', 'ok');
+      return;
+    }
+    var ok = 0, fails = [];
+    for (var i = 0; i < todo.length; i++) {
+      var k = todo[i];
+      try {
+        await M.api({ action: 'toggle', id: k.id, enabled: target, revision: (S.catalog || {}).revision });
+        ok++;
+      } catch (e) {
+        fails.push((k.key_label || k.id) + '：' + ((e && e.message) || e));
+      }
+    }
+    M.toast((fails.length ? '部分' : '') + (target ? '已启用' : '已停用'),
+      label + ' · ' + ok + '/' + todo.length + ' 把密钥' + (fails.length ? '\n' + fails.join('\n') : ''),
+      fails.length ? 'bad' : 'ok');
+    /* 2026-11-16：只 load 不 render，卡片就还是旧样子 —— 用户点完停用，toast
+       说「已停用」，卡片却依旧亮着、徽标依旧写「正常」，非要刷新才变。
+       load() 只把数据拉进 S，落到 DOM 必须紧跟一次 render()。 */
+    if (M.load) await M.load();
+    if (M.render) M.render();
+  }
+
+  async function svcDelete(S, keys, label) {
+    if (!keys || !keys.length) return;
+    var ids = keys.map(function (k) { return k.id; });
+    /* 2026-11-16 血泪（用户实测踩出来的）：这里原来是逐把发 delete，成功一把
+       算一把。第一把没被引用就真的删掉了，第二把被 MOA 引用才报 409 —— 弹窗
+       上写着「还有引用，删不了」，回来一看组里少了一半，报错和事实对不上。
+       整组删除必须一次发出去，后端要么全删要么一把不动。 */
+    try {
+      var out = await M.api({ action: 'group_delete', id: ids[0], ids: ids, revision: (S.catalog || {}).revision });
+      /* 2026-11-16：删服务商时后端会把「少了还能跑」的引用顺手摘掉（频道覆盖、
+         回退链里的一项、MOA 参考模型、回滚记录、会话 /model 覆盖）。这些是静默
+         改动，必须打出来 —— 用户得知道自己少配了什么，而不是过两天发现某个频道
+         悄悄换了模型。 */
+      var swept = (out && out.auto_cleaned) || [];
+      var sess = (out && out.sessions_reset) || [];
+      /* 会话覆盖也逐条列出来。原来这里折成「N 个会话的模型覆盖」，用户只知道
+         数量、不知道哪个群哪个对话被改了 —— 而这两个地方正是他下次打开会看到
+         模型变了的地方，必须点名。多了折成「等 N 处」。 */
+      var extra = swept.concat(sess);
+      var shown = extra.slice(0, 4).join('、');
+      if (extra.length > 4) shown += ' 等 ' + extra.length + ' 处';
+      M.toast('已删除', label + ' · ' + ids.length + ' 把密钥' + (extra.length ? '；顺手清了 ' + shown : ''), 'ok');
+    } catch (e) {
+      M.toast('一把都没删', label + ' · ' + ((e && e.message) || e), 'bad');
+    }
+    if (M.load) await M.load();
+    if (M.render) M.render();
+  }
+
+  /* 删除整个服务商是不可逆的，先让用户看清要删几把 key。
+     引用检查是从弹层那版（M.sheets.providerDelete）搬过来的 —— 卡片这条路径
+     原来一个检查都没有，删掉正在当主模型、或者被回退链/辅助任务引用的服务也照删，
+     配置里就留下一根悬空的引用。那版从来没被调用过（纯死代码），检查搬完就删掉了。 */
+  function svcDeleteConfirm(S, keys, label) {
+    var cat = S.catalog || {};
+    var primary = cat.primary || {};
+    var ids = keys.map(function (k) { return k.id; });
+    var blockers = [];
+    /* 会被后端顺手清掉的引用（摘掉之后配置照样成立），跟 blockers 分开展示。 */
+    var tidy = [];
+    if (primary.provider && ids.indexOf(primary.provider) >= 0) {
+      blockers.push('它是当前主模型（' + primary.model + '）');
+    }
+    /* 2026-11-16：回退链里的一项不拦了。用户原话「只要有一个频道在用就不能删，
+       这得多麻烦」—— 少一项回退照样能跑，后端 auto_clean 会摘掉它并回报。
+       只有「少了就跑不动」的才留在 blockers 里。 */
+    ((cat.fallbacks) || []).forEach(function (f) {
+      if (ids.indexOf(f.provider) >= 0) tidy.push('回退链里的 ' + f.model);
+    });
+    ((S.aux && S.aux.tasks) || []).forEach(function (t) {
+      var who = '辅助任务「' + (t.label || t.key) + '」';
+      if (ids.indexOf(t.provider) >= 0) blockers.push(who + '在用');
+      /* 回退链也是引用：主用 auto、备用挂在这条服务上的情况，只查 provider 会漏。 */
+      (t.fallback_chain || []).forEach(function (f, i) {
+        if (ids.indexOf(f.provider) >= 0) tidy.push(who + '回退链第 ' + (i + 1) + ' 项');
+      });
+    });
+    /* MOA 预设的聚合模型和参考模型同样是引用，原来这里一个都没查。
+       S.moa 只在打开过「组合回答」页时才加载，取不到就跳过 —— 后端还有一道闸。 */
+    ((S.moa && S.moa.presets) || []).forEach(function (p) {
+      var agg = p.aggregator || {};
+      if (ids.indexOf(agg.provider) >= 0) blockers.push('MOA 预设「' + p.name + '」的聚合模型');
+      (p.reference_models || []).forEach(function (r, i) {
+        if (ids.indexOf(r.provider) >= 0) tidy.push('MOA 预设「' + p.name + '」参考模型第 ' + (i + 1) + ' 个');
+      });
+    });
+    if (blockers.length) {
+      var blocked = M.sheet({ title: '删不了 ' + label, sub: '还有 ' + blockers.length + ' 处在引用它' });
+      blocked.body.append(el('div', 'errline', '先把这些引用改到别的服务，再回来删：'));
+      var deps = el('div', 'deps');
+      blockers.forEach(function (line) { deps.append(el('div', 'dh', '· ' + line)); });
+      blocked.body.append(deps);
+      blocked.foot.append(btn('知道了', 'btn primary', function () { blocked.close(); }));
+      return;
+    }
+    var sheet = M.sheet({
+      title: '删除 ' + label,
+      sub: keys.length > 1 ? '这个服务商下的 ' + keys.length + ' 把密钥会全部删除' : '这把密钥会被删除'
+    });
+    var body = el('div', 'mblock');
+    body.append(el('div', 'mbar bad', '删掉后这个服务商的配置和 .env 里的密钥变量一起清掉，不能撤销'));
+    var list = el('div', 'mlist');
+    keys.forEach(function (k, i) {
+      var r = el('div', 'mrow');
+      /* 这里原来显示 k.id —— 也就是 custom_umw4fn6uw5d42。那个字符串是内核
+         生成的内部标识，用户没起过、也改不了，拿它当名字显示等于把实现细节
+         丢到脸上。改成序号 + 密钥名。 */
+      r.append(el('span', 'mid mono', '#' + (i + 1)));
+      r.append(el('span', 'mname', k.key_label || '未命名密钥'));
+      r.append(el('span', 'mctx', (k.models || []).length + ' 模型'));
+      list.append(r);
+    });
+    body.append(list);
+    /* 会被顺手清掉的引用：不拦，但必须在确认删之前说清楚。用户要的是
+       「别拿一个频道拦我」，不是「悄悄替我改配置」。 */
+    if (tidy.length) {
+      body.append(el('div', 'mbar', '下面 ' + tidy.length + ' 处引用会跟着摘掉，摘完回落全局默认，其余配置不受影响'));
+      var tlist = el('div', 'deps');
+      tidy.forEach(function (line) { tlist.append(el('div', 'dh', '· ' + line)); });
+      body.append(tlist);
+    }
+    sheet.body.append(body);
+    sheet.foot.append(btn('取消', 'btn', function () { sheet.close(); }));
+    sheet.foot.append(btn('确认删除', 'btn danger', function () {
+      sheet.close();
+      svcDelete(S, keys, label);
+    }));
+  }
+
+  /* 用这把密钥向它自己的端点拉真实模型清单。走 monitor 已有的 discover：
+     传 provider_id + model + use_saved_credential，它自己从 .env 取密钥，
+     明文 key 不出后端。拉不到就一个字都不动，免得把手工维护的清单清空。 */
   /* ── 服务商 · LLM 服务 ──────────────────────────────── */
   function providersLlm(S) {
     var out = frag();
@@ -398,30 +603,62 @@
       btn('+ 添加服务', 'btn sm primary', function () { M.sheets.providerAdd && M.sheets.providerAdd(S); })
     ]));
 
+    // 后端给 groups：同一个中转站的多把 key 收成一张卡。老后端没有 groups 就按
+    // providers 一对一渲染 —— 没有 group 的服务，行为跟以前完全一样。
+    var groups = (cat.groups && cat.groups.length) ? cat.groups
+      : providers.map(function (p) { return { group: '', name: p.name || p.id, base_url: p.base_url || '', keys: [p] }; });
+
     var cards = el('div', 'cards');
-    providers.forEach(function (p) {
-      var off = p.enabled === false;
-      var card = el('div', 'pcard' + (off ? ' off' : ''));
+    groups.forEach(function (g) {
+      var keys = g.keys || [];
+      var anyOn = keys.some(function (k) { return k.enabled !== false; });
+      /* 2026-11-16：有密钥但一个模型都没拉到的服务商，卡上直接挂红标 —— 它
+         在对话页选得中，点进去二级列表却是空的。 */
+      var needModels = keys.some(function (k) { return k.needs_models; });
+      var card = el('div', 'pcard' + (anyOn ? '' : ' off'));
       var top = el('div', 'top');
-      top.append(el('span', 'emblem', emblemOf(p.name)));
-      top.append(off ? badge('停用') : badge('正常', 'ok'));
+      top.append(el('span', 'emblem', emblemOf(g.name)));
+      /* 2026-11-16：官方 / 第三方标识。判据是地址落没落在官方预设表里（后端
+         group_view 算好 official 一起下发），不看名字 —— 叫「DeepSeek 官方」
+         却指向中转站的，照样算第三方。 */
+      top.append(g.official ? badge('官方', 'pri') : badge('第三方'));
+      top.append(!anyOn ? badge('停用') : (needModels ? badge('缺模型', 'warn') : badge('正常', 'ok')));
       card.append(top);
-      card.append(el('div', 'nm', p.name || p.id));
-      card.append(el('div', 'url mono', p.base_url || '—'));
+      card.append(el('div', 'nm', g.name || '未命名服务'));
+      /* 2026-11-16：卡片上不再显示服务商地址。用户原话「保存完的卡片上不要显示
+         服务商地址了」。卡片要回答的是「这服务能用吗、几把密钥、几个模型」，
+         地址是配置细节，编辑面板里看得到，铺在首页只是噪音。 */
       var meta = el('div', 'meta');
-      meta.append(chip(p.id, true));
-      meta.append(chip((p.models || []).length + ' 模型'));
-      meta.append(chip(p.api_mode || 'chat_completions'));
-      meta.append(chip(p.credential_pool && p.credential_pool.length ? '密钥 ' + p.credential_pool.length + ' 份' : '无密钥'));
+      /* 不再显示「服务商 <group>」：group 是后端内部聚合键（值是第一条
+         provider 的 id），别的卡片没有，露出来就成了一张卡比别人多一个标签。 */
+      meta.append(chip(keys.length + ' 把密钥'));
+      /* 2026-11-16：模型数只数启用的。取消勾选的模型会归档成 enabled:false 留在
+         数组里（不丢历史元数据），数 length 会让「取消了还显示 4 个」——用户会以为
+         保存没生效。总数不丢，有停用的补一句「共 N」。 */
+      var allM = keys.reduce(function (n, k) { return n + (k.models || []).length; }, 0);
+      var onM = keys.reduce(function (n, k) {
+        return n + (k.models || []).filter(function (m) { return typeof m === 'string' || m.enabled !== false; }).length;
+      }, 0);
+      meta.append(chip(onM + ' 模型' + (allM > onM ? '（共 ' + allM + '）' : '')));
       card.append(meta);
+      var list = el('div', 'keylist');
+      keys.forEach(function (k) { list.append(svcKeyRow(S, k)); });
+      card.append(list);
+      /* 服务商级三个按钮：卡片最底部一行（.foot 有 margin-top:auto + 顶部
+         分隔线 + flex:1 等宽），作用于整个服务商；key 级的编辑/启停/删除
+         全在编辑面板里，卡片上不出现。
+         2026-11-16：原来用的是 .cacts，它既没有 margin-top:auto 也没分隔线、
+         还把它放在 keylist 前面，于是三个按钮浮在卡片中间、小得像标签。 */
       var foot = el('div', 'foot');
-      foot.append(btn('模型', 'btn sm', function () { M.sheets.providerModels && M.sheets.providerModels(S, p); }));
-      foot.append(btn('编辑', 'btn sm', function () { M.sheets.providerEdit && M.sheets.providerEdit(S, p); }));
-      foot.append(btn(off ? '启用' : '停用', 'btn sm', function () {
-        M.mutate({ action: 'toggle', id: p.id, enabled: off, revision: (S.catalog || {}).revision },
-          { done: (off ? '已启用 ' : '已停用 ') + p.name });
+      foot.append(btn('编辑', 'btn', function () {
+        M.sheets.providerEdit && M.sheets.providerEdit(S, keys[0]);
       }));
-      foot.append(btn('删除', 'btn sm danger', function () { M.sheets.providerDelete && M.sheets.providerDelete(S, p); }));
+      foot.append(btn(anyOn ? '停用' : '启用', 'btn', function () {
+        svcToggle(S, keys, anyOn, g.name || '未命名服务');
+      }));
+      foot.append(btn('删除', 'btn danger', function () {
+        svcDeleteConfirm(S, keys, g.name || '未命名服务');
+      }));
       card.append(foot);
       cards.append(card);
     });
@@ -440,28 +677,70 @@
   };
 
   /* ── 服务商 · 密钥 ──────────────────────────────────── */
+  /* 一行密钥：主显人读的名字，变量名降到小字。
+     以前直接把 CUSTOM_UMU5G7PYGOZES_API_KEY 顶在最前面，用户根本认不出
+     它是 DeepSeek 官方那条服务的 key —— 同一个东西在服务商页叫名字，到这里
+     变成内部 id，两页对不上号，看着就像两块功能在重复。 */
+  function keyRow(S, k) {
+    var tone = k.orphan ? ' bad' : (k.configured ? (k.active ? '' : ' off') : ' miss');
+    var row = el('div', 'krow' + tone);
+    var main = el('div', 'kmain');
+    var title = el('div', 'ktitle');
+    title.append(el('span', 'kname', k.label || k.name));
+    if (k.orphan) title.append(badge('引用失效', 'err'));
+    else if (!k.configured) title.append(badge('缺密钥', 'err'));
+    else if (!k.active) title.append(badge('备着'));
+    else title.append(badge('在用', 'ok'));
+    main.append(title);
+    var sub = el('div', 'ksub');
+    sub.append(el('span', 'mono kvar', k.name));
+    if (k.hint) sub.append(el('span', 'mini', ' ' + k.hint));
+    main.append(sub);
+    if (k.used_by && k.used_by.length) main.append(el('div', 'mini kuse', '用于 ' + k.used_by.join('、')));
+    // 真孤儿（这条变量没有任何有效使用者）才在行里铺原因；只是「另有引用失效」
+    // 的话给一句短的 —— 把整段原因抄到每行，等于同一句话在页面上喊两遍。
+    if (k.orphan) {
+      (k.orphans || []).forEach(function (why) { main.append(el('div', 'mini kbad', why)); });
+    } else if ((k.orphans || []).length) {
+      main.append(el('div', 'mini knote', '另有 ' + k.orphans.length + ' 处引用已失效，见上方提示'));
+    }
+    row.append(main);
+    var act = el('div', 'kact');
+    act.append(btn(k.configured ? '改值' : '填值', 'btn sm' + (k.configured ? '' : ' primary'),
+      function () { M.sheets.keyEdit && M.sheets.keyEdit(S, k); }));
+    row.append(act);
+    return row;
+  }
+
   function providersKeys(S) {
     var out = frag();
-    var keys = (S.keys && S.keys.keys) || [];
-    out.append(ph('密钥', '环境变量 · 只显示名字和指纹', [
+    var K = S.keys || {};
+    var groups = K.groups || [];
+    var orphans = K.orphans || [];
+    out.append(ph('密钥', '凭据仓库 · 主显服务名，变量名在下面', [
       btn('+ 添加密钥', 'btn sm primary', function () { M.sheets.keyAdd && M.sheets.keyAdd(S); })
     ]));
-    if (!keys.length) {
+    // 三块面板各管一件事，用户分不清就会觉得在重复做。摆在一句话里。
+    out.append(el('div', 'keylead',
+      '这一页只管「钥匙是什么」。连哪个地址、有哪些模型在服务商页；用谁干活在能力后端页。'));
+
+    if (orphans.length) {
+      var warn = el('div', 'keywarn');
+      warn.append(el('b', null, '有引用指不到东西'));
+      orphans.forEach(function (o) { warn.append(el('div', 'mini', o.reason)); });
+      out.append(warn);
+    }
+
+    if (!groups.length) {
       out.append(el('div', 'empty', 'config 里没有引用任何环境变量'));
     } else {
-      var rows = [];
-      keys.forEach(function (k) {
-        var row = el('div', 'kv');
-        row.append(el('span', 'mono', k.name));
-        var holder = el('b');
-        holder.append(k.configured ? badge('已配置', 'ok') : badge('缺失', 'err'));
-        holder.append(el('span', 'mini', ' ' + (k.hint || '') + (k.used_by && k.used_by.length ? ' · ' + k.used_by.length + ' 处引用' : '')));
-        row.append(holder);
-        rows.push(row);
+      groups.forEach(function (g) {
+        out.append(panel(g.label + '（' + g.keys.length + '）',
+          g.keys.map(function (k) { return keyRow(S, k); })));
       });
-      out.append(panel('环境变量（' + ((S.keys && S.keys.env_count) || 0) + ' 个）', rows));
     }
-    out.append(el('p', 'mini', '值写进 ' + ((S.keys && S.keys.env_file) || 'config 同目录 .env') + '，config.yaml 里用 ${KEY} 引用，不落明文。'));
+    out.append(el('p', 'mini', '值写进 ' + (K.env_file || 'config 同目录 .env') +
+      '（现有 ' + (K.env_count || 0) + ' 个变量），config.yaml 里用 ${KEY} 引用，不落明文。变量名不能在这里改：config 引用着它，改名要连 config 一起改。'));
     return out;
   }
 
@@ -500,7 +779,7 @@
       return out;
     }
     out.append(panel('DeepSeek 官方', [
-      kv('服务商', ds.name + ' · ' + ds.id),
+      kv('服务商', ds.name || ds.id),
       kv('地址', ds.base_url || '—'),
       kv('启用模型', (ds.models || []).filter(function (m) { return m.enabled; }).map(function (m) { return m.id; }).join(', ') || '—')
     ], badge('extra_body 明确支持', 'info')));
@@ -560,6 +839,45 @@
   var backendFilter = 'all';
 
   /* ── 能力后端 · 全部域 ──────────────────────────────── */
+  /* 能力卡上的凭据区：这张卡当前选的来源要哪把钥匙、配了没有、去哪儿填。
+     以前只有生图卡在 meta 里塞一句「FAL_KEY · 未配置」，别的卡什么都没有，
+     用户得自己猜到「密钥」页去找 —— 而现在密钥页显示的是变量名，对不上号。 */
+  function credBlock(S, d) {
+    var creds = d.creds || [];
+    var wrap = el('div', 'cardcred');
+    // 「密钥」提成整块的小标题：有凭据的卡和没凭据的卡否则长得不一样，
+    // 用户扫一排卡片时会觉得有的卡少了点东西。
+    wrap.append(el('div', 'credhead', '密钥'));
+    if (!creds.length) {
+      // 空着最误导：一张卡什么都不提，会被当成「漏了没配」。
+      var plain = el('div', 'credrow');
+      var text = d.cred_state === 'inherit' ? '继承主模型，无需单独密钥'
+        : d.cred_state === 'unset' ? '还没选来源'
+        : '无需密钥（本机运行）';
+      plain.append(el('span', 'mini credreuse', text));
+      wrap.append(plain);
+      return wrap;
+    }
+    creds.forEach(function (c) {
+      var line = el('div', 'credrow' + (c.configured ? '' : ' miss'));
+      line.append(el('span', 'credname', c.label));
+      if (c.reuse) {
+        line.append(el('span', 'mini credreuse', c.hint || '用服务商页配好的那条'));
+      } else {
+        line.append(el('span', 'mono credvar', c.name));
+        line.append(c.configured ? badge('已配', 'ok') : badge('缺', 'err'));
+        line.append(btn(c.configured ? '改值' : '填值', 'btn sm' + (c.configured ? '' : ' primary'),
+          function () {
+            if (!M.sheets.keyEdit) return;
+            M.sheets.keyEdit(S, { name: c.name, label: c.label, configured: c.configured,
+                                   hint: c.hint, used_by: [d.label], orphans: [] });
+          }));
+      }
+      wrap.append(line);
+    });
+    return wrap;
+  }
+
   function backendsAll(S) {
     var out = frag();
     var domains = (S.backends && S.backends.domains) || [];
@@ -602,9 +920,18 @@
       if (d.detail && d.detail.model && d.provider) meta.append(chip(d.detail.model));
       if (d.detail && d.detail.language) meta.append(chip('语言 ' + d.detail.language));
       if (d.detail && d.detail.providers) meta.append(chip(d.detail.providers + ' 个提供方'));
-      if (d.detail && d.detail.key) meta.append(chip((d.detail.key_env ? d.detail.key_env + ' · ' : '') + d.detail.key, d.detail.key === '未配置'));
-      if (d.note) meta.append(chip(d.note));
+      if (d.note && d.kernel !== false) meta.append(chip(d.note));
       card.append(meta);
+
+      // 内核不读这张卡的键（目前只有 ocr）就先说清楚，别让用户以为换一下引擎就换了。
+      if (d.kernel === false) {
+        var warn = el('div', 'cardwarn');
+        warn.append(el('b', null, '这张卡的选项内核不读'));
+        warn.append(el('div', 'mini', d.note || ''));
+        card.append(warn);
+      }
+      var cb = credBlock(S, d);
+      if (cb) card.append(cb);
 
       if (d.writable) {
         var inline = M.sheets.backendInlineForm && M.sheets.backendInlineForm(S, d);
@@ -631,8 +958,9 @@
 
     out.append(panel('每个域怎么改', [
       el('p', 'mini', '来源直接在本页选、保存即写入 config.yaml；语音（stt/tts）与视觉（vision）也内联在这里，不再跳专属编辑器。'),
-      el('p', 'mini', '文字识别（OCR）可选白描（账密在「密钥」页）或 DeepSeek（复用其 API key）；生图就在本卡选服务（写入 image_gen.provider），选完去「密钥」页填对应 key —— fal 填 FAL_KEY、openai 填 OPENAI_API_KEY、openrouter 填 OPENROUTER_API_KEY。'),
-      el('p', 'mini', '用自己的中转站（OpenAI 兼容或 Gemini 原生）：来源选「自定义中转站」，本卡填中转站地址 + 真实模型名，密钥页加一条 IMAGE_GEN_CUSTOM_API_KEY。三套端点自动依次尝试：/v1/images/generations → /v1/chat/completions → /v1beta/models/<模型>:generateContent，哪套通就用哪套。'),
+      el('p', 'mini', '凭据就在卡片上：选完来源，卡里会列出它要的变量、显示配了没有，点「填值」直接写 .env。不用自己记变量名。'),
+      el('p', 'mini', '文字识别这张卡特殊：内核没有 ocr 配置段（hermes-src 里 grep baimiao 是 0 命中），真干活的是 baimiao-ocr 技能，它只读 .env 的 BAIMIAO_USER / BAIMIAO_PASS。所以这张卡的选项只当备忘。'),
+      el('p', 'mini', '生图选「自定义中转站」时没有独立凭据，直接复用你选的那条 LLM 服务的地址和密钥。三套端点自动依次尝试：/v1/images/generations → /v1/chat/completions → /v1beta/models/<模型>:generateContent，哪套通就用哪套。'),
       el('p', 'mini', '入站接口（把本机当模型给别的程序调）不在这里，状态由语音配置服务统一读取，见概览页的「入站接口」链路。')
     ]));
     return out;

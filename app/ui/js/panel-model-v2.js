@@ -104,6 +104,23 @@
   var voiceGet = makeGet('/api/panel-models/voice', '语音配置');
   var voicePatch = makePatch('/api/panel-models/voice', '语音配置');
 
+  /* 语音能力实测：真合成一句 / 真转写一遍，回耗时与结果。
+     和 voicePatch 的区别是失败语义 —— 「测出来不通」是本次测试的正常结论，
+     后端照样回 200 + ok:false，所以这里只有 5xx 才当异常抛，
+     否则前端会把「TTS 服务没起」这种有效信息变成一条红色报错。 */
+  var voiceTest = async function (body) {
+    var response = await fetch(url('/api/panel-models/voice-test'), {
+      method: 'POST', headers: headers(), body: JSON.stringify(body), cache: 'no-store'
+    });
+    var out = await response.json().catch(function () { return { ok: false, error: '实测没有返回结果' }; });
+    if (response.status >= 500) {
+      var error = Error(out.error || '实测请求失败');
+      error.status = response.status;
+      throw error;
+    }
+    return out;
+  };
+
   /* ── DOM 小工具（类名沿用参考稿）───────────────────── */
   function el(tag, cls, text) {
     var node = document.createElement(tag);
@@ -312,27 +329,56 @@
       try {
         var out = await post(body);
         if (out.changed === false) toast(options.unchanged || '没有变化', '配置与提交内容一致，未写入');
-        else toast(options.done || '已保存', options.body || '下一条消息起生效，不用重启');
+        else {
+          /* 2026-11-16：保存同样可能顺手改会话。典型场景是「取消勾选一个模型」
+             —— 面板上的删除是就地归档成 enabled:False，服务商和地址都还在，
+             那些指着这个模型的群和对话会在后端被复位成默认模型。原来这条消息
+             只在 svcDelete 里有，保存路径一句不提，等于静默改了他的配置。
+             统一在 mutate 出口拼一次：两个面板共用这个函数，全路径都可见。 */
+          var swept = ((out && out.auto_cleaned) || []).concat((out && out.sessions_reset) || []);
+          var bodyText = options.body || '下一条消息起生效，不用重启';
+          if (swept.length) {
+            var shown = swept.slice(0, 4).join('、');
+            if (swept.length > 4) shown += ' 等 ' + swept.length + ' 处';
+            bodyText = '顺手清了 ' + shown + ' ｜ ' + bodyText;
+          }
+          toast(options.done || '已保存', bodyText);
+        }
         if (out.changed !== false) pending();
         await load(options.reload || null);
         render();
         return out;
       } catch (error) {
-        // 409 有两种：revision 冲突（配置在别处改过）→ 自动重试一次；
-        // 业务校验（如「此服务仍用于回退路线」）→ 直接展示后端原因，不能误报成版本冲突。
-        var revisionConflict = error.status === 409 && /已被其他页面修改/.test(error.message || '');
-        if (revisionConflict && attempt === 0) {
+        // 409 有三种，只有「文件/版本变了」这类能靠重发解决 —— 重发会让后端重读
+        // 最新内容再算一遍，不会拿旧快照覆盖别人刚写的东西：
+        //   a) 面板 revision 过期      → 模型配置已被其他页面修改
+        //   b) 文件内容被别的进程改了  → 配置已被其他进程修改（gateway 重启时会回写
+        //      config.yaml，撞上就是这条）
+        //   c) 文件正在被原子替换      → 正在被替换 / 保存前配置发生变化
+        // 业务校验类 409（还被路线用着、不能撤销旧操作）不能重试，重发只会再错一次。
+        var retryableConflict = error.status === 409 &&
+          /已被其他页面修改|已被其他进程修改|正在被替换|保存前配置发生变化/.test(error.message || '');
+        if (retryableConflict && attempt === 0) {
           attempt++;
           await load();
           body = Object.assign({}, body, { revision: revisionFor(body.action) });
-          toast('配置刚在别处变过', '已用最新版本重试一次');
+          toast('配置刚刚变过', '已按最新内容重试一次');
           continue;
         }
         if (error.status === 409) {
-          toast('未保存', error.message, 'bad');
+          // 走到这里说明重试也没过：要么后台正在反复回写（多半在重启），
+          // 要么是业务校验（那类文案本身就是人话，原样给）。
+          var why = retryableConflict ? '配置刚被后台改过两次，等几秒再点一次保存' : error.message;
+          /* 2026-11-16：不能再 return null —— 调用方 await 到 null 会当成「存上了」，
+             接着往下关弹层。用户取消主模型勾选、保存被校验拦下，面板就这么自己关了，
+             草稿全丢。现在返回带原因的失败对象，要留在面板里的调用方自己判断。
+             不抛异常是为了照顾另外十几个没有 catch 的调用点（它们只关心 toast）。 */
+          var failed = { ok: false, status: 409, error: why };
+          toast('未保存', why, 'bad');
           await load();
           render();
-          return null;
+          S.lastMutateError = failed;
+          return failed;
         }
         toast('保存失败', error.message, 'bad');
         throw error;
@@ -534,7 +580,7 @@
 
   window.MV2 = {
     S: S, DOMAINS: DOMAINS,
-    api: post, auxGet: auxGet, auxPatch: auxPatch, voiceGet: voiceGet, voicePatch: voicePatch,
+    api: post, auxGet: auxGet, auxPatch: auxPatch, voiceGet: voiceGet, voicePatch: voicePatch, voiceTest: voiceTest,
     el: el, btn: btn, badge: badge, chip: chip, dot: dot, sec: sec, ph: ph, kv: kv, panel: panel,
     code: code, field: field, input: input, select: select, steps: steps,
     toast: toast, sheet: sheet, closeSheet: closeSheet, sheetOpen: sheetOpen,

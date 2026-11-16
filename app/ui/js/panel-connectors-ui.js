@@ -3,7 +3,30 @@
   var catalog=[],load;
   async function refresh(){
     if(load)return load;
-    load=(async function(){var response=await fetch(apiUrl('/api/connectors'),{headers:{'X-Monitor-Token':monitorToken||''},cache:'no-store'});var data=await response.json();if(!response.ok||!data.ok||!Array.isArray(data.connectors))throw Error(data.error||'连接器状态读取失败');catalog=data.connectors;_connState.list=catalog;return catalog;})().finally(function(){load=null;});
+    /* 2026-11-16：会话里的「本轮连接器」原来只列 /api/connectors 的 9 条预置模板，
+       全都 configured:false，等于一个都选不了；而真正在跑的 MCP 服务器
+       （config.yaml 的 mcp_servers，「能力 → 外接工具」能看到）这里完全看不见。
+       并行拉 /api/panel-mcp 的 action:read，把 enabled 的服务按同一形状并进来。 */
+    load=(async function(){
+      var pair=await Promise.all([
+        fetch(apiUrl('/api/connectors'),{headers:{'X-Monitor-Token':monitorToken||''},cache:'no-store'}),
+        fetch(apiUrl('/api/panel-mcp'),{method:'POST',headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''},body:JSON.stringify({action:'read'}),cache:'no-store'})
+          .then(function(r){return r.ok?r.json():null;}).catch(function(){return null;})
+      ]);
+      var response=pair[0],data=await response.json();
+      if(!response.ok||!data.ok||!Array.isArray(data.connectors))throw Error(data.error||'连接器状态读取失败');
+      catalog=data.connectors;
+      var mcp=(pair[1]&&pair[1].ok&&Array.isArray(pair[1].servers))?pair[1].servers:[];
+      mcp.filter(function(s){return s&&s.enabled!==false;}).forEach(function(s){
+        if(catalog.some(function(c){return c.kind==='mcp:'+s.name;}))return;
+        var remote=!!(s.url&&/^https?:\/\//i.test(s.url));
+        catalog.push({kind:'mcp:'+s.name,name:s.name,icon:'🧩',color:'#7c8cf8',
+          description:remote?'远程 MCP 服务':'本地 MCP 服务',auth_kind:'stored',
+          mcp_mode:remote?'remote':'local',configured:true,activation:'active',
+          source:'mcp',can_undo:false,probe_supported:false,creds_set:{},tools:[]});
+      });
+      _connState.list=catalog;return catalog;
+    })().finally(function(){load=null;});
     return load;
   }
   function node(tag,text){var e=document.createElement(tag);if(text!==undefined)e.textContent=text;return e;}
@@ -22,15 +45,62 @@
   window.panelConnectorRestore=function(){renderConnectorChip();if(_selectedConnector)refresh().then(renderConnectorChip).catch(function(){});};
   async function choose(){
     var dialog=node('dialog');dialog.className='navigation-dialog connector-picker';dialog.setAttribute('aria-label','本轮连接器');
-    dialog.append(node('h2','本轮连接器'),node('p','选择后将随本轮消息说明连接器意图；实际调用由可用工具决定。'));
-    var list=node('div'),status=node('p','正在读取配置…');status.setAttribute('role','status');dialog.append(status,list);
-    var manage=node('button','管理连接器');manage.onclick=function(){dialog.close();switchPage('connectors');setTimeout(function(){document.getElementById('page-connectors')?.scrollIntoView({block:'start'});},100);};
-    var close=node('button','关闭');close.className='navigation-close';close.onclick=function(){dialog.close();};dialog.append(manage,close);dialog.addEventListener('close',function(){dialog.remove();document.getElementById('btnConnector').focus();});document.body.append(dialog);dialog.showModal();
+    /* 三段式骨架（2026-11-16 修）：原来六个元素直接 append 到 dialog，
+       「关闭」被套上 .navigation-close 的 32px 图标宽度，两个字挤成竖排并溢出弹框；
+       「管理连接器」通栏拉满、字只有 13px，正文和按钮之间全是空白。
+       按 panel-navigation.js 的 .navigation-head / .navigation-body 规范重排。 */
+    var head=node('div');head.className='navigation-head';
+    var heading=node('h2','本轮连接器');
+    var close=node('button');close.type='button';close.className='navigation-close';close.innerHTML='&times;';close.setAttribute('aria-label','关闭');close.onclick=function(){dialog.close();};
+    head.append(heading,close);dialog.append(head);
+    var bodyEl=node('div');bodyEl.className='navigation-body';dialog.append(bodyEl);
+    var hint=node('p','选中后随本轮消息声明连接器意图；实际调用由模型按可用工具决定。');hint.className='cc-hint';
+    var status=node('p','正在读取配置…');status.setAttribute('role','status');status.className='cc-status';
+    var list=node('div');list.className='cc-list';
+    var manage=node('button');manage.type='button';manage.className='cc-manage';manage.textContent='管理连接器';
+    var jumpManage=function(){dialog.close();switchPage('connectors');setTimeout(function(){document.getElementById('page-connectors')?.scrollIntoView({block:'start'});},100);};
+    manage.onclick=jumpManage;
+    bodyEl.append(hint,status,list,manage);
+    dialog.addEventListener('close',function(){dialog.remove();document.getElementById('btnConnector').focus();});document.body.append(dialog);dialog.showModal();
+    heading.setAttribute('tabindex','-1');heading.focus();
+    /* 未配置的连接器也列出来（灰显 + 标注「未配置凭证」，点了跳管理页）：
+       之前只渲染已配置项，九个全部未配置时弹框里只剩一句话，看起来像功能没做。 */
+    function row(c){
+      var button=node('button');button.type='button';button.className='cc-item'+(c.configured?'':' is-off');
+      button.setAttribute('aria-pressed',String(c.kind===_selectedConnector));
+      var ico=node('span',c.mode==='remote'?'\uD83C\uDF10':'\uD83D\uDD0C');ico.className='cc-item-ico';ico.setAttribute('aria-hidden','true');
+      var txt=node('div');txt.className='cc-item-txt';
+      var name=node('div',c.name);name.className='cc-item-name';
+      var meta=node('div',c.configured?(c.tools?c.tools+' 个工具':'已配置'):'未配置凭证');meta.className='cc-item-meta';
+      txt.append(name,meta);button.append(ico,txt);
+      if(c.configured){button.onclick=function(){_selectedConnector=c.kind;renderConnectorChip();saveDraft(currentSession);dialog.close();};}
+      else{button.onclick=jumpManage;}
+      return button;
+    }
     async function populate(){
-      status.textContent='正在读取配置…';list.replaceChildren();
-      try{var available=(await refresh()).filter(function(c){return c.configured;});if(!dialog.isConnected)return;status.textContent=available.length?'选择已配置的连接器':'尚未配置连接器，请先在管理页保存凭证。';
-        available.forEach(function(c){var button=node('button',c.name);button.type='button';button.setAttribute('aria-pressed',String(c.kind===_selectedConnector));button.onclick=function(){_selectedConnector=c.kind;renderConnectorChip();saveDraft(currentSession);dialog.close();};list.append(button);});
-      }catch(error){status.textContent=error.message;var retry=node('button','重试');retry.onclick=populate;list.append(retry);}
+      status.textContent='正在读取配置…';list.replaceChildren();manage.classList.remove('is-primary');
+      try{var all=await refresh();if(!dialog.isConnected)return;
+        var available=all.filter(function(c){return c.configured;});
+        var rest=all.filter(function(c){return !c.configured;});
+        if(!available.length){
+          /* 零可用时空态：铺 9 张灰卡片会把「没什么可选」撑成一屏，焦点全散。
+             改成一句汇总 + 名称罗列 + 主按钮直通配置页。 */
+          status.textContent='';
+          var empty=node('div');empty.className='cc-empty';
+          var t=node('div','这 '+all.length+' 个连接器都还没有保存凭证');t.className='cc-empty-t';
+          var n=node('div',all.map(function(c){return c.name;}).join('、'));n.className='cc-empty-n';
+          empty.append(t,n);list.append(empty);
+          manage.classList.add('is-primary');manage.textContent='去配置凭证';
+        }else{
+          status.textContent='选择用于本轮的连接器';
+          manage.textContent='管理连接器';
+          available.forEach(function(c){list.append(row(c));});
+          if(rest.length){
+            var sep=node('div','另有 '+rest.length+' 个未配置：'+rest.map(function(c){return c.name;}).join('、'));sep.className='cc-sep';
+            list.append(sep);
+          }
+        }
+      }catch(error){status.textContent=error.message;var retry=node('button','重试');retry.type='button';retry.className='cc-retry';retry.onclick=populate;list.append(retry);}
     }
     await populate();
   }

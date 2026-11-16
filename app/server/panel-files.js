@@ -23,7 +23,14 @@ export function createFileRoots({data,varDir,librarySources=()=>[]}){
  return ()=>{
   const roots=[{id:'workspace',name:'工作区',path:join(data,'workspace'),editable:true},
    {id:'uploads',name:'对话附件',path:join(data,'uploads'),editable:false,upload:true},
-   {id:'temporary',name:'临时产物',path:join(varDir,'tmp'),editable:false}];
+   {id:'temporary',name:'临时产物',path:join(varDir,'tmp'),editable:false},
+   {id:'session-tmp',name:'会话产物',path:join(data,'tmp'),editable:false},
+   /* 2026-11-16：生成图原来落在 cache/images（与用户上传的 img_* 混放），
+      而这两个目录都不在可访问白名单里 —— 面板里 <img> 打过去一律 403
+      「此文件不在可访问的工作目录中」，用户看到的就是裂图。
+      只读挂进来，旧消息里的既有路径也不用改。 */
+   {id:'generated',name:'生成图库',path:join(data,'assets','generated'),editable:false},
+   {id:'image-cache',name:'图片缓存',path:join(data,'cache','images'),editable:false}];
   for(const source of librarySources())if(source.id==='knowledge')roots.push({id:'knowledge',name:'知识库附件',path:canonical(source.root),editable:false});
   const profiles=join(data,'profiles');if(fs.existsSync(profiles))for(const entry of fs.readdirSync(profiles,{withFileTypes:true})){if(!entry.isDirectory()||!/^[\w-]{1,100}$/.test(entry.name))continue;for(const kind of ['workspace','uploads']){const path=join(profiles,entry.name,kind);if(fs.existsSync(path)||kind==='uploads')roots.push({id:'profile-'+entry.name+'-'+kind,name:entry.name+' · '+(kind==='workspace'?'工作区':'附件'),path,editable:kind==='workspace',upload:kind==='uploads'});}}
   return roots;

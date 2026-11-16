@@ -8,7 +8,28 @@
 .maintenance-commit pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font:13px var(--font);color:var(--text2)}
 #maintenanceMore[hidden]{display:none!important}#maintenanceMore{min-height:44px}
 #page-settings .setting-row{gap:20px;flex-wrap:wrap}#page-settings .setting-row>div{flex:1;min-width:180px}#page-settings .setting-row button,#settingsToolsMode{min-height:44px;flex-shrink:0}#settingsToolsMode{background:var(--bg1);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px}#settingsRetry[hidden]{display:none!important}
-.connector-picker>div{display:grid;gap:8px;margin:12px 0 20px}.connector-picker p{font-size:13px;line-height:1.7;color:var(--text2)}.connector-chip .cc-name{min-width:0;overflow-wrap:anywhere}.connector-chip{flex-wrap:wrap}
+/* 2026-11-16：连接器选择弹框按三段式（.navigation-head / .navigation-body）重排后的样式。
+   旧规则 .connector-picker>div{display:grid;gap:8px;margin:12px 0 20px} 已删——它会命中
+   新骨架里的 .navigation-body（直接子 div），把 body 的 padding 和 grid 一起搅乱。 */
+.connector-picker .cc-hint{font-size:12.5px;line-height:1.65;color:var(--text3);margin:0 0 10px}
+.connector-picker .cc-status{font-size:13px;line-height:1.65;color:var(--text2);margin:0 0 12px}
+.connector-picker .cc-list{display:grid;gap:6px}
+.connector-picker .cc-item{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
+.connector-picker .cc-item:hover{border-color:var(--accent);background:var(--accent-bg)}
+.connector-picker .cc-item[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.connector-picker .cc-item.is-off{opacity:.55}
+.connector-picker .cc-item-ico{flex:0 0 auto;font-size:15px;line-height:1}
+.connector-picker .cc-item-txt{min-width:0}
+.connector-picker .cc-item-name{font-size:13.5px;font-weight:500;line-height:1.35}
+.connector-picker .cc-item-meta{font-size:11.5px;color:var(--text3);margin-top:1px}
+.connector-picker .cc-sep{margin:12px 0 2px;font-size:11.5px;line-height:1.6;color:var(--text3)}
+.connector-picker .cc-empty{padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}
+.connector-picker .cc-empty-t{font-size:13.5px;font-weight:500;color:var(--text)}
+.connector-picker .cc-empty-n{margin-top:6px;font-size:12px;line-height:1.75;color:var(--text3)}
+.connector-picker .cc-manage{margin-top:16px;width:100%;min-height:38px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text2);font:inherit;font-size:13px;cursor:pointer}
+.connector-picker .cc-manage:hover{border-color:var(--accent);color:var(--accent)}
+.connector-picker .cc-manage.is-primary{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);font-weight:500}
+.connector-picker .cc-retry{min-height:38px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font:inherit;cursor:pointer}.connector-picker p{font-size:13px;line-height:1.7;color:var(--text2)}.connector-chip .cc-name{min-width:0;overflow-wrap:anywhere}.connector-chip{flex-wrap:wrap}
 .panel-connector-dialog{width:min(680px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--border);border-radius:16px;background:var(--bg1);color:var(--text)}
 .panel-connector-dialog[open]{display:flex;flex-direction:column}.panel-connector-dialog::backdrop{background:var(--shade)}.panel-connector-dialog .modal-head,.panel-connector-dialog .modal-foot{flex-shrink:0}.panel-connector-dialog .modal-foot{flex-wrap:wrap;gap:8px}.panel-connector-dialog .modal-body{overflow:auto;min-height:0;padding:20px}.panel-connector-dialog p{font-size:13px;line-height:1.7;color:var(--text2)}.panel-connector-dialog a{font-size:13px;color:var(--accent)}
 .connector-field{display:grid;gap:8px;margin:16px 0;font-size:13px}.connector-field input,.connector-tools select{width:100%;min-height:44px;padding:10px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;box-sizing:border-box}.panel-connector-dialog button{min-height:44px}.connector-tools{margin-top:20px}.connector-tools summary{min-height:44px;cursor:pointer}.connector-tools select{margin:12px 0}.connector-tools pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto}.connector-tools [hidden]{display:none!important}
@@ -293,13 +314,16 @@ body.theme-dark #page-experts .expert-library-actions .btn.primary{color:var(--a
 .maint-chip b{font-size:13px;font-weight:600;color:var(--text)}
 .maint-chip em{font-style:normal}
 .maint-chip.is-warn b{color:var(--red)}
-.maint-heat-wrap{display:flex;flex-direction:column;gap:5px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px}
-.maint-months,.maint-heat{display:grid;grid-auto-flow:column;gap:3px;width:max-content;
-  grid-template-columns:repeat(var(--weeks,53),var(--heat-cell,11px))}
+/* PC 端铺满容器、格子按宽度自适应成正方形 —— 53 周固定 11px 是 739px，
+   面板内容区通常只有 700 出头，横向滚动条又细到看不见，于是「只看得到一半」。
+   窄屏（≤640px）反过来必须留固定 13px + 横向滚动，否则每格压到 4px 点不中。 */
+.maint-heat-wrap{display:flex;flex-direction:column;gap:5px;overflow-x:auto;scrollbar-width:thin;padding-bottom:2px;max-width:880px}
+.maint-months,.maint-heat{display:grid;grid-auto-flow:column;gap:3px;width:100%;
+  grid-template-columns:repeat(var(--weeks,53),minmax(0,1fr))}
 .maint-months{grid-template-rows:14px;font-size:11px;color:var(--text3);margin-bottom:3px}
 .maint-month{grid-row:1;white-space:nowrap;overflow:visible;line-height:14px}
-.maint-heat{grid-template-rows:repeat(7,var(--heat-cell,11px))}
-.maint-cell{display:block;border-radius:2.5px;background:var(--heat-0);cursor:pointer;transition:transform .12s ease}
+.maint-heat{grid-template-rows:repeat(7,auto)}
+.maint-cell{display:block;aspect-ratio:1;border-radius:2.5px;background:var(--heat-0);cursor:pointer;transition:transform .12s ease}
 .maint-cell:hover{transform:scale(1.18)}
 .maint-cell.lv1{background:var(--heat-1)}
 .maint-cell.lv2{background:var(--heat-2)}
@@ -320,6 +344,15 @@ body.theme-dark #page-experts .expert-library-actions .btn.primary{color:var(--a
 .maint-type em{font-style:normal;text-align:right;font-variant-numeric:tabular-nums}
 .maint-type-track{display:block;height:8px;border-radius:999px;background:var(--bg3);overflow:hidden}
 .maint-type-bar{display:block;height:100%;border-radius:999px;background:var(--accent);opacity:.85}
+/* 最近提交：热力图只表达「哪天忙」，看不出忙什么；这里直接列最新 12 条主题 */
+.maint-recent{margin-top:16px;padding-top:12px;border-top:1px dashed var(--border)}
+.maint-recent:empty{display:none}
+.maint-recent-head{display:flex;align-items:baseline;gap:10px;margin-bottom:8px;font-size:13px;color:var(--text2)}
+.maint-recent-head em{font-style:normal;font-size:11px;color:var(--text3)}
+.maint-recent-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,320px),1fr));gap:4px 18px}
+.maint-recent-row{display:grid;grid-template-columns:54px minmax(0,1fr);gap:8px;align-items:baseline;font-size:12px;color:var(--text2)}
+.maint-recent-row code{font-size:11px;color:var(--text3);font-variant-numeric:tabular-nums}
+.maint-recent-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .maint-day{margin-top:14px;padding-top:12px;border-top:1px dashed var(--border)}
 .maint-day-head{display:flex;align-items:center;gap:12px;margin-bottom:8px;font-size:13px;color:var(--text2)}
 .maint-day-head .ov-actbtn{margin-left:auto;min-height:34px}
@@ -336,7 +369,12 @@ body.theme-dark #page-experts .expert-library-actions .btn.primary{color:var(--a
   .maint-activity{padding:14px}
   .maint-activity-head h2{font-size:16px}
   .maint-chips{margin-left:0}
-  /* 触摸设备：10px 的格子手指点不准，放大到 13px */
-  .maint-months,.maint-heat{--heat-cell:13px}
+  /* 触摸设备：格子按宽度自适应会压到 4px，手指点不准。
+     所以窄屏改回固定 13px + 横向滚动，别为了「铺满」牺牲可点性。 */
+  .maint-heat-wrap{max-width:none}
+  .maint-months,.maint-heat{--heat-cell:13px;width:max-content;
+    grid-template-columns:repeat(var(--weeks,53),var(--heat-cell,13px))}
+  .maint-heat{grid-template-rows:repeat(7,var(--heat-cell,13px))}
+  .maint-cell{aspect-ratio:auto}
   .maint-types{grid-template-columns:1fr}
 }

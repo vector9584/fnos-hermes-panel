@@ -815,8 +815,16 @@
       const context=await pwSessionContext(sid),turn=[];
       if(selectedSkills.length)turn.push('本轮希望参考的已安装技能：'+selectedSkills.join('、')+'。请先确认实际可用。');
       if(selectedConnector){const c=await panelConnectorContext(selectedConnector);turn.push('本轮涉及已配置的连接器：'+c.name+'。只使用实际工具定义中存在的对应能力。');}
-      const model=selectedModel,payload={session_id:sid,request_id:uuid(),message:buildMessageContent(text+(turn.length?'\n\n【本轮参考上下文】\n'+turn.join('\n'):''),attachments),system:''};
+      /* 2026-11-16：这条 sendRaw 是「真的发出去」的那一条 —— 它覆盖了 compose.js 里
+         同名的 sendRaw，所以 compose.js 的 doStream 整段都不会跑到，在那儿拼 system
+         是白拼（第一次实测就是这样：system 抓到的是空串）。要注入就注入这里。 */
+      if(typeof window.capabilityTurnContext==='function'){const _cc=window.capabilityTurnContext();if(_cc)turn.push(_cc);}
+      const _sysOverride=(typeof webNetOn==='function'&&!webNetOn()&&typeof WEB_OFF_RULE!=='undefined')?WEB_OFF_RULE:'';
+      const model=selectedModel,payload={session_id:sid,request_id:uuid(),message:buildMessageContent(text+(turn.length?'\n\n【本轮参考上下文】\n'+turn.join('\n'):''),attachments),system:_sysOverride};
       if(typeof model==='object'&&model?.model){payload.model=model.model;if(model.provider)payload.provider=model.provider;}else if(model)payload.model=model;
+      /* provider 提示（2026-11-16）：生图模型往往只挂在某个中转 provider 上，
+         只给模型名会拿默认 provider 去调，模型根本不存在。画板通过 _cvProviderHint 传。 */
+      if(payload.model&&!payload.provider&&window._cvProviderHint&&window._cvProviderHint[sid])payload.provider=window._cvProviderHint[sid];
       remember(payload);try{localStorage.removeItem('panel-send-recovery');}catch{}if(currentSession===sid){_pendingAttachments=[];renderAttachChips();}
       const view={id:payload.request_id,sid,message:buildMessageContent(text,attachments),ask:askText,quote:quoteForView,created_at:Date.now(),...context,text:'',reasoning:'',tools:[],status:'pending'};views.set(view.id,view);renderTurn(view);clearSentDraft(sid,askText);submit(payload,callbacks(view));
     }catch(e){

@@ -62,7 +62,17 @@ function buildMiniData(){
     connector:{ title:'选择连接器', items:connectors, foot:'管理连接器' },
     skill:{ title:'选择技能', items:skillItems },
     expert:{ title:'选择专家', items: expertsList().map(function(e){ return { id:e.id, t:e.name, d:e.dept||'', ico:e.icon||'🎯', active:false }; }) },
-    quick:{ title:'快捷指令', search:false, groups:PV.quickGroups }
+    quick:{ title:'快捷指令', search:false, groups:PV.quickGroups },
+    /* 能力（2026-11-16）：条目来自 panel-capabilities-ui.js 的 capabilityItems()，
+       数据源是「模型 → 能力后端」那 8 个域。这里只做转发，避免两套清单漂移。
+       没装那个文件时退化成空列表，面板不会崩。 */
+    capability:{
+      title:'本轮能力',
+      search:false,
+      items:(typeof window.capabilityItems==='function')?window.capabilityItems():[],
+      foot:(typeof window.capabilityFoot==='function')?window.capabilityFoot():'管理能力后端',
+      footPage:'models'
+    }
   };
 }
 function expertsList(){
@@ -109,7 +119,7 @@ function openMini(btn, key){
   sw.style.display = d.search===false ? 'none':'block';
   if(d.search!==false){ var _ps=document.getElementById('popupSearch'); _ps.placeholder='搜索'+d.title.replace('选择',''); _ps.value=''; }
   var foot=document.getElementById('popupFoot');
-  if(d.foot){ foot.style.display='block'; foot.textContent=d.foot; foot.onclick=function(){ closeMini(); switchPage('connectors'); }; }
+  if(d.foot){ foot.style.display='block'; foot.textContent=d.foot; foot.onclick=function(){ closeMini(); switchPage(d.footPage||'connectors'); }; }
   else foot.style.display='none';
 
   var tabs=document.getElementById('popupTabs');
@@ -136,7 +146,9 @@ function openMini(btn, key){
     popupBody.setAttribute('role','tabpanel');
     popupBody.setAttribute('aria-labelledby',_expertPickerTab==='single'?'popupExpertTab':'popupPersonaTab');
   } else { popupBody.removeAttribute('role'); popupBody.removeAttribute('aria-labelledby'); }
-  popup.classList.toggle('wide', key==='quick');
+  /* capability 也要 wide：7 项 428px 塞进 320px 的默认 body 会滚，第 6/7 项
+     藏在折线下，用户以为只有 5 项（2026-11-16 实测就是这个问题）。 */
+  popup.classList.toggle('wide', key==='quick' || key==='capability');
   popup.classList.add('open');
   document.body.classList.add('mini-open');        // 手机端靠这个类显示背板
   watchPopupResize();
@@ -233,6 +245,21 @@ function buildMiniPopupBody(key,d){
       body += '</div>';
       body += '<div class="prov-tip">\u5148\u9009\u6765\u6e90\uff0c\u518d\u9009\u6a21\u578b\u00b7\u4ec5\u5f53\u524d\u4f1a\u8bdd\u751f\u6548</div>';
     }
+  } else if(key==='capability'){
+    /* 能力列表：点一下＝本轮启用，再点取消。和专家/技能不同，这里没有单选语义，
+       所以不调 pickItem（那个会顺手关弹层、改单选状态），走 capabilityTap 就地翻。 */
+    var caps=(d.items||[]);
+    body='<div class="pick-list">';
+    if(!caps.length){
+      body+='<div class="pop-empty" style="padding:18px;text-align:center;font-size:13px;opacity:.7">还没读到能力后端配置 —— 去「模型 → 能力后端」看一眼</div>';
+    } else {
+      caps.forEach(function(it){
+        body+='<button type="button" class="pop-item '+(it.active?'active':'')+'" aria-pressed="'+!!it.active+'" data-cap="'+DOM.escAttr(it.id)+'" title="'+DOM.escAttr(it.tip||it.d||'')+'" onclick="capabilityTap(this)">'+
+          '<div class="ico">'+(it.ico||'⚙️')+'</div><div class="txt"><div class="t">'+esc(it.t)+'</div><div class="d">'+esc(it.d)+'</div></div><div class="check"></div></button>';
+      });
+    }
+    body+='</div>';
+    body+='<div class="prov-tip">点一下＝本轮启用，再点取消。「联网搜索」关掉是真的拦住（不调 web_search / web_extract），其它几项只是告诉模型这一轮可以做什么。标「未装配」的项去「模型 → 工具集」勾上才有效。</div>';
   } else if(key==='expert'){
     if(_expertPickerTab==='persona'){
       body='<div class="pick-list"><div class="empty-state" style="padding:18px;text-align:center">表达风格只影响当前会话的回答方式，不切换全局 SOUL、记忆或渠道环境。<br><button class="btn sm primary" style="margin-top:12px" onclick="openSessionPersonalityFromMini()">设置本会话表达风格</button></div></div>';

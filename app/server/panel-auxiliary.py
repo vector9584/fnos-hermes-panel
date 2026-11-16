@@ -85,7 +85,30 @@ def scalar(key,value):
     return value
 
 
-def patch_entry(old,changes):
+def provider_key_env(data,provider):
+    """密钥变量名：优先服务自己声明的 key_env，其次从 api_key 的 ${VAR} 引用里取。
+
+    换服务时旧密钥必须清掉（不能跟着端点走），但"清掉"不等于"留空"——
+    新服务本来就有自己的 key 变量，留空等于保存成功却没有凭据，调用时才炸。
+    """
+    name=str(provider or '').strip()
+    if name.startswith('custom:'):name=name[7:]
+    if not name or not isinstance(data,dict):return ''
+    try:hit=model_entries(data).get(name)
+    except Exception:return ''
+    if not hit or not isinstance(hit[2],dict):return ''
+    item=hit[2]
+    for key in ('key_env','api_key_env'):
+        value=item.get(key)
+        if isinstance(value,str) and value.strip():return value.strip()
+    reference=item.get('api_key')
+    if isinstance(reference,str):
+        match=re.fullmatch(r'\$\{([A-Za-z_][A-Za-z0-9_]*)\}',reference.strip())
+        if match:return match.group(1)
+    return ''
+
+
+def patch_entry(old,changes,data=None):
     if not isinstance(changes,dict) or any(key not in PUBLIC for key in changes):raise Failure('包含不支持的辅助模型字段')
     updated=copy.deepcopy(old)
     for key,value in changes.items():
@@ -110,7 +133,10 @@ def patch_entry(old,changes):
         if 'api_key' in updated:updated['api_key']=''
         else:updated.pop('api_key',None)
         if 'key_env' not in changes:
-            updated.pop('key_env',None);updated.pop('api_key_env',None)
+            inherited=provider_key_env(data,updated.get('provider'))
+            if inherited:updated['key_env']=inherited
+            else:updated.pop('key_env',None)
+            updated.pop('api_key_env',None)
         if updated.get('provider')=='custom' and not updated.get('base_url'):
             raise Failure('独立端点需要填写端点地址，或选择已有模型服务')
     return updated
@@ -127,7 +153,7 @@ def execute(request,path,root):
         if not isinstance(old,dict):raise Failure('辅助模型结构不正确',503)
         changes=request.get('changes',{})
         if not isinstance(changes,dict):raise Failure('修改字段格式不正确')
-        updated=patch_entry(old,{k:v for k,v in changes.items() if k!='fallback_chain'})
+        updated=patch_entry(old,{k:v for k,v in changes.items() if k!='fallback_chain'},data)
         if 'fallback_chain' in changes:
             if key!='vision':raise Failure('此任务没有回退链编辑入口')
             chain=changes['fallback_chain'];previous=old.get('fallback_chain',[]) or [];used=set();replacement=[]
@@ -138,7 +164,7 @@ def execute(request,path,root):
                 if index is not None:
                     if type(index) is not int or index<0 or index>=len(previous) or index in used:raise Failure('回退项已变化，请重新读取',409)
                     used.add(index);prior=previous[index]
-                item=patch_entry(prior,{k:v for k,v in entry.items() if k not in ('source_index','credential_set')})
+                item=patch_entry(prior,{k:v for k,v in entry.items() if k not in ('source_index','credential_set')},data)
                 if not item.get('provider'):raise Failure('回退项需选择模型服务')
                 replacement.append(item)
             updated['fallback_chain']=replacement

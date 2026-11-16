@@ -14,17 +14,17 @@
   <link rel="icon" type="image/png" sizes="192x192" href="images/favicon-maid-192.png?v=f79af7d4">
   <link rel="apple-touch-icon" sizes="180x180" href="images/favicon-maid-180.png?v=b8637e2c">
   <meta name="theme-color" content="#141518">
-  <link rel="stylesheet" href="css/base.css?v=5ed0051a">
+  <link rel="stylesheet" href="css/base.css?v=20261116v8">
 <script src="scripts/marked.min.js?v=606c428a"></script>
 <script src="scripts/purify.min.js?v=fd4f07a2"></script>
 <script src="scripts/qrcode.min.js?v=b86b6879"></script>
 <link rel="stylesheet" href="css/panel-tree.css?v=7fe0d941">
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
-<link rel="stylesheet" href="css/panel-workspace.css?v=559864a4">
-    <link rel="stylesheet" href="css/panel-maintenance.css?v=717b66ef">
+<link rel="stylesheet" href="css/panel-workspace.css?v=cv20261116i">
+    <link rel="stylesheet" href="css/panel-maintenance.css?v=45fd7191">
     <link rel="stylesheet" href="css/archive.css?v=d038ed07">
-<link rel="stylesheet" href="css/panel-model-ref.css?v=d0249242">
-<link rel="stylesheet" href="css/ui-kit.css?v=343723a8">
+<link rel="stylesheet" href="css/panel-model-ref.css?v=a40f8a38">
+<link rel="stylesheet" href="css/ui-kit.css?v=380b419d">
 </head>
 <body class="theme-dark">
 <div class="app" id="app">
@@ -153,13 +153,13 @@
           <div class="chat-composer" id="chatComposer">
             <div class="gen-bar" id="genBar" hidden aria-hidden="true"></div>
             <div class="input-outer">
+              <div class="skill-chips" id="capabilityChips" style="display:none"></div>
               <div class="skill-chips" id="skillChips" style="display:none"></div>
               <div class="input-wrap">
                 <button class="mic-btn tool-btn" data-tip="按住说话" aria-label="按住说话，松手发送语音，空输入框上长按转为文字" onpointerdown="micHoldStart(event)" onpointerup="micHoldEnd(event)" onpointercancel="micHoldEnd(event)" onkeyup="if(event.key==='Enter'||event.key===' '){event.preventDefault();toggleVoiceRecord();}" oncontextmenu="return false" id="btnMic"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0 0 14 0"/><line x1="12" y1="17" x2="12" y2="22"/></svg></button>
                 <textarea id="chatInput" rows="1" aria-label="输入消息" placeholder="输入消息…" oninput="autoResize(this);saveDraft(currentSession)" onkeydown="onKey(event)" onpaste="onChatPaste(event)"></textarea>
                 <div class="input-btns">
                   <button type="button" class="toolbar-toggle" id="toolbarToggle" onclick="toggleToolbar()" aria-label="展开输入工具" aria-expanded="false" aria-controls="toolbar" title="输入工具">＋</button>
-                  <button class="mic-btn tool-btn" data-tip="联网：开（点击关闭）" aria-label="联网：开（点击关闭）" onclick="toggleWebNet()" id="btnWebNet"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.5 2.6 3.9 5.8 3.9 9s-1.4 6.4-3.9 9c-2.5-2.6-3.9-5.8-3.9-9s1.4-6.4 3.9-9z"/></svg></button>
                   <button class="gen-send" id="sendBtn" onclick="onSendOrStop()" disabled title="发送">
                     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true"><path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"/></svg>
                   </button>
@@ -167,6 +167,7 @@
               </div>
               <div class="toolbar" id="toolbar">
                 <button class="tool-btn" data-tip="选择模型" aria-label="选择模型" onclick="openMini(this,'model')" id="btnModel"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg></button>
+                <button class="tool-btn" data-tip="本轮能力：生图/视觉/语音/联网" aria-label="本轮能力" onclick="openMini(this,'capability')" id="btnCapability"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg></button>
                 <button class="tool-btn" data-tip="连接器" aria-label="连接器" onclick="openMini(this,'connector')" id="btnConnector"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg></button>
                 <button class="tool-btn" data-tip="选择技能" aria-label="选择技能" onclick="openMini(this,'skill')" id="btnSkill"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg></button>
                 <button class="tool-btn" data-tip="选择专家" aria-label="选择专家" onclick="openMini(this,'expert')" id="btnExpert"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></button>
@@ -616,6 +617,7 @@
               <div class="maint-heat-wrap"><div class="maint-months" id="maintMonths"></div><div class="maint-heat" id="maintHeatmap"></div></div>
               <div class="maint-heat-foot"><div class="maint-legend"><span>少</span><i data-lv="0"></i><i data-lv="1"></i><i data-lv="2"></i><i data-lv="3"></i><i data-lv="4"></i><span>多</span></div></div>
               <div class="maint-types" id="maintTypeBars"></div>
+              <div class="maint-recent" id="maintRecent"></div>
               <div class="maint-day" id="maintDayList" hidden></div>
             </section>
             <div id="maintenanceFeedback" class="maintenance-feedback" role="status" aria-live="polite"></div>
@@ -700,20 +702,22 @@
 
 <script src="js/core/dom.js?v=63c3f444"></script>
 <script src="js/core/data.js?v=e6f7ebc9"></script>
-<script src="js/core/state.js?v=3b1e9bd0"></script>
+<script src="js/core/state.js?v=9c5a6203"></script>
 <script src="js/core/utils.js?v=42f9ea77"></script>
+<script src="js/core/help-hint.js?v=0d33b701"></script>
 <script src="js/core/ui-kit.js?v=2756c6cf"></script>
 <script src="js/core/api.js?v=8e7dd4b5"></script>
 <script src="js/core/markdown.js?v=546acd82"></script>
 <script src="js/chat/toolcard.js?v=4a17df4b"></script>
-<script src="js/chat/tabs.js?v=4a2499b1"></script>
+<script src="js/chat/tabs.js?v=cv20261116b"></script>
 <script src="js/panels/workspace.js?v=1480bb6a"></script>
 <script src="js/panels/terminal.js?v=3d002036"></script>
 <script src="js/chat/message-ops.js?v=bd6d9472"></script>
 <script src="js/chat/roundtable.js?v=71e58827"></script>
-<script src="js/chat/new-dialog.js?v=90e471e0"></script>
-<script src="js/chat/compose.js?v=3a526c93"></script>
-<script src="js/core/mini-popup.js?v=f59e5f7f"></script>
+<script src="js/chat/new-dialog.js?v=cv20261116b"></script>
+<script src="js/chat/compose.js?v=cv20261116f"></script>
+<script src="js/chat/canvas.js?v=20261117v11"></script>
+<script src="js/core/mini-popup.js?v=00952d8e"></script>
 <script src="js/core/router.js?v=b117c07c"></script>
 <script src="js/panels/tunnel.js?v=1e1aca8c"></script>
 <script src="js/core/theme.js?v=c726d6fb"></script>
@@ -734,11 +738,11 @@
 
 <!-- BUILT v17 single-file UI | sources: preview_v17/{index.html,styles.css,data.js,app.js,js/ao_workflow_presets.js} | libs external: scripts/{marked,purify,qrcode}.min.js, js/personas_library.js -->
 <script src="js/core/boot-mask.js?v=4a6c5c45"></script>
-<script src="js/panel-workspace-ui.js?v=1b13b3e6"></script>
+<script src="js/panel-workspace-ui.js?v=cv20261116i"></script>
 <script src="js/panel-compress-ui.js?v=ed61d9c5"></script>
-<script src="js/panel-slash.js?v=222b6180"></script>
+<script src="js/panel-slash.js?v=c162e6e9"></script>
 <link rel="stylesheet" href="css/panel-durable.css?v=e3c38973">
-<script src="js/panel-durable.js?v=3690cd86"></script>
+<script src="js/panel-durable.js?v=cv20261116f"></script>
 <script src="js/panel-tooltip.js?v=2726db9d"></script>
 <script src="js/panel-cron-editor.js?v=742c2739"></script>
 <script src="js/panel-cron-hooks-ui.js?v=bed7905c"></script>
@@ -749,10 +753,11 @@
 <link rel="stylesheet" href="css/panel-chat-avatar.css?v=e87cba5d">
 <script src="js/panel-rooms-ui.js?v=840e27e9"></script>
 <script src="js/panel-experts-ui.js?v=2a3291a8"></script>
-<script src="js/panel-model-v2.js?v=4e5ec9af"></script>
-<script src="js/panel-model-v2-pages.js?v=4c8c7a38"></script>
-<script src="js/panel-model-v2-sheets.js?v=03b49a89"></script>
-<script src="js/panel-connectors-ui.js?v=ea84fb72"></script>
+<script src="js/panel-model-v2.js?v=e6a796d1"></script>
+<script src="js/panel-model-v2-pages.js?v=29827e84"></script>
+<script src="js/panel-model-v2-sheets.js?v=21ead255"></script>
+<script src="js/panel-connectors-ui.js?v=c0b06ca5"></script>
+<script src="js/panel-capabilities-ui.js?v=9fc8311a"></script>
 <script src="js/panel-auth-ui.js?v=a792fab9"></script>
 <script src="js/panel-files-ui.js?v=4b940c73"></script>
 <script src="js/panel-runtime-ui.js?v=5d33d54e"></script>
@@ -762,11 +767,12 @@
 <link rel="stylesheet" href="css/panel-clarify.css?v=7a80bb23">
 <link rel="stylesheet" href="css/panel-compress.css?v=ccc66959">
 <link rel="stylesheet" href="css/components.css?v=72bfc85e">
+<link rel="stylesheet" href="css/canvas.css?v=20261117v11">
 <script src="js/panel-channel-pairing-ui.js?v=41bbe1cb"></script>
 <script src="js/panel-channels-ui.js?v=79ed9a69"></script>
 <script src="js/panel-typing-ui.js?v=f308c763"></script>
 <script src="js/panel-settings.js?v=51441ddd"></script>
-<script src="js/panel-maintenance-ui.js?v=75a6255f"></script>
+<script src="js/panel-maintenance-ui.js?v=0e2d1477"></script>
 <script src="js/panel-config-recovery-ui.js?v=d471a7e8"></script>
 <script src="js/panel-plans-ui.js?v=d1ddc290"></script>
 <script src="js/panel-library-drafts.js?v=f1279a85"></script>

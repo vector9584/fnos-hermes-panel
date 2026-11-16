@@ -154,16 +154,25 @@ PYBUMP
       echo "✅ UI 是静态文件，浏览器刷新即生效，不用重启"
       ;;
     server)
-      local f="monitor.js" rel="server/monitor.js"
-      [ -f "$SRC_REPO/app/$rel" ] || { echo "❌ git 源缺 $rel"; return 1; }
-      cmd_check "$SRC_REPO/app/$rel" || { echo "❌ 语法不过，不部署"; return 1; }
-      mkdir -p "$HERMES_HOME/backups"
-      cp "$APP_DIR/$rel" "$HERMES_HOME/backups/$f.$stamp.bak"
-      # 用 cat > 原地写，保住 hermes-agent 属主（cp 覆盖会把属主改成当前用户）
-      cat "$SRC_REPO/app/$rel" > "$APP_DIR/$rel"
-      echo "已部署 $rel  (备份: backups/$f.$stamp.bak)"
-      md5sum "$APP_DIR/$rel" "$SRC_REPO/app/$rel"
-      if [ "$do_restart" = 1 ]; then restart_app && echo "✅ monitor.js 已生效"; else echo "⚠️  需要重启才生效：dev/hermes-dev.sh restart"; fi
+      # 2026-11-16：这里原来死写成「只部署 monitor.js」一个文件，于是改了
+      # panel-files.js / panel-connectors.js / panel-mcp.js 这类被 monitor.js import
+      # 的同级模块后，deploy 报一切正常、运行目录还是旧代码 —— 今天「生成图 403
+      # 修了但没生效」就是这么来的。改成递归扫（排除 _vendor 第三方与 __pycache__）。
+      local rel deployed=0
+      for rel in $(cd "$SRC_REPO/app" && find server -name '*.js' -not -path 'server/_vendor/*' -not -path 'server/__pycache__/*' 2>/dev/null | sort); do
+        [ -f "$SRC_REPO/app/$rel" ] || continue
+        cmp -s "$SRC_REPO/app/$rel" "$APP_DIR/$rel" && continue
+        cmd_check "$SRC_REPO/app/$rel" >/dev/null || { echo "❌ 语法不过，不部署 $rel"; return 1; }
+        mkdir -p "$HERMES_HOME/backups" "$(dirname "$APP_DIR/$rel")"
+        cp "$APP_DIR/$rel" "$HERMES_HOME/backups/$(basename $rel).$stamp.bak" 2>/dev/null || true
+        # 用 cat > 原地写，保住 hermes-agent 属主（cp 覆盖会把属主改成当前用户）
+        cat "$SRC_REPO/app/$rel" > "$APP_DIR/$rel"
+        echo "已部署 $rel  (备份: backups/$(basename $rel).$stamp.bak)"
+        md5sum "$APP_DIR/$rel" "$SRC_REPO/app/$rel"
+        deployed=1
+      done
+      [ "$deployed" = 1 ] || echo "server 与 git 源一致，无需部署"
+      if [ "$do_restart" = 1 ]; then restart_app && echo "✅ server 已生效"; else echo "⚠️  需要重启才生效：dev/hermes-dev.sh restart"; fi
       ;;
     py)
       local files; files=$(cd "$SRC_REPO" && git status --porcelain 2>/dev/null | awk '{print $2}' | grep '\.py$')

@@ -66,6 +66,120 @@ IMAGE_GEN_KEYS = {
 STT_MODELS = {'local': ('model',), 'openai': ('model',), 'mistral': ('model',), 'elevenlabs': ('model_id',)}
 
 
+# 每张能力卡自己的凭据。变量名逐个在 hermes-src 里核过（web_search_provider.py /
+# nous_subscription.py / dump.py / status.py），不靠猜：
+#   openai OPENAI_API_KEY · mistral MISTRAL_API_KEY · elevenlabs ELEVENLABS_API_KEY
+#   tavily TAVILY_API_KEY · brave BRAVE_SEARCH_API_KEY（不是 BRAVE_API_KEY）
+#   searxng SEARXNG_URL · exa EXA_API_KEY · firecrawl FIRECRAWL_API_KEY
+# 值为 () 表示这个来源不需要独立 key；'reuse' 表示没有独立凭据，直接用服务商页
+# 配好的那条 —— 「复用」和「不用配」是两件事，混成一句用户就分不清了。
+BACKEND_CREDS = {
+    'stt': {'local': (), 'openai': (('OPENAI_API_KEY', 'OpenAI 密钥'),),
+            'mistral': (('MISTRAL_API_KEY', 'Mistral 密钥'),),
+            'elevenlabs': (('ELEVENLABS_API_KEY', 'ElevenLabs 密钥'),)},
+    'tts': {'edge': (), 'windows-indextts': (), 'piper': (), 'openai': (('OPENAI_API_KEY', 'OpenAI 密钥'),),
+            'mistral': (('MISTRAL_API_KEY', 'Mistral 密钥'),),
+            'elevenlabs': (('ELEVENLABS_API_KEY', 'ElevenLabs 密钥'),)},
+    'web_search': {'tavily': (('TAVILY_API_KEY', 'Tavily 密钥'),),
+                   'brave': (('BRAVE_SEARCH_API_KEY', 'Brave 密钥'),),
+                   'searxng': (('SEARXNG_URL', 'SearXNG 实例地址'),),
+                   'exa': (('EXA_API_KEY', 'Exa 密钥'),),
+                   'deepseek': 'reuse'},
+    'web_extract': {'tavily': (('TAVILY_API_KEY', 'Tavily 密钥'),),
+                    'exa': (('EXA_API_KEY', 'Exa 密钥'),),
+                    'firecrawl': (('FIRECRAWL_API_KEY', 'Firecrawl 密钥'),),
+                    'deepseek': 'reuse'},
+    # 白描不是内核 OCR provider —— hermes-src 里 grep baimiao 是 0 命中。
+    # 真干活的是 skills/productivity/baimiao-ocr/scripts/baimiao_ocr.py，
+    # 它自己读 .env 的 BAIMIAO_USER / BAIMIAO_PASS。所以这张卡写 ocr.provider
+    # 内核不会读，只有技能把它当参考。
+    'ocr': {'baimiao': (('BAIMIAO_USER', '白描账号'), ('BAIMIAO_PASS', '白描密码')),
+            'deepseek': 'reuse'},
+    'browser': {'auto': (), 'chromium': (), 'camofox': ()},
+}
+
+# 内核真正读取的配置段。ocr 不在这里：config 里写 ocr.provider 也没有代码读它，
+# 面板上照实标出来，免得用户以为选一下就能换识别引擎。
+KERNEL_READS = {'stt': True, 'tts': True, 'web_search': True, 'web_extract': True,
+                'vision': True, 'image_gen': True, 'browser': True, 'ocr': False}
+
+
+def _image_gen_creds():
+    """生图各来源的凭据，复用模块上方 IMAGE_GEN_KEYS 那张表，不另存一份。"""
+    table = {}
+    for name, env_name in IMAGE_GEN_KEYS.items():
+        if name == 'custom':
+            table[name] = 'reuse'
+        elif not env_name:
+            table[name] = ()
+        else:
+            table[name] = ((env_name, name + ' 密钥'),)
+    return table
+
+
+BACKEND_CREDS['image_gen'] = _image_gen_creds()
+
+
+def _reuse_note(data, kind):
+    """「复用」到底复用哪条服务商 —— 只说复用不说复用谁，等于让用户自己猜。"""
+    providers = data.get('providers') if isinstance(data.get('providers'), dict) else {}
+    # 生图选 custom 时，复用哪条服务商明写在 image_gen.custom.provider_id 里，
+    # 直接读它，比按名字里有没有 image 猜可靠。
+    if kind == 'image_gen':
+        section = data.get('image_gen') if isinstance(data.get('image_gen'), dict) else {}
+        scoped = section.get('custom') if isinstance(section.get('custom'), dict) else {}
+        target = str(scoped.get('provider_id') or '')
+        if target in providers and isinstance(providers[target], dict):
+            return provider_display(providers[target]) or str(target)
+    wanted = ('deepseek',) if kind in ('web_search', 'web_extract', 'ocr') else ()
+    for pid, item in providers.items():
+        if not isinstance(item, dict):
+            continue
+        base = str(item.get('base_url') or '')
+        if any(word in base for word in wanted) or (kind == 'image_gen' and 'image' in str(item.get('name') or '')):
+            return provider_display(item) or str(pid)
+    return ''
+
+
+def cred_state(kind, current, rows):
+    """这张卡的凭据处境，好让前端每张卡都有话说，不留空白。
+
+    空白最误导：用户看到一张卡什么凭据都不提，会以为漏了没配。
+    """
+    if rows:
+        return 'reuse' if any(row.get('reuse') for row in rows) else 'env'
+    if not current:
+        return 'unset'
+    if kind == 'vision' and current == 'auto':
+        return 'inherit'
+    return 'local'
+
+
+def cred_rows(kind, current, env, data=None):
+    """一张能力卡当前这个来源要哪些凭据、配了没有。值不出这个模块。"""
+    spec = BACKEND_CREDS.get(kind, {}).get(current)
+    if spec is None:
+        # 文字识别没选也等于白描在用：baimiao-ocr 技能不看 ocr.provider，
+        # 只看 .env 里有没有账密。这里照实显示，别让「未选」看起来像没有凭据。
+        if kind == 'ocr' and not current:
+            spec = BACKEND_CREDS['ocr']['baimiao']
+        else:
+            return []
+    if spec == 'reuse':
+        target = _reuse_note(data or {}, kind)
+        return [{'name': '', 'label': '复用服务商的密钥', 'configured': True,
+                 'hint': ('复用 ' + target) if target else '用服务商页配好的那条',
+                 'reuse': True, 'reuse_of': target}]
+    rows = []
+    for name, label in spec:
+        value = env.get(name) or ''
+        rows.append({'name': name, 'label': label, 'configured': bool(value),
+                     'hint': hint(value) if value else '', 'reuse': False})
+    return rows
+
+
+
+
 def env_file(path):
     """Parse the .env sitting next to config.yaml. Values never leave this module."""
     target = Path(path).parent / '.env'
@@ -100,19 +214,72 @@ def hint(value):
     return '****' + value[-4:]
 
 
+AUX_LABELS = {
+    'vision': '视觉理解', 'web_extract': '网页提取', 'compression': '上下文压缩',
+    'skills_hub': '技能库', 'approval': '审批', 'mcp': 'MCP', 'title_generation': '标题生成',
+    'triage_specifier': '分诊', 'kanban_decomposer': '看板拆解',
+    'profile_describer': '档案描述', 'curator': '记忆整理',
+}
+
+# 白描账密不进 providers（它不是 OpenAI 兼容服务，没有 base_url / models），
+# 只能放 .env。这两行登记必须跟着 ocr.provider 走：选了白描才算「在用」，
+# 没选就只是「备着」，否则面板会永远挂着两条跟当前能力无关的变量。
+BAIMIAO_KEYS = (('BAIMIAO_USER', '账号'), ('BAIMIAO_PASS', '密码'))
+
+KIND_ORDER = ('provider', 'backend', 'aux', 'other')
+KIND_LABELS = {'provider': '服务商密钥', 'backend': '能力后端密钥',
+               'aux': '辅助模型密钥', 'other': '其他变量'}
+
+
+def provider_display(item):
+    """一条服务商在人眼里的名字：有 key_label 就是「服务名 · key 标签」。"""
+    label = str(item.get('key_label') or '').strip()
+    name = str(item.get('name') or '').strip()
+    if label and name and label != name:
+        return name + ' · ' + label
+    return label or name or ''
+
+
 def keys_view(data, path):
-    """Every credential variable the loaded config actually refers to."""
+    """Every credential variable the loaded config actually refers to.
+
+    2026-11-16 重构：这一页以前直接打印 .env 变量名（CUSTOM_UMU5G7PYGOZES_API_KEY
+    这种），用户根本认不出它属于哪个服务。同一个东西在服务商页叫「DeepSeek 官方」，
+    到这里变成一串内部 id，两页对不上号，看着就像两个功能在重复。
+
+    所以每行都带三样东西：人读的名字（label）、归属类别（kind）、变量名（name，
+    降级成小字）。变量名不改——config 里 ${VAR} 引用着它，改名要同步改 config，
+    风险全在用户看不见的地方，收益只是好看。
+    """
     env = env_file(path)
+    providers = data.get('providers') if isinstance(data.get('providers'), dict) else {}
     rows = {}
 
-    def note(name, who, inline=''):
+    def note(name, who='', kind='other', label='', inline='', active=True, orphan='', valid=True):
         name = (name or '').strip()
         if not name or not ENV_NAME.fullmatch(name):
             return
-        row = rows.setdefault(name, {'name': name, 'configured': False, 'source': 'missing',
-                                     'hint': '', 'used_by': []})
-        if who not in row['used_by']:
+        row = rows.setdefault(name, {'name': name, 'label': '', 'kind': 'other',
+                                     'configured': False, 'source': 'missing',
+                                     'hint': '', 'used_by': [], 'active': False,
+                                     'orphans': [], 'valid_used': 0})
+        # 类别的展示优先级：服务商 > 能力后端 > 辅助模型 > 其他。
+        # 一条变量可能被多处引用（比如同时被服务商和 fallback 链用），
+        # 用权重而不是「谁先到谁赢」，免得结果取决于字典遍历顺序。
+        if KIND_ORDER.index(kind) < KIND_ORDER.index(row['kind'] or 'other'):
+            row['kind'] = kind
+        if label and (not row['label'] or KIND_ORDER.index(kind) < KIND_ORDER.index(row['kind'])):
+            row['label'] = label
+        if who and who not in row['used_by']:
             row['used_by'].append(who)
+        # 有效引用和失效引用分开数：一个变量可能同时被正经服务商和一条坏掉的
+        # 备用链引用，这时候不能把整个变量标红——那会把好服务也打成故障。
+        if valid:
+            row['valid_used'] = row.get('valid_used', 0) + 1
+        if active:
+            row['active'] = True
+        if orphan and orphan not in row['orphans']:
+            row['orphans'].append(orphan)
         if name in env and env[name]:
             row['configured'] = True
             if row['source'] != 'inline':
@@ -123,33 +290,50 @@ def keys_view(data, path):
             row['source'] = 'inline'
             row['hint'] = '配置内密钥'
 
-    for key, (_origin, _idx, item) in entries(data).items():
-        cred = credential_fields(item, _origin)
+    for pid, (origin, _idx, item) in entries(data).items():
+        cred = credential_fields(item, origin)
         inline = cred.get('api_key') or ''
         name = cred.get('key_env') or ''
+        label = provider_display(item) or str(pid)
         if not name and inline.startswith('${'):
             name = inline[2:-1].strip()
         elif not name and inline:
-            name = ''
-            rows.setdefault('inline:' + key, {'name': '（配置内明文）', 'configured': True,
-                                              'source': 'inline', 'hint': '配置内密钥',
-                                              'used_by': [key]})
-        note(name, key, inline)
+            rows.setdefault('inline:' + pid, {
+                'name': '（配置内明文）', 'label': label, 'kind': 'provider',
+                'configured': True, 'source': 'inline', 'hint': '配置内密钥',
+                'used_by': [label], 'active': True, 'orphans': [], 'valid_used': 1})
+            continue
+        note(name, label, 'provider', label, inline)
 
     auxiliary = data.get('auxiliary') if isinstance(data.get('auxiliary'), dict) else {}
     for task, item in auxiliary.items():
         if not isinstance(item, dict):
             continue
+        guard = '辅助模型 · ' + AUX_LABELS.get(task, task)
         cred = credential_fields(item, 'providers')
         inline = cred.get('api_key') or ''
         name = cred.get('key_env') or ''
         if not name and inline.startswith('${'):
             name = inline[2:-1].strip()
-        note(name, 'auxiliary.' + task, inline)
-        for entry in item.get('fallback_chain') or []:
-            if isinstance(entry, dict):
-                sub = credential_fields(entry, 'providers')
-                note(sub.get('key_env'), 'auxiliary.' + task, sub.get('api_key') or '')
+        note(name, guard, 'aux', guard, inline)
+        for index, entry in enumerate(item.get('fallback_chain') or []):
+            if not isinstance(entry, dict):
+                continue
+            sub = credential_fields(entry, 'providers')
+            target = str(entry.get('provider') or '').strip()
+            # 备用链里写的 provider id 必须真的存在，否则这条备用永远取不到
+            # 密钥 —— 用户看到「已配置」，真跑起来却 401，最难查的那类。
+            orphan = ''
+            if target and target not in providers:
+                orphan = '%s 的备用链第 %d 条指向不存在的服务商 %s' % (guard, index + 1, target)
+            note(sub.get('key_env') or (sub.get('api_key') or '')[2:-1].strip(),
+                 guard, 'aux', guard, sub.get('api_key') or '', orphan=orphan,
+                 valid=not orphan)
+
+    ocr_choice = ''
+    ocr_holder = data.get('ocr')
+    if isinstance(ocr_holder, dict):
+        ocr_choice = str(ocr_holder.get('provider') or '')
 
     for key, label, field, options, writable, write_via in DOMAINS:
         if not field:
@@ -159,13 +343,39 @@ def keys_view(data, path):
             holder = holder.get(part) if isinstance(holder, dict) else None
         if isinstance(holder, dict):
             cred = credential_fields(holder, 'providers')
-            note(cred.get('key_env'), label)
+            note(cred.get('key_env') or (cred.get('api_key') or '')[2:-1].strip(),
+                 '能力后端 · ' + label, 'backend', '能力后端 · ' + label)
 
-    # 白描 OCR 凭据（.env 里的 BAIMIAO_USER / BAIMIAO_PASS，config 未引用，显式登记）
-    note('BAIMIAO_USER', '文字识别（白描）')
-    note('BAIMIAO_PASS', '文字识别（白描）')
+    # 白描账密：只有 ocr.provider 真的选了白描才算在用，否则标成「备着」。
+    # 以前无条件登记，导致不管当前文字识别用谁，这两行都跟其他密钥混在一起。
+    baimiao_on = ocr_choice == 'baimiao'
+    for name, what in BAIMIAO_KEYS:
+        note(name, '文字识别 · 白描' + what, 'backend',
+             '文字识别 · 白描' + what, active=baimiao_on)
 
-    return {'ok': True, 'keys': sorted(rows.values(), key=lambda row: (row['source'] != 'env', row['name'])),
+    ordered = []
+    for row in rows.values():
+        if not row['label']:
+            row['label'] = row['name']
+        row['orphan'] = bool(row['orphans']) and not row.get('valid_used')
+        # 已配置且没被任何地方引用 → 面板上留着没坏处，但要能一眼看出它闲着。
+        if not row['used_by'] and row['configured']:
+            row['idle'] = True
+        else:
+            row['idle'] = False
+        ordered.append(row)
+    ordered.sort(key=lambda row: (KIND_ORDER.index(row['kind']), not row['active'],
+                                  row['source'] != 'env', row['label']))
+
+    groups = []
+    for kind in KIND_ORDER:
+        bucket = [row for row in ordered if row['kind'] == kind]
+        if bucket:
+            groups.append({'kind': kind, 'label': KIND_LABELS[kind], 'keys': bucket})
+
+    return {'ok': True, 'keys': ordered, 'groups': groups,
+            'orphans': [{'name': row['name'], 'label': row['label'], 'reason': reason}
+                        for row in ordered for reason in row['orphans']],
             'env_file': str(Path(path).parent / '.env'), 'env_count': len(env)}
 
 
@@ -275,7 +485,9 @@ def backends_view(data, path=None):
             # image_gen.model 会把「picker 选的 provider id」误当成模型名显示。
             fallback_model = '' if current == 'custom' else section.get('model')
             detail['model'] = str(scoped.get('model') or fallback_model or '')
-            detail['base_url'] = str(scoped.get('base_url') or '')
+            # 地址和密钥不再存在图像卡里：custom 只记「引用哪条 LLM 服务」，
+            # 真正的 base_url / api_key 全在 providers.<id> 上。
+            detail['provider_id'] = str(scoped.get('provider_id') or '')
             key_name = IMAGE_GEN_KEYS.get(current, '')
             detail['key_env'] = key_name
             if key_name:
@@ -284,16 +496,30 @@ def backends_view(data, path=None):
             elif current == 'openai-codex':
                 detail['key'] = '走 Codex OAuth，无需单独 key'
             else:
-                detail['key'] = '选好服务后在此填 key'
-        if writable:
+                detail['key'] = '地址和密钥都复用你选的那条 LLM 服务；这张卡只挑服务和模型'
+        kernel_reads = KERNEL_READS.get(key, True)
+        if not kernel_reads:
+            # 不能让这张卡挂着「本页可配」而下面写着「已配」—— 那颗徽章说的是
+            # 「这个键内核读」，ocr 不满足，照实标出来。
+            status, status_tone = '技能专用', 'warn'
+        elif writable:
             status, status_tone = '本页可配', 'ok'
         else:
             status, status_tone = '需二改', 'warn'
+        creds = cred_rows(key, current, env, data)
+        kernel = KERNEL_READS.get(key, True)
+        if not kernel:
+            # 照实说：这张卡改的是个没人读的键，别让用户以为换一下引擎就换了。
+            note = '内核没有 %s 配置段，这里的选项只是给 baimiao-ocr 技能当参考；真正生效的是 .env 里的白描账密' % (field or key)
+        elif not writable:
+            note = '跟随服务商原生能力，没有独立配置项'
+        else:
+            note = ''
         rows.append({'key': key, 'label': label, 'provider': current, 'options': list(options),
+                     'cred_state': cred_state(key, current, creds),
                      'writable': writable, 'write_via': write_via,
                      'path': field or '二改工具', 'status': status, 'status_tone': status_tone,
-                     'detail': detail,
-                     'note': '' if writable else '跟随服务商原生能力，没有独立配置项'})
+                     'detail': detail, 'creds': creds, 'kernel': kernel, 'note': note})
     return {'ok': True, 'domains': rows, 'revision': config_revision(data)}
 
 
@@ -404,8 +630,8 @@ def save_backend(data, body):
     else:
         holder.pop(parts[-1], None)
     if key == 'image_gen':
-        # 图像生成卡的额外字段（只有「自定义中转站」用得上）：base_url / model /
-        # api_key_env 写进 image_gen.custom。密钥值不在这里，走「密钥」页进 .env。
+        # 图像生成卡的额外字段只有两项：引用哪条 LLM 服务（provider_id）+ 生图模型名。
+        # 地址和密钥一律复用 providers.<provider_id>，这里不再另存一份。
         extras = body.get('extras')
         if isinstance(extras, dict):
             section = updated.get('image_gen')
@@ -416,15 +642,18 @@ def save_backend(data, body):
             if not isinstance(sub, dict):
                 sub = {}
                 section['custom'] = sub
-            for fname, flabel in (('base_url', '中转站地址'),
-                                  ('model', '生图模型名'),
-                                  ('api_key_env', '密钥变量名')):
+            for fname, flabel in (('provider_id', '引用的 LLM 服务'),
+                                  ('model', '生图模型名')):
                 if fname in extras:
                     cleaned = _scalar(extras.get(fname), flabel, 200)
                     if cleaned:
                         sub[fname] = cleaned
                     else:
                         sub.pop(fname, None)
+            # 旧方案在图像卡里单独存过地址和密钥变量名，现在全部走 provider，
+            # 这两项直接清掉 —— 留着只会让人以为还有第二处要配。
+            sub.pop('base_url', None)
+            sub.pop('api_key_env', None)
             if not sub:
                 section.pop('custom', None)
     if key == 'stt' and value:
@@ -558,6 +787,25 @@ def execute(body, path, state, raw=None):
             raise ConfigError('配置必须是 YAML 映射，原文件未改写')
         if not isinstance(candidate.get('model'), dict):
             raise ConfigError('新配置缺少 model 段，拒绝写入')
+        # 第四道闸（2026-11-16）：这个入口是整份替换，绕过了 patch() 的
+        # 「明文进 .env」处理。不拦的话，粘一份带明文 api_key 的 YAML 就把密钥
+        # 写回 config 了，前面那些改动白做。拒绝而不是静默改写：这里是手写入口，
+        # 替用户猜意图不如直接告诉他该写成什么。
+        leaked = []
+        for section in ('providers', 'custom_providers'):
+            block = candidate.get(section)
+            if not isinstance(block, dict):
+                continue
+            for pid, item in block.items():
+                if not isinstance(item, dict):
+                    continue
+                value = item.get('api_key')
+                if isinstance(value, str) and value.strip() and not value.strip().startswith('${'):
+                    leaked.append(section + '.' + str(pid))
+        if leaked:
+            raise ConfigError('这些服务里写的是明文密钥：' + '、'.join(leaked[:5])
+                              + ('等 %d 条' % len(leaked) if len(leaked) > 5 else '')
+                              + '。改成 ${变量名}（值放 .env），或者去「LLM 服务」卡片里填密钥——那边会自动存进 .env')
         if semantic(candidate) == semantic(data):
             return {'ok': True, 'changed': False, 'revision': config_revision(data)}
         with config_lock(state):

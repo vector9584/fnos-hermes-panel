@@ -16,7 +16,7 @@ import { resolve as resolvePath, dirname, join } from "path";
 import { fileURLToPath } from "url";
 import { handleCustomRoute } from "./custom_routes.js";
 import { skillInstallName } from "./panel-skill-path.js";
-import { handleWorkspace, sessionSystem, sessionIdentity, sessionSnapshot, readWorkspace } from "./panel-workspace.js";
+import { handleWorkspace, sessionSystem, sessionIdentity, sessionSnapshot, readWorkspace, ensureSessionUploadDir } from "./panel-workspace.js";
 import { UI_CAPABILITIES_PROMPT, buildChatHistory } from "./panel-chat-prompt.js";
 import { createChatCompress } from "./panel-chat-compress.js";
 import { atomicWriteJSON, safeId } from "./panel-state.js";
@@ -9006,6 +9006,22 @@ function _saveChannelChanges(id, body){
       // Profile 隔离：profile 参数非空 → 存入该 profile 的 uploads 目录
       const profile = String(form.get("profile") || "");
       if(profile&&!/^[\w-]{1,100}$/.test(profile))return new Response(JSON.stringify({error:"附件环境标识不正确"}),{status:400,headers:jsonHeaders()});
+      /* 会话隔离（2026-11-16）：带 session_id 时落会话自己的 uploads
+       * （data/sessions/<归类>/<会话ID>/uploads），不再往全局 uploads 里堆。
+       * 规则与 panel-workspace 的 session-dir 共用 ensureSessionUploadDir()。
+       * 会话不存在或落盘失败就退回全局目录 —— 上传不能因为这个挂掉。 */
+      const sessId = String(form.get("session_id") || "").trim();
+      if (sessId && /^[\w-]{1,120}$/.test(sessId)) {
+        try {
+          const sdir = ensureSessionUploadDir(sessId);
+          const full = join(sdir.abs, filename);
+          writeFileSync(full, Buffer.from(buf));
+          return new Response(JSON.stringify({
+            url: `/api/workspace-ui/session-file/${sessId}/${filename}`,
+            path: full, session_id: sessId, isolated: true
+          }), { headers: jsonHeaders() });
+        } catch (e) { /* 落到全局，见上 */ }
+      }
       let imgDir = UPLOAD_IMG_DIR, urlBase = "/uploads/images/";
       if (profile && profile !== "default") {
         imgDir = `${DATA_DIR}/profiles/${profile}/uploads/images`;
@@ -9046,6 +9062,20 @@ function _saveChannelChanges(id, body){
       const filename = `${Date.now()}_${randomBytes(6).toString("hex")}_${safeBase}`;
       const profile = String(form.get("profile") || "");
       if(profile&&!/^[\w-]{1,100}$/.test(profile))return new Response(JSON.stringify({error:"附件环境标识不正确"}),{status:400,headers:jsonHeaders()});
+      /* 会话隔离（2026-11-16）：同 upload-image，带 session_id 就落会话目录。
+       * 文件名保留了原始可读名，URL 里必须 encodeURIComponent，否则中文/空格取不回来。 */
+      const sessId = String(form.get("session_id") || "").trim();
+      if (sessId && /^[\w-]{1,120}$/.test(sessId)) {
+        try {
+          const sdir = ensureSessionUploadDir(sessId);
+          const full = join(sdir.abs, filename);
+          writeFileSync(full, Buffer.from(buf));
+          return new Response(JSON.stringify({
+            url: `/api/workspace-ui/session-file/${sessId}/${encodeURIComponent(filename)}`,
+            path: full, session_id: sessId, isolated: true
+          }), { headers: jsonHeaders() });
+        } catch (e) { /* 落到全局，见上 */ }
+      }
       let fileDir = UPLOAD_FILE_DIR, urlBase = "/uploads/files/";
       if (profile && profile !== "default") {
         fileDir = `${DATA_DIR}/profiles/${profile}/uploads/files`;

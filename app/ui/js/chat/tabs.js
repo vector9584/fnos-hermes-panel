@@ -92,6 +92,19 @@ function openTabCore(sid) {
 function switchTabCore(sid) {
   if (!sid) return;
   if (sid === currentSession) {
+    /* 点左树上的当前会话（2026-11-16 修）：原本这里直接 return，
+       画板会话在对话视图下点它毫无反应，看着像功能没生效。
+       是画板就把呈现切回画布，别的什么都不动。 */
+    if (window.CanvasMode) {
+      var _selfType = 'chat';
+      try { if (typeof window.pwSessionType === 'function') _selfType = window.pwSessionType(sid) || 'chat'; } catch (e) {}
+      if (_selfType === 'canvas') {
+        try {
+          if (!CanvasMode.isOn() || CanvasMode.currentSession() !== sid) CanvasMode.enter(sid);
+          CanvasMode.showCanvas();
+        } catch (e) {}
+      }
+    }
     // 点击当前激活标签：收起标签栏（省出聊天空间），再点按钮可重新展开
     var _tabs = document.querySelector('.page-container .session-tabs');
     if (_tabs && _tabs.classList.contains('visible')) {
@@ -131,6 +144,16 @@ function switchTabCore(sid) {
       body.innerHTML = '<div class="system-tip">加载中…</div>';
       loadSessionMessages(sid);
     }
+  }
+  /* 画板模式（2026-11-16）：类型为 canvas 的会话把正文区换成画布。
+     类型从 window.pwSessionType 取 —— panel-workspace-ui 是 IIFE，
+     state 私有，之前直接读 window.state 恒为 undefined，分流永远走 chat。
+     读不到按普通对话处理，绝不因为查不到类型就卡住会话打开。 */
+  if (window.CanvasMode) {
+    var _cvType = 'chat';
+    try { if (typeof window.pwSessionType === 'function') _cvType = window.pwSessionType(sid) || 'chat'; } catch (e) {}
+    if (_cvType === 'canvas') { try { CanvasMode.enter(sid); } catch (e) { try { CanvasMode.leave(); } catch (e2) {} } }
+    else { try { CanvasMode.leave(); } catch (e) {} }
   }
 }
 document.addEventListener('keydown', function(event){
@@ -1245,20 +1268,43 @@ var _lbImgs = [], _lbIdx = 0;
 function chatImgSrc(u){
   if(!u) return '';
   if(/^(https?:|data:|blob:)/i.test(u)) return u;
+  /* 宿主机绝对路径必须映射到应用前缀，否则 BASE + '/vol1/...' 拼出
+     /app/hermes-agent/vol1/@apphome/... 必 404（2026-11-16 生图裂图根因：
+     image_generate 返回的是 /vol1/@apphome/hermes-agent/data/cache/images/x.png，
+     面板这里直接当相对路径补前缀，图就全裂了）。 */
+  var m = u.match(/^\/vol1\/@apphome\/hermes-agent\/data(\/.*)$/);
+  if(m) u = '/data' + m[1];
   return BASE + u; // 相对路径（/tmp /uploads /workspace /data）补 BASE 前缀
 }
+/* 卡片位只有 220px，原图却是 4416×2420 的 1.7 MB PNG —— 切一次会话就要为
+   一张缩略图解码几百万像素。磁盘上有同名 `.thumb.webp`（480px，十几 KB）就用它，
+   点击看大图仍走原图。远程图和 data/blob 本来就没有本地缩略图，原样返回。 */
+function chatThumbSrc(u){
+  if(!u) return '';
+  if(/^(https?:|data:|blob:)/i.test(u)) return u;
+  var full = chatImgSrc(u);
+  return full.replace(/\.(png|jpe?g|webp|gif)$/i, '.thumb.webp');
+}
+/* 缩略图缺失（老图/外部图）时无声回落到原图：用捕获阶段的 error 委托，
+   比给每个 <img> 内联 onerror 省事，也不会因为引号转义写坏一个属性。 */
+document.addEventListener('error', function(ev){
+  var img = ev.target;
+  if(!img || img.tagName !== 'IMG') return;
+  var full = img.getAttribute('data-full');
+  if(full && img.src.indexOf('.thumb.webp') >= 0){ img.removeAttribute('data-full'); img.src = full; }
+}, true);
 function imgStackHTML(imgs){
   if(!imgs || !imgs.length) return '';
   var list = imgs.map(chatImgSrc);
   var arg = esc(JSON.stringify(list));
   if(list.length === 1){
-    return '<img src="'+DOM.escAttr(list[0])+'" alt="图片" loading="lazy" style="max-width:220px;max-height:220px;border-radius:var(--radius-md);display:block;margin-top:6px;cursor:zoom-in;object-fit:cover" onclick="openImgLightbox(\''+arg+'\',0)">';
+    return '<img src="'+DOM.escAttr(chatThumbSrc(imgs[0]))+'" data-full="'+DOM.escAttr(list[0])+'" alt="图片" loading="lazy" style="max-width:220px;max-height:220px;border-radius:var(--radius-md);display:block;margin-top:6px;cursor:zoom-in;object-fit:cover" onclick="openImgLightbox(\''+arg+'\',0)">';
   }
   var n = Math.min(list.length, 5);
   var off = 9;
   var html = '<div class="img-stack" style="width:'+(150+(n-1)*off)+'px;height:'+(150+(n-1)*off)+'px" onclick="openImgLightbox(\''+arg+'\',0)" title="点击查看 '+list.length+' 张图片">';
   for(var i=0;i<n;i++){
-    html += '<img class="img-stack-item" src="'+DOM.escAttr(list[i])+'" alt="图片'+(i+1)+'" loading="lazy" style="left:'+(i*off)+'px;top:'+(i*off)+'px;z-index:'+(i+1)+'">';
+    html += '<img class="img-stack-item" src="'+DOM.escAttr(chatThumbSrc(imgs[i]))+'" data-full="'+DOM.escAttr(list[i])+'" alt="图片'+(i+1)+'" loading="lazy" style="left:'+(i*off)+'px;top:'+(i*off)+'px;z-index:'+(i+1)+'">';
   }
   html += '<span style="position:absolute;left:'+((n-1)*off+156)+'px;top:'+((n-1)*off+60)+'px;font-size:11px;color:var(--text);background:var(--accent);border-radius:12px;padding:3px 10px;font-weight:600;z-index:'+(n+1)+'">'+list.length+' 张 ▸</span></div>';
   return html;
@@ -1448,7 +1494,10 @@ function hideScrollBtn(){ var b=document.getElementById('chatJumpBottom'); if(b)
 function positionChatJump(){
   var body=_chatScroll.body, button=document.getElementById('chatJumpBottom');
   if(!body || !button) return;
-  button.style.top=(body.offsetTop + body.clientHeight - 52)+'px';
+  /* 2026-11-16：输入框是浮层，按钮原来按 body 底边 -52 定位就正好压在输入框底下了。
+     往上再让一个输入框高度，落在消息区可见底部之上。 */
+  /* 52 是按钮离消息区底边的距离；再往上让 8px，别跟浮起的输入框贴成 0 间隙（实测正好贴住）。 */
+  button.style.top=(body.offsetTop + body.clientHeight - 60 - composerH())+'px';
 }
 function showScrollBtn(){
   var body=_chatScroll.body, b=document.getElementById('chatJumpBottom');
@@ -1505,6 +1554,43 @@ function initChatScroll(){
   body.addEventListener('load',scheduleChatFollow,true);
   window.addEventListener('resize',scheduleChatFollow);
   scheduleChatFollow();
+  watchComposerHeight();
+}
+
+/* ── 输入框让位（2026-11-16 用户第 42 条） ────────────────────────────
+   原话：「现在最下面的气泡会被遮盖，滚动到最下方你看怎么处理一下多滚动一下，
+           往上走点不要让输入框盖住气泡」。
+
+   根因是布局：输入框改成绝对定位浮层之后就不吃文档流了，#chatBody 一路撑到
+   容器底部，最后一条气泡正好落在浮层底下 —— 滚到底 = scrollTop 拉满，
+   而可视区底部那 100 多像素被浮层占着，看上去就是「盖住了」。
+
+   解法不是改滚动算法，是让消息区自己在底部留出这段高度：
+   把输入框实测高度写进 --composer-h，CSS 用它算 #chatBody 的 padding-bottom。
+   留白算在 scrollHeight 里，所以 scrollTop 拉满时最后一条气泡自然停在浮层上方，
+   chatAtBottom() 的 8px 判据也依然成立（滚到底确实就是到底）。
+
+   为什么要 ResizeObserver 而不是初始化量一次：textarea 随行数长高（上限 140px）、
+   工具条展开收起、切会话时 chips 增减，高度都会变。量一次就是刻舟求剑。 */
+function composerH(){
+  var w=document.getElementById('chatComposer');
+  return w ? (w.offsetHeight||0) : 0;
+}
+function watchComposerHeight(){
+  var wrap=document.getElementById('chatComposer');
+  if(!wrap) return;
+  var apply=function(){
+    var h=wrap.offsetHeight||0;
+    if(!h) return;                       /* 画板/隐藏态读到 0，跳过别把留白写成 0 */
+    var cur=document.documentElement.style.getPropertyValue('--composer-h');
+    if(cur===h+'px') return;
+    document.documentElement.style.setProperty('--composer-h',h+'px');
+    /* 高度变了而用户正贴着底部 → 重新贴一次，否则留白变化会把气泡顶出视野 */
+    if(_follow) scheduleChatFollow();
+  };
+  if(window.ResizeObserver) new ResizeObserver(apply).observe(wrap);
+  window.addEventListener('resize',apply);
+  apply();
 }
 
 /* ── 侧边栏搜索过滤：按关键词实时过滤专家分组与会话（不重建 DOM，仅显隐）── */

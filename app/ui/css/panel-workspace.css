@@ -120,3 +120,35 @@
 .pw-archived-row.is-picked{background:var(--bg2)}
 .pw-modal .modal-foot .pw-arch-all{display:flex;align-items:center;gap:6px;margin-right:auto;font-size:12px;color:var(--text2);cursor:pointer;user-select:none}
 .pw-arch-all input{flex:0 0 15px;width:15px;height:15px;margin:0;accent-color:var(--accent);cursor:pointer}
+
+/* 画板会话在左树的标记（2026-11-16 用户需求）
+   图标用绝对定位放在标题左边，不给 .title 加 flex —— 它现在是
+   white-space:nowrap + text-overflow:ellipsis，改成 flex 容器以后
+   文本节点变匿名 flex item，省略号会失效，长标题直接溢出。 */
+.session-item .title{position:relative}
+.session-item.is-canvas .title{padding-left:17px}
+.session-item .si-type{display:none}
+.session-item.is-canvas .si-type{
+  display:block;
+  position:absolute;
+  left:0;
+  top:50%;
+  width:13px;
+  height:13px;
+  transform:translateY(-50%);
+  color:var(--accent);
+  opacity:.85;
+}
+.session-item .si-type svg{display:block;width:13px;height:13px}
+.session-item.is-canvas .session-open::before{
+  content:'';
+  position:absolute;
+  left:0;
+  top:6px;
+  bottom:6px;
+  width:2px;
+  border-radius:2px;
+  background:var(--accent);
+  opacity:.55;
+}
+.session-item .session-open{position:relative}

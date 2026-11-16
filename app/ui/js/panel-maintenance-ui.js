@@ -127,11 +127,29 @@
     if(rows.length>40)list.append(el('p','仅显示前 40 条。','pw-hint'));
     box.append(list);
   }
+  /* 热力图的格子只说明「哪天忙」，看不出忙什么 —— 想知道内容得一个个悬停。
+     把最新 12 条直接摊在下面，扫一眼就有工作内容，不用点也不用猜。 */
+  function renderRecent(){
+    var box=document.getElementById('maintRecent');if(!box)return;
+    var rows=(activity.commits||[]).slice(0,12);
+    box.replaceChildren();
+    if(!rows.length)return;
+    var head=el('div',undefined,'maint-recent-head');
+    head.append(el('strong','最近提交'),el('em','最新 12 条；上方热力图按天看密度，点某天看当天全部'));
+    box.append(head);
+    var grid=el('div',undefined,'maint-recent-grid');
+    rows.forEach(function(item){
+      var row=el('div',undefined,'maint-recent-row');
+      row.append(el('code',String(item[0]||'').slice(5)),el('span',String(item[2]||'')));
+      grid.append(row);
+    });
+    box.append(grid);
+  }
   function renderActivity(){
     var root=document.getElementById('maintenanceActivity');
     if(!root)return;
     if(!activity){root.hidden=true;return;}
-    root.hidden=false;renderSummary();renderHeat();renderTypes();renderDayList();
+    root.hidden=false;renderSummary();renderHeat();renderTypes();renderRecent();renderDayList();
   }
   async function loadActivity(){
     if(!selected)return;

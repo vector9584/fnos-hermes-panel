@@ -219,7 +219,7 @@ textarea.uikit-input {
    位置/堆叠方向由 JS 写成 inline 的 top/left/bottom；这里只管长相与移动端兜底。 */
 .hz-toast-stack{position:fixed;z-index:99999;display:flex;flex-direction:column;gap:10px;
   pointer-events:none;max-width:calc(100vw - 32px)}
-.hz-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;box-sizing:border-box;
+.hz-toast{pointer-events:none;display:flex;align-items:flex-start;gap:10px;box-sizing:border-box;
   min-width:220px;max-width:min(400px,calc(100vw - 32px));padding:12px 13px;border-radius:11px;
   background:var(--toast-bg,#22262f);border:1px solid var(--toast-border,rgba(255,255,255,.10));border-left:3px solid #4a90e2;color:var(--toast-fg,#e7e9ee);
   box-shadow:var(--toast-shadow,0 14px 36px rgba(0,0,0,.52));font-size:13px;line-height:1.55;
@@ -237,6 +237,9 @@ textarea.uikit-input {
 .hz-toast.is-error .hz-toast__ico{color:#f07373}
 .hz-toast.is-info .hz-toast__ico{color:#5aa9ff}
 .hz-toast__body{flex:1 1 auto;min-width:0}
+/* 提示条本身不吃点击（它会横跨屏幕盖住下面的卡片，点了没反应），
+   但带动作按钮的那种要留出可点区域。 */
+.hz-toast__acts,.hz-toast__btn{pointer-events:auto}
 .hz-toast__title{margin:0 0 2px;font-size:13px;font-weight:600;letter-spacing:.1px;white-space:pre-wrap;word-break:break-word}
 .hz-toast__text{margin:0;white-space:pre-wrap;word-break:break-word;color:inherit;opacity:.92}
 .hz-toast__title[hidden],.hz-toast__acts[hidden]{display:none}

@@ -11,10 +11,10 @@ function openNewSessionModal(){
     '<div class="modal-body">' +
     '<div class="field"><label for="nsTitle">会话名称</label><input type="text" id="nsTitle" placeholder="留空自动命名，之后双击标题也能改"></div>' +
     '<div class="field"><label for="nsFolder">归类</label><select id="nsFolder">' + (window.pwFolderOptions ? window.pwFolderOptions('') : '<option value="">未分类</option>') + '</select></div>' +
-    '<div class="field"><label for="nsPersonality">表达风格</label><select id="nsPersonality"><option value="default">默认</option></select><div style="font-size:11px;color:var(--text3);margin-top:4px">只调整本会话的回答方式，不切换全局 SOUL、记忆、渠道或模型环境。</div></div>' +
+    '<div class="field"><label for="nsSessionType">会话类型</label><select id="nsSessionType" onchange="_ndRenderModels()"><option value="chat">对话</option><option value="canvas">画板</option></select><div id="nsTypeHint" style="font-size:11px;color:var(--text3);margin-top:4px">对话：普通聊天，可选任意对话模型。</div></div>' +
     '<div class="field"><label>模型</label><select id="nsModel"><option value="">默认模型</option></select></div>' +
     '<div class="field"><label>工作区文件夹</label><div style="display:flex;gap:6px"><input type="text" id="nsWorkspace" placeholder="留空使用默认工作区（可浏览选择或输入新名称）" value="" style="flex:1"><button class="ov-actbtn" onclick="openWsPicker()" title="浏览选择工作区文件夹">📂 浏览</button></div></div>' +
-    '<div style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:2px">不想选就都不选，直接点「创建」，等于：默认表达风格 + 当前模型 + 默认工作区。</div>' +
+    '<div style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:2px">留空直接点「创建」= 对话类型 + 默认模型 + 默认工作区。</div>' +
     '</div>' +
     '<div class="modal-foot" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px">' +
     '<button class="ov-actbtn" onclick="closeNewSessionModal()">取消</button>' +
@@ -23,33 +23,71 @@ function openNewSessionModal(){
   document.body.insertAdjacentHTML('beforeend', html);
   var _ndOv=document.getElementById('newSessionOverlay');
   if(_ndOv&&window.ui)window.ui.adoptOverlay(_ndOv);
-  // 新会话只选择会话级表达风格；Profile 仍由独立的配置/渠道页面管理。
-  apiGet('/api/workspace-ui/personalities').then(function(res){
-    if(res && Array.isArray(res.personalities)){
-      var sel=document.getElementById('nsPersonality');
-      if(!sel)return;
-      sel.innerHTML=res.personalities.map(function(p){return '<option value="'+DOM.escAttr(p.id)+'">'+esc(p.name||p.id)+'</option>';}).join('');
-    }
+  /* 会话类型与模型联动（2026-11-16）：
+   * - 对话：列全部对话模型，排除生图专用模型（避免拿画图模型聊天）
+   * - 画板：只列 image_gen 配置里真实可用的生图模型
+   * 生图模型名不写死 —— 唯一真源是 config.yaml 的 image_gen 段，
+   * 后端 /api/workspace-ui/image-targets 已解析好（实测 gpt-image-2 并不在
+   * provider 的 models 列表里，从 models 反推会漏）。 */
+  Promise.all([
+    apiGet('/api/config').catch(function(){ return null; }),
+    apiGet('/api/workspace-ui/image-targets').catch(function(){ return null; })
+  ]).then(function(r){
+    _ndData.config = r[0]; _ndData.targets = r[1];
+    _ndRenderModels();
   });
-  // 加载模型
-  apiGet('/api/config').then(function(res){
-    if(res && res.providers){
-      var sel=document.getElementById('nsModel');
-      if(!sel)return;
-      res.providers.forEach(function(p){
-        var provName = p.name || p.id;
-        var models = (p.models && p.models.length) ? p.models : [{ id:p.model||'auto', name:p.model||'auto', enabled:true }];
-        var opts='';
-        models.forEach(function(m){
-          if(m.enabled === false) return;
-          var modelId = m.id || m.name || 'auto';
-          var modelName = m.name || m.id || 'auto';
-          opts += '<option value="'+DOM.escAttr(modelId)+'">'+esc(modelName)+'</option>';
-        });
-        if(opts) sel.innerHTML += '<optgroup label="'+DOM.escAttr(provName)+'">'+opts+'</optgroup>';
+}
+/* 新建面板的数据缓存：模型列表与生图目标只取一次，切换类型时本地重算。 */
+var _ndData = { config: null, targets: null };
+function _ndImageTargets(){
+  return (_ndData.targets && Array.isArray(_ndData.targets.targets)) ? _ndData.targets.targets : [];
+}
+function _ndRenderModels(){
+  var sel = document.getElementById('nsModel');
+  if(!sel) return;
+  var typeEl = document.getElementById('nsSessionType');
+  var hintEl = document.getElementById('nsTypeHint');
+  var type = (typeEl && typeEl.value) || 'chat';
+  var isCanvas = (type === 'canvas');
+  var targets = _ndImageTargets();
+  if(hintEl){
+    hintEl.textContent = isCanvas
+      ? '画板：无限画布，模型限定为可生图的模型；每张图连到它的来源图上。'
+      : '对话：普通聊天，可选任意对话模型。';
+  }
+  var html = '';
+  if(isCanvas){
+    if(!targets.length){
+      html = '<option value="">未配置生图模型</option>';
+    }else{
+      html += '<optgroup label="可生图模型">';
+      targets.forEach(function(t){
+        html += '<option value="'+DOM.escAttr(t.model)+'" data-provider="'+DOM.escAttr(t.provider_id||'')+'">'+esc(t.label||t.model)+'</option>';
       });
+      html += '</optgroup>';
     }
-  });
+    sel.innerHTML = html;
+    return;
+  }
+  html = '<option value="">默认模型</option>';
+  var cfg = _ndData.config;
+  if(cfg && Array.isArray(cfg.providers)){
+    cfg.providers.forEach(function(p){
+      var provName = p.name || p.id;
+      var models = (p.models && p.models.length) ? p.models : [{ id:p.model||'auto', name:p.model||'auto', enabled:true }];
+      var opts = '';
+      models.forEach(function(m){
+        if(m.enabled === false) return;
+        var modelId = m.id || m.name || 'auto';
+        var modelName = m.name || m.id || 'auto';
+        // 生图专用模型不进对话列表：它的接口不是 chat/completions 口径
+        if(targets.some(function(t){ return t.model === modelId; })) return;
+        opts += '<option value="'+DOM.escAttr(modelId)+'">'+esc(modelName)+'</option>';
+      });
+      if(opts) html += '<optgroup label="'+DOM.escAttr(provName)+'">'+opts+'</optgroup>';
+    });
+  }
+  sel.innerHTML = html;
 }
 /* ── 工作区目录选择器（浏览/新建，选择后回填工作区字段） ── */
 var _wsPicker = { cwd: 'workspace' };  // 相对 DATA_DIR 的当前目录（workspace = 工作区根）
@@ -116,7 +154,7 @@ function wsPickerSelect(){
 function closeWsPicker(){ var o=document.getElementById('wsPickerOverlay'); if(o) o.remove(); }
 function closeNewSessionModal(){ var o=document.getElementById('newSessionOverlay'); if(o) o.remove(); }
 function createNewSession(){
-  var personality=(document.getElementById('nsPersonality')||{}).value||'default';
+  var sessionType=(document.getElementById('nsSessionType')||{}).value||'chat';
   var model=document.getElementById('nsModel').value;
   var workspace=document.getElementById('nsWorkspace').value.trim();
   var wantTitle=((document.getElementById('nsTitle')||{}).value||'').trim();
@@ -138,10 +176,16 @@ function createNewSession(){
       }
       if(wantFolder){ chain = chain.then(function(x){ return request('/session','PUT',{id:x.id,folder_id:wantFolder}).then(function(){return x;}).catch(function(){return x;}); }); }
       chain = chain.then(function(x){
-        return api('/api/workspace-ui/session','PUT',{id:x.id,personality:personality}).then(function(){ return x; }).catch(function(e){
-          toast('会话已创建，但表达风格保存失败：'+e.message,'error');
+        return api('/api/workspace-ui/session','PUT',{id:x.id,type:sessionType}).then(function(){ return x; }).catch(function(e){
+          toast('会话已创建，但会话类型保存失败：'+e.message,'error');
           return x;
         });
+      });
+      /* 工作区隔离（2026-11-16）：新会话按归类在 data/sessions/<归类>/<会话ID>/uploads
+       * 单独建目录，附件与生图产物各归各家；表情包等公共资源仍走 assets，不受影响。
+       * 失败不挡创建 —— 目录只是存放位置，没有它也能聊天。 */
+      chain = chain.then(function(x){
+        return api('/api/workspace-ui/session-dir','POST',{id:x.id}).then(function(r){ x._dir=r||null; return x; }).catch(function(){ return x; });
       });
       return chain;
     })
@@ -154,8 +198,15 @@ function createNewSession(){
       var ta=document.getElementById('chatInput'); if(ta) ta.value='';
       renderSessionTabs(); renderRail(); updateHeader();
       var body=document.getElementById('chatBody');
-      if(body) body.innerHTML='<div class="system-tip">新会话已创建'+(personality!=='default'?' · '+esc(personality):'')+(model?' · 模型: '+esc(model):'')+'</div>';
+      if(body) body.innerHTML='<div class="system-tip">新会话已创建'+(sessionType==='canvas'?' · 画板':'')+(model?' · 模型: '+esc(model):'')+'</div>';
       if(workspace) _fmCwd=workspace;
+      /* 画板会话（2026-11-16）：先把 workspace state 刷一遍再进画板，
+         这样后续 switchTab 走 window.pwSessionType 就能查到 canvas。
+         pwReload 是 panel-workspace-ui IIFE 暴露的入口（reload 本身是私有的）。 */
+      if(sessionType==='canvas'){
+        var goCanvas=function(){ if(window.CanvasMode){ try{ CanvasMode.enter(s.id); }catch(e){} } };
+        if(typeof window.pwReload==='function'){ Promise.resolve(window.pwReload()).then(goCanvas).catch(goCanvas); } else { goCanvas(); }
+      }
       toast('✅ 新会话已创建');
     }).catch(function(){ toast('创建会话失败','error'); });
 }

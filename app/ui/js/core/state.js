@@ -13,7 +13,23 @@
  * ========================================================================== */
 
 window.currentAgent = 'default';
-window.currentSession = '';
+/* 2026-11-16：能力 chip 是按会话存的（panel-capabilities-ui.js 的 storeKey），
+   但 currentSession 的赋值点散在 tabs / message-ops / new-dialog / roundtable /
+   mini-popup / compose 六处，逐个挂钩必漏。统一在这拦，变一次刷一次。 */
+window._currentSession = '';
+try {
+  Object.defineProperty(window, 'currentSession', {
+    configurable: true,
+    get: function () { return window._currentSession; },
+    set: function (v) {
+      var old = window._currentSession;
+      window._currentSession = v;
+      if (old !== v && typeof window.capabilityChipRefresh === 'function') {
+        try { window.capabilityChipRefresh(); } catch (e) {}
+      }
+    }
+  });
+} catch (e) { window.currentSession = ''; }
 window.currentTheme = 'auto';
 window.activeBtn = null;
 window.activePanel = null;

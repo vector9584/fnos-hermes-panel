@@ -11,10 +11,12 @@ import io
 import json
 import os
 import re
+import shutil
 import socket
 import subprocess
 import sys
 import tempfile
+import textwrap
 import time
 import urllib.error
 import urllib.request
@@ -59,6 +61,9 @@ STT_PARAMS = {
     'elevenlabs': ('model_id', 'language_code', 'tag_audio_events', 'diarize'),
 }
 JEV_KEYS = ('TYPESAFE_API_KEY', 'CLOUDFLARE_JEV_API_TOKEN')
+
+# 连通性实测念这一句：短到几秒能合成完，又带完整的中文声调，能听出咬字对不对。
+TEST_TTS_TEXT = '语音合成连通性测试。'
 
 
 class Failure(Exception):
@@ -412,12 +417,223 @@ def patch_stt(section, changes):
                 entry[key] = text(value, '参数 ' + key, 400, empty=True)
 
 
+def _venv_python(home):
+    candidate = home / 'venv' / 'bin' / 'python3'
+    return str(candidate) if candidate.is_file() else sys.executable
+
+
+def _hermes_root():
+    """Locate the source root that holds ``panel_config_bridge``.
+
+    ``hermes_cli/config.py`` imports ``panel_config_bridge`` as a *top-level*
+    module, so the source root itself must be on ``sys.path``. The editable
+    install makes ``import hermes_cli`` work while that inner import still
+    fails — which is why the probe child needs this explicitly and the panel's
+    own GET path (which never touches ``hermes_cli.config``) does not notice.
+    ``find_spec`` resolves the location without executing the package.
+    """
+    try:
+        import importlib.util
+
+        spec = importlib.util.find_spec('hermes_cli')
+        for location in (spec.submodule_search_locations or []) if spec else []:
+            return str(Path(location).resolve().parent)
+    except Exception:
+        pass
+    return ''
+
+
+def _probe_env():
+    env = {**os.environ, 'PYTHONDONTWRITEBYTECODE': '1'}
+    root = _hermes_root()
+    if root:
+        existing = env.get('PYTHONPATH') or ''
+        env['PYTHONPATH'] = root + (os.pathsep + existing if existing else '')
+    return env
+
+
+def _run_probe(home, code, arg, timeout):
+    """Run a probe snippet in a child interpreter.
+
+    A child process (not an in-process call) because the panel request must
+    be able to give up: a command provider with a 900s timeout would otherwise
+    pin this process for fifteen minutes with no way to answer the browser.
+    Returns ``(stdout, error, elapsed_ms)``.
+    """
+    started = time.time()
+    try:
+        proc = subprocess.run(
+            [_venv_python(home), '-B', '-c', code, arg],
+            capture_output=True, text=True, timeout=timeout,
+            env=_probe_env(),
+        )
+    except subprocess.TimeoutExpired:
+        return None, '超过 %d 秒没有返回，提供方可能挂住或命令阻塞' % timeout, int((time.time() - started) * 1000)
+    except Exception as error:
+        return None, type(error).__name__ + ': ' + str(error), int((time.time() - started) * 1000)
+    elapsed = int((time.time() - started) * 1000)
+    if proc.returncode != 0:
+        lines = [line for line in (proc.stderr or proc.stdout or '').splitlines() if line.strip()]
+        detail = ' | '.join(part.strip() for part in lines[-6:])[:1200] if lines else '退出码 ' + str(proc.returncode)
+        return None, detail, elapsed
+    return (proc.stdout or '').strip(), '', elapsed
+
+
+def _probe_snippet():
+    return textwrap.dedent('''
+        import json, sys
+        from tools.tts_tool import text_to_speech_tool
+        print('@@' + text_to_speech_tool(sys.argv[1]))
+    ''')
+
+
+def probe_tts(home, timeout):
+    """Synthesize one short line through the live provider chain."""
+    out, error, elapsed = _run_probe(home, _probe_snippet(), TEST_TTS_TEXT, timeout)
+    if error:
+        return {'ok': False, 'section': 'tts', 'ms': elapsed, 'error': error}
+    payload = ''
+    for line in out.splitlines():
+        if line.startswith('@@'):
+            payload = line[2:]
+    try:
+        result = json.loads(payload)
+    except Exception:
+        return {'ok': False, 'section': 'tts', 'ms': elapsed,
+                'error': '合成没有返回可解析的结果', 'raw': out[-400:]}
+    path = result.get('file_path') or ''
+    size = audio_ms = None
+    if path and os.path.isfile(path):
+        try:
+            size = os.path.getsize(path)
+        except OSError:
+            size = None
+        try:
+            duration = subprocess.run(
+                ['ffprobe', '-v', 'error', '-show_entries', 'format=duration',
+                 '-of', 'default=nw=1:nk=1', path],
+                capture_output=True, text=True, timeout=15).stdout.strip()
+            audio_ms = int(float(duration) * 1000)
+        except Exception:
+            audio_ms = None
+        try:
+            os.unlink(path)
+        except OSError:
+            pass
+    healthy = bool(result.get('success'))
+    return {
+        'ok': healthy,
+        'section': 'tts',
+        'ms': elapsed,
+        'audio_ms': audio_ms,
+        'bytes': size,
+        'provider': result.get('provider'),
+        'sample': TEST_TTS_TEXT,
+        'error': None if healthy else (result.get('error') or '合成失败'),
+    }
+
+
+def probe_stt(home, timeout):
+    """Transcribe a freshly synthesized line, then a silent WAV, as fallback.
+
+    The round-trip is the honest test: it proves the configured TTS and STT
+    pair actually exchange audio. Silence is not a failure — an empty
+    transcript is the *correct* answer for a silent clip, and reaching that
+    answer still proves the provider initialises and gets called.
+    """
+    folder = tempfile.mkdtemp(prefix='voice-probe-')
+    wav = os.path.join(folder, 'probe.wav')
+    spoken = ''
+    stage = 'silence'
+    try:
+        tts_out, tts_error, _ = _run_probe(home, _probe_snippet(), TEST_TTS_TEXT, timeout)
+        if not tts_error:
+            payload = ''
+            for line in tts_out.splitlines():
+                if line.startswith('@@'):
+                    payload = line[2:]
+            try:
+                result = json.loads(payload)
+            except Exception:
+                result = {}
+            source = result.get('file_path') or ''
+            if result.get('success') and source and os.path.isfile(source):
+                try:
+                    subprocess.run(
+                        ['ffmpeg', '-y', '-v', 'error', '-i', source,
+                         '-ar', '16000', '-ac', '1', wav],
+                        capture_output=True, timeout=60, check=True)
+                    spoken = TEST_TTS_TEXT
+                    stage = 'roundtrip'
+                except Exception:
+                    spoken = ''
+                try:
+                    os.unlink(source)
+                except OSError:
+                    pass
+        if not os.path.isfile(wav):
+            # 1.5s of digital silence — enough for any provider to accept the file.
+            subprocess.run(
+                ['ffmpeg', '-y', '-v', 'error', '-f', 'lavfi',
+                 '-i', 'anullsrc=r=16000:cl=mono', '-t', '1.5', wav],
+                capture_output=True, timeout=60, check=True)
+
+        code = textwrap.dedent('''
+            import json, sys
+            from tools.voice_mode import transcribe_recording
+            print('@@' + json.dumps(transcribe_recording(sys.argv[1]), ensure_ascii=False))
+        ''')
+        out, error, elapsed = _run_probe(home, code, wav, timeout)
+        if error:
+            return {'ok': False, 'section': 'stt', 'ms': elapsed, 'error': error, 'stage': stage}
+        payload = ''
+        for line in out.splitlines():
+            if line.startswith('@@'):
+                payload = line[2:]
+        try:
+            result = json.loads(payload)
+        except Exception:
+            return {'ok': False, 'section': 'stt', 'ms': elapsed,
+                    'error': '转写没有返回可解析的结果', 'raw': out[-400:], 'stage': stage}
+        heard = str(result.get('transcript') or '').strip()
+        healthy = bool(result.get('success'))
+        error_text = None
+        if not healthy:
+            error_text = result.get('error') or '转写失败'
+            if 'empty transcript' in str(error_text).lower():
+                healthy, error_text, heard = True, None, ''
+        return {
+            'ok': healthy,
+            'section': 'stt',
+            'ms': elapsed,
+            'provider': result.get('provider'),
+            'spoke': spoken,
+            'heard': heard,
+            'stage': stage,
+            'note': ('播报一句再识别回来' if stage == 'roundtrip'
+                     else '只验证了通道：合成不可用，用 1.5 秒静音探活，空结果属正常'),
+            'error': error_text,
+        }
+    finally:
+        shutil.rmtree(folder, ignore_errors=True)
+
+
 def execute(request, path, lock_root=None):
     home = path.parent
     lock_dir = Path(lock_root) if lock_root else (home / 'panel-state')
     raw, yaml, data = document(path)
     if request.get('action') == 'read':
         return response(data, home)
+    if request.get('action') == 'test':
+        section = request.get('section')
+        if section not in ('tts', 'stt'):
+            raise Failure('只能测试 TTS 或 STT')
+        try:
+            timeout = int(request.get('timeout') or 240)
+        except (TypeError, ValueError):
+            timeout = 240
+        timeout = max(20, min(timeout, 600))
+        return probe_tts(home, timeout) if section == 'tts' else probe_stt(home, timeout)
     section = request.get('section')
     if section not in ('tts', 'stt'):
         raise Failure('只能修改 TTS 或 STT 配置')
@@ -482,6 +698,11 @@ if __name__ == '__main__':
     try:
         print(json.dumps(execute(json.load(sys.stdin), Path(sys.argv[1]), sys.argv[2] if len(sys.argv) > 2 else None), ensure_ascii=False))
     except Exception as error:
+        # stderr 收完整堆栈、stdout 只留一行 JSON：面板按 stdout 解析，
+        # 而排障时缺了堆栈就只能看到一句「保存失败」，等于没有线索。
+        import traceback
+
+        traceback.print_exc(file=sys.stderr)
         print(json.dumps({'ok': False,
                           'error': str(error) if isinstance(error, Failure) else '语音配置保存失败，未收到成功确认，请重新读取核对',
                           'status': getattr(error, 'status', 500)}, ensure_ascii=False))

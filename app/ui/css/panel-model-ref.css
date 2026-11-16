@@ -75,8 +75,18 @@ body.theme-dark .models-page{--primary-ink:#06251d}
 .models-page .input:focus,.models-page .select:focus,.models-page .textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .models-page .select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:34px}
 .models-page .input[readonly]{background:var(--surface-2);color:var(--ink-2)}
+/* 官方预设锁住的地址：虚线边框 + 禁用光标。深色主题下 --surface-2 跟正常输入框
+   色差太小，实测肉眼分不出「能改」和「不能改」，必须再给一道形状上的提示。 */
+.models-page .sheet .input[readonly]{border-style:dashed;cursor:not-allowed;opacity:.9}
 .models-page .field{margin-bottom:13px}
-.models-page .field>label,.models-page .lb{display:block;font-size:11.5px;font-weight:700;margin:0 0 7px;color:var(--ink-2)}
+/* 标签行：文字、必填星号、问号放进同一个 flex 行按中线对齐。
+   原来靠 .qhint 的 vertical-align:middle 调基线，不同字号下永远差半个像素，
+   而且 block 标签里的行内元素会额外撑出字体的上下留白。 */
+.models-page .field>label{display:flex;align-items:center;flex-wrap:wrap;font-size:11.5px;font-weight:700;margin:0 0 7px;color:var(--ink-2)}
+.models-page .lb{display:block;font-size:11.5px;font-weight:700;margin:0 0 7px;color:var(--ink-2)}
+/* 服务名后面的内部 id（custom_xxx）。没这一条时它紧贴名字，渲染成
+   ZeroAPIcustom_umw4fn6uw5d42，看着像名字被写坏了。 */
+.models-page .lb .pid{margin-left:8px;font-weight:400;font-size:10.5px;opacity:.5;letter-spacing:0}
 .models-page .field .req{color:var(--err);margin-left:3px}
 .models-page .field .fh{font-size:10px;color:var(--ink-3);margin-top:5px;line-height:1.6}
 .models-page .grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -125,7 +135,17 @@ body.theme-dark .models-page{--primary-ink:#06251d}
 .models-page .pcard .url{font-size:10px;color:var(--ink-3);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .models-page .pcard .meta{display:flex;gap:5px;flex-wrap:wrap;margin:12px 0}
 .models-page .pcard .foot{margin-top:auto;display:flex;gap:5px;padding-top:11px;border-top:1px solid var(--line)}
-.models-page .pcard .foot .btn{flex:1;min-width:0;padding:6px 4px;font-size:10.5px}
+.models-page .pcard .foot .btn{flex:1;min-width:0;padding:8px 10px;font-size:11.5px;font-weight:600}
+.models-page .pcard .keylist{display:flex;flex-direction:column;gap:6px;margin:4px 0 10px}
+.models-page .pcard .keyrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;border:1px solid var(--line);border-radius:9px;padding:7px 9px;background:var(--bg-soft)}
+.models-page .pcard .keyrow.off{opacity:.55}
+.models-page .pcard .keyrow .krow{display:flex;align-items:center;gap:7px;flex:1;min-width:130px}
+.models-page .pcard .keyrow .kdot{width:7px;height:7px;border-radius:50%;background:var(--primary);flex:none}
+.models-page .pcard .keyrow .kdot.off{background:var(--ink-3)}
+.models-page .pcard .keyrow .klabel{font-size:12px;font-weight:700;letter-spacing:-.01em}
+.models-page .pcard .keyrow .kcount{font-size:10px;color:var(--ink-3)}
+.models-page .pcard .keyrow .kacts{display:flex;gap:4px;flex-wrap:wrap}
+.models-page .pcard .keyrow .kacts .btn{padding:4px 7px;font-size:10px}
 .models-page .pcard.off{opacity:.56}
 .models-page .pcard.add{border-style:dashed;background:var(--bg-soft);align-items:center;justify-content:center;gap:9px;min-height:200px}
 .models-page .pcard.add:hover{border-color:var(--primary);background:var(--primary-soft)}
@@ -232,6 +252,42 @@ body.theme-dark .models-page .overlay{background:rgba(0,0,0,.66)}
 .models-page .bigopt.on .bo::after{content:"";position:absolute;inset:4px;border-radius:50%;background:var(--primary)}
 .models-page .bigopt .bt{font-size:12.5px;font-weight:700}
 .models-page .bigopt .bd{font-size:10.5px;color:var(--ink-2);line-height:1.65;margin-top:3px}
+/* 密钥标签：用户自己给密钥起的名字（如「DeepSeek 0.8x」）。跟服务名并排，
+   用主色小徽章 —— 它是人话，比内核 id 有用，所以要看得见。 */
+.models-page .lb .ktag{font-size:10px;color:var(--primary);background:var(--primary-soft);border:1px solid var(--primary-bd);border-radius:5px;padding:1px 6px;margin-left:7px;font-weight:600;letter-spacing:.2px;text-transform:none}
+/* 每个源一个实体框。光把标题并起来不算分组 —— 模型行还是散着往下排，
+   看上去跟没分一样。框 + 底色才是「这几把 key 属于同一个站」的证据。 */
+.models-page .srcgroup{border:1px solid var(--line);border-radius:13px;background:var(--bg-soft);
+  padding:11px 12px 9px;margin:0 0 11px}
+.models-page .srcgroup > .lb{margin:0 0 9px;font-size:12px}
+.models-page .srcgroup .bigopt{margin-bottom:7px}
+.models-page .srcgroup .bigopt:last-child{margin-bottom:7px}
+/* 组内多把 key：左侧主色竖线 + 小节之间一条淡虚线，两层分隔都上。
+   竖线用伪元素画，不靠 border —— border 在暗底上用 --primary-bd 几乎看不见，
+   实测渲出来是 rgb(32,61,55)，跟背景 rgb(24,31,39) 差 8 个色阶，等于没画。 */
+/* 子框做成卡片：key 标签占满一条 header，模型行挂在下面。
+   绿色在这面板里是「选中」的语义，拿去当分组底色会跟选中态打架，所以 header 用中性灰,
+   只在标签前点一个主色小圆点。 */
+.models-page .srcgroup .keysub{border:1px solid var(--line-2);border-radius:9px;
+  padding:0 11px 2px;margin:0 0 8px}
+.models-page .srcgroup .keysub:last-child{margin-bottom:0}
+.models-page .srcgroup .keysub .ksec{margin:0 -11px 8px;padding:8px 11px;background:var(--line-2);
+  border-radius:8px 8px 0 0;border-bottom:1px solid var(--line)}
+.models-page .srcgroup .keysub .ksec::before{content:"";width:5px;height:5px;border-radius:50%;
+  background:var(--primary);flex:none}
+/* 同一个源下有多把密钥时，组标题右侧标把数；域名做小字跟在服务名后面，
+   让人一眼看出「这是哪个站」，但不用它当标题。 */
+.models-page .lb .src{font-size:9.5px;font-weight:500;color:var(--ink-2);opacity:.6;margin-left:7px;letter-spacing:0}
+.models-page .lb .kcount{font-size:9.5px;font-weight:600;color:var(--primary);background:var(--primary-soft);
+  border:1px solid var(--primary-bd);border-radius:999px;padding:1px 7px;margin-left:7px;letter-spacing:0}
+/* 密钥这一层的小标题。只有同源多把 key 才出现 —— 那时「哪把 key」才是要选的东西。 */
+.models-page .ksec{display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;
+  color:var(--ink-2);margin:0 0 6px;padding-left:1px;letter-spacing:0}
+.models-page .ksec .src{font-size:9.5px;font-weight:500;color:var(--ink-2);opacity:.55;letter-spacing:0}
+/* 换主模型单屏布局：列表下面接差异摘要，用一条上边线分隔。 */
+.models-page .diffbox{margin-top:16px;padding-top:14px;border-top:1px solid var(--line)}
+.models-page .diffbox .mini{margin:8px 0 0}
+.models-page .diffbox .errline{margin-top:9px}
 .models-page .bigopt .rec{font-size:9.5px;color:var(--primary);background:var(--primary-soft);border:1px solid var(--primary-bd);border-radius:5px;padding:1px 5px;margin-left:6px}
 .models-page .deps{margin:0 0 14px;border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);background:var(--warn-soft);border-radius:10px;padding:10px 12px}
 .models-page .deps .dh{font-size:11.5px;font-weight:750;color:var(--warn);margin-bottom:6px}
@@ -241,6 +297,8 @@ body.theme-dark .models-page .overlay{background:rgba(0,0,0,.66)}
 .models-page .deps.block{border-color:color-mix(in srgb,var(--err) 35%,transparent);background:var(--err-soft)}
 .models-page .deps.block .dh{color:var(--err)}
 .models-page .errline{font-size:11px;color:var(--err);margin:8px 0 0;min-height:14px}
+/* 2026-11-16：模型清单为空不是「保存失败」，是还没配完。用琥珀色说，别红着吓人 */
+.models-page .errline.warn{color:var(--warn)}
 .models-page .picklist{display:flex;flex-direction:column;gap:3px;max-height:180px;overflow-y:auto;border:1px solid var(--line);border-radius:9px;padding:8px}
 .models-page .checkline{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--ink-2);padding:6px 4px;cursor:pointer;flex-wrap:wrap}
 .models-page .checkline input[type=checkbox]{appearance:none;width:15px;height:15px;border-radius:4px;border:1.5px solid var(--line-2);background:var(--surface);margin:0;flex:none;position:relative}
@@ -341,3 +399,293 @@ body.theme-dark .models-page .overlay{background:rgba(0,0,0,.66)}
 .models-page .mv2-root{max-width:1400px;margin:0 auto}
 .models-page .mv2-root>.tabrow.second{margin:0 0 4px;border:1px solid var(--line);border-radius:10px;background:var(--bg-soft)}
 .models-page .mv2-root>.empty{margin-top:8px}
+
+
+/* ── 弹层：密钥行 / 「?」气泡（2026-11-16）── */
+/* 密钥行：名称 / 密钥 / ✕ 三格一行，不折行。之前只写了 .pcard .keyrow，
+   弹层不在 .pcard 里，于是这里一直是裸 div，控件被挤成一串。 */
+.models-page .sheet .keylist{display:flex;flex-direction:column;gap:8px;margin:4px 0 12px}
+.models-page .sheet .keyrow{display:grid;grid-template-columns:minmax(0,.72fr) minmax(0,1.35fr) auto;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--bg-soft)}
+.models-page .sheet .keyrow .input{width:100%;min-width:0;margin:0}
+.models-page .sheet .keyrow .kdel{padding:6px 9px;font-size:12px;line-height:1;color:var(--ink-3);border-color:transparent;background:transparent}
+.models-page .sheet .keyrow .kdel:hover{color:var(--err);border-color:var(--err);background:transparent}
+.models-page .sheet .khead{display:flex;align-items:center;margin:14px 0 7px}
+/* .lb 自带 7px 下边距（那是给 block 布局的标签留行距的），进了 flex 行它会被算进
+   align-items:center 的对齐盒，文字整体比问号高 3.5px —— 实测 cy 差 -3.50。
+   问号没有这个边距，所以两边永远差半个行距。这两处清掉，让文字和圆点同一条中线。 */
+.models-page .sheet .khead .lb,.models-page .sheet .mhead .lb{margin:0}
+.models-page .sheet .khead .lb{font-size:11.5px;font-weight:700;color:var(--ink-2)}
+
+/* 「?」气泡：长说明不占正文，点一下才展开。
+   2026-11-16 重做三处：
+   ① 对齐 —— .qhint 原来只有 inline-flex 没 align-items，里面的 <i> 按基线摆，
+      相邻文字（.lb 是 12.5px、这里 11px 圆点）基线不同就永远差半格。补 align-items:center
+      和 line-height:1，两边同一条中线，不再靠 margin 微调。
+   ② 越界 —— 原来是 absolute 挂在问号上，宽 320px、left:50% 居中，靠左的问号必有一半
+      伸到滚动容器外面，被 overflow 裁掉。改 position:fixed，坐标由 help-hint.js 现算
+      并钳制在视口内（左右留 12px，上面放不下就翻到下面）。
+   ③ 配色 —— 原来 background:var(--ink) / color:var(--surface)，是拿正文字色当底色反色，
+      浅主题下就是纯黑底白字，扎眼又不像浮层。改用浮层自己的 surface-2 + line 边框，
+      深浅主题都自动跟着走。 */
+.models-page .qhint{position:relative;display:inline-flex;align-items:center;vertical-align:middle;margin-left:5px;cursor:pointer;line-height:1}
+.models-page .qhint .qmark{width:15px;height:15px;border-radius:50%;border:1px solid var(--ink-3);color:var(--ink-3);font-size:10px;font-weight:700;font-style:normal;display:flex;align-items:center;justify-content:center;line-height:1;flex:none;padding:0}
+.models-page .qhint:hover .qmark,.models-page .qhint.on .qmark{border-color:var(--primary);color:var(--primary)}
+.models-page .qhint .qtip{position:fixed;left:0;top:0;width:300px;max-width:calc(100vw - 24px);padding:11px 13px;border-radius:10px;background:var(--surface-2);color:var(--ink);border:1px solid var(--line);font-size:11.5px;line-height:1.7;font-weight:400;letter-spacing:0;text-align:left;opacity:0;visibility:hidden;transition:opacity .14s;z-index:9500;pointer-events:none;box-shadow:0 10px 30px rgba(15,20,30,.16)}
+/* 小三角在 fixed 定位下没法跟着钳制后的位置走，去掉 —— 有阴影和边框已经够分层 */
+.models-page .qhint .qtip::after{display:none}
+.models-page .qhint:hover .qtip,.models-page .qhint.on .qtip{opacity:1;visibility:visible}
+
+/* ── 编辑页内联：模型列表 + 状态栏 ────────────────────
+   原来卡片上「获取模型」「模型」各开一个弹层，手动添加还套第三层。
+   现在全部收进编辑页，勾选即存、状态栏一格说清状态。 */
+.models-page .mblock{
+  margin-top:20px;padding-top:18px;border-top:1px solid var(--line);
+  /* 2026-11-16：原来 gap:10px，顶部那排按钮/搜索框跟下面的模型列表几乎粘在一起
+     （中间还夹一条状态栏，视觉上全糊成一坨）。拉开到 14px，列表再单独让 2px —— 
+     分组感出来了，也不用往每个子元素上贴 margin。 */
+  display:flex;flex-direction:column;gap:14px;
+}
+.models-page .mhead{display:flex;align-items:center;gap:8px;}
+/* mhost = 标题行 / 工具行 / 模型列表 的容器（状态栏 .mbar 是它的兄弟，留在 mblock 里）。
+   这三块之间的间距原来全靠各自 margin，工具行到列表实测差 0px —— 贴死。
+   gap 只有挂在直接父元素上才生效，所以这个容器必须有 class。 */
+.models-page .mblock .mhost{display:flex;flex-direction:column;gap:14px}
+.models-page .mhead .lb{font-size:12.5px;font-weight:600;color:var(--ink-2);letter-spacing:.02em;}
+.models-page .mcount{margin-left:auto;font-size:11.5px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.models-page .mtools{display:flex;align-items:center;gap:8px;}
+.models-page .mtools input{flex:1 1 auto;min-width:0;}
+.models-page .mtools .btn{flex:0 0 auto;white-space:nowrap;}
+
+/* 状态栏 */
+.models-page .mbar{
+  display:flex;align-items:center;gap:8px;
+  padding:8px 11px;border-radius:9px;
+  background:var(--surface-2);border:1px solid var(--line);
+  font-size:12.5px;color:var(--ink-2);
+  transition:background .16s,border-color .16s,color .16s;
+}
+.models-page .mbar .mdot{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--ink-3);opacity:.7;}
+/* 空闲且无话可说时整条收起 —— 模型列表底下不该压一截空框。见 setBar() 里的
+   empty 类：msg 为空才加，有异常/操作态时照常显示。 */
+.models-page .mbar.empty{display:none;}
+.models-page .mbar .mbody{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px;}
+.models-page .mbar .mtxt{overflow-wrap:anywhere;line-height:1.45;}
+.models-page .mbar .mdetail{font-size:11.5px;line-height:1.4;opacity:.78;overflow-wrap:anywhere;margin-left:6px;}
+.models-page .mbar .mcopy{
+  flex:0 0 auto;padding:2px 8px;border-radius:6px;
+  border:1px solid currentColor;background:transparent;
+  color:inherit;opacity:.72;font-size:11.5px;cursor:pointer;
+}
+.models-page .mbar .mcopy:hover{opacity:1;}
+.models-page .mbar.ok{background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 32%,transparent);color:var(--ok);}
+.models-page .mbar.ok .mdot{background:var(--ok);opacity:1;}
+.models-page .mbar.warn{background:var(--warn-soft);border-color:color-mix(in srgb,var(--warn) 32%,transparent);color:var(--warn);}
+.models-page .mbar.warn .mdot{background:var(--warn);opacity:1;}
+.models-page .mbar.bad,.models-page .mbar.net{background:var(--err-soft);border-color:color-mix(in srgb,var(--err) 32%,transparent);color:var(--err);}
+.models-page .mbar.bad .mdot,.models-page .mbar.net .mdot{background:var(--err);opacity:1;}
+.models-page .mbar.busy{background:var(--info-soft);border-color:color-mix(in srgb,var(--info) 32%,transparent);color:var(--info);}
+.models-page .mbar.busy .mdot{background:var(--info);opacity:1;animation:mpulse 1s ease-in-out infinite;}
+@keyframes mpulse{0%,100%{transform:scale(.7);opacity:.45}50%{transform:scale(1.15);opacity:1}}
+
+/* 列表 */
+.models-page .mlist{
+  max-height:264px;overflow:auto;overscroll-behavior:contain;
+  border:1px solid var(--line);border-radius:10px;background:var(--surface);
+}
+.models-page .mrow{
+  display:flex;align-items:center;gap:9px;
+  padding:7px 11px;border-bottom:1px solid var(--line);font-size:12.5px;
+}
+.models-page .mrow:last-child{border-bottom:0;}
+.models-page .mrow:hover{background:var(--surface-2);}
+/* 2026-11-16：取消勾选不划删除线 —— 划线读起来像这个模型作废了，
+   实际只是没勾。降透明度足够表达「这行现在不启用」。 */
+.models-page .mrow.off{opacity:.55;}
+.models-page .mrow.isdef{box-shadow:inset 3px 0 0 var(--ok);}
+.models-page .mchk{flex:0 0 auto;width:15px;height:15px;accent-color:var(--primary);cursor:pointer;margin:0;}
+.models-page .mid{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ink);}
+.models-page .mname{flex:0 1 auto;font-size:11.5px;color:var(--ink-3);max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.models-page .mctx{flex:0 0 auto;font-size:11px;color:var(--ink-3);font-variant-numeric:tabular-nums;}
+.models-page .macts{margin-left:auto;flex:0 0 auto;display:flex;align-items:center;gap:6px;}
+.models-page .mmin{padding:2px 7px;font-size:11.5px;white-space:nowrap;}
+.models-page .mempty{padding:22px 12px;text-align:center;font-size:12.5px;color:var(--ink-3);}
+
+/* 手动加一行 */
+.models-page .mmanual{display:flex;align-items:center;gap:8px;}
+.models-page .mmanual input{flex:1 1 0;min-width:0;}
+.models-page .mmanual .btn{flex:0 0 auto;white-space:nowrap;}
+
+@media (max-width:640px){
+  .models-page .mname,.models-page .mctx{display:none;}
+  /* 工具栏：搜索框独占一行，按钮排成规整两列。
+     原来只有 flex-wrap —— 按钮按自己的文字长度找位置，一行塞得下几个塞几个，
+     右边缘参差不齐、行间空隙也不一样，四个按钮加一个问号在 390px 上直接糊成
+     一片。用户原话「按钮挤在一起，元素互相贴边」。改 grid 之后每个按钮等宽
+     居中，跟屏幕宽度无关地保持整齐。 */
+  .models-page .mtools{display:grid;grid-template-columns:1fr 1fr;gap:6px;}
+  .models-page .mtools input{grid-column:1/-1;}
+  .models-page .mtools .btn{width:100%;justify-content:center;min-width:0;}
+  .models-page .mmanual{flex-wrap:wrap;}
+  .models-page .mmanual input{flex:1 1 100%;}
+  /* 模型行：`.mkeys` 和 `.macts` 原来都吃着 margin-left:auto，窄屏上互相顶，
+     来源密钥标签被压成一条竖着的窄缝。现在让模型 ID +「测试」占第一行，
+     来源标签整行挪到下面缩进排 —— 两行比一行挤爆好读。 */
+  .models-page .mrow{flex-wrap:wrap;row-gap:5px;}
+  .models-page .mrow .mkeys{order:9;flex:1 1 100%;margin-left:0;padding-left:21px;}
+}
+
+/* ── 服务商卡片级三按钮（2026-11-16）────────────────────────────
+   编辑 / 停用 / 删除 三个都是对「服务商整体」生效，从原来的每个 key 行
+   搬到卡片外层。key 行里现在一个动作按钮都没有，所以 .kacts 的样式保留
+   也无害。卡片底部按钮统一走 .foot（margin-top:auto 推到底 + 顶部
+   分隔线 + flex:1 等宽），不要再用 .cacts —— 它没有这几条，会浮在卡片
+   中间、小得像标签（2026-11-16 用户反馈「像标签一样」即此）。 */
+.models-page .pcard .keylist{margin-top:10px}
+
+/* 每把密钥这次拉取的成绩（2026-11-16）。不做切换器 —— 一次问完全部密钥，
+   这里只交代「哪把几个模型、哪把失败」，列表本身是合并过的。 */
+.models-page .msrcs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px}
+.models-page .msrc{font-size:11px;padding:3px 8px;border-radius:999px;
+  border:1px solid var(--line);background:rgba(255,255,255,.03);opacity:.85;white-space:nowrap}
+.models-page .msrc.bad{border-color:rgba(255,120,110,.45);color:#ff9a92}
+/* 模型行尾的来源密钥标签：这个模型在哪几把密钥下能看见 */
+.models-page .mrow .mkeys{display:flex;align-items:center;gap:4px;flex-wrap:wrap;margin-left:auto}
+.models-page .mrow .mkey{font-size:10.5px;padding:2px 6px;border-radius:5px;
+  border:1px solid var(--line);background:rgba(255,255,255,.04);opacity:.8;white-space:nowrap}
+.models-page .mrow .mkey.bad{border-color:rgba(255,120,110,.45);color:#ff9a92}
+/* 还没保存的来源密钥：虚线框 + 斜体，一眼分得清「已存进配置」和「只是草稿」。
+   加了新 key 直接问端点时，模型后面的标签会同时出现实线（已存）和虚线（草稿）。 */
+.models-page .mrow .mkey.draft,.models-page .msrc.draft{border-style:dashed;font-style:italic}
+
+/* 2026-11-16：模型表按来源密钥分组。一个模型挂在几把密钥下就分几组，
+   每组一个独立的勾 —— 原来合并成一行、勾一次写进每一把，两组 key 的同名
+   模型就串了。分组头只在两把及以上密钥时出现，一把时不占地方。 */
+.models-page .mkeygrp{
+  display:flex;align-items:center;gap:6px;
+  margin:12px 0 2px;padding:5px 8px;
+  border-radius:6px;background:var(--surface-2);
+  font-size:11px;color:var(--text-2);
+}
+.models-page .mkeygrp:first-child{margin-top:2px;}
+.models-page .mkeygrp .mkgname{font-weight:600;color:var(--text-1);}
+.models-page .mkeygrp .mkgname.bad{color:#ff9a92;}
+.models-page .mkeygrp .mkgdraft{
+  font-size:10px;font-style:italic;padding:1px 5px;border-radius:4px;
+  border:1px dashed currentColor;opacity:.8;
+}
+.models-page .mkeygrp .mkgcnt{margin-left:auto;font-variant-numeric:tabular-nums;opacity:.85;}
+
+
+/* ══ 2026-11-16 新增：模型清单为空的告警条 ══
+   背景：服务商可以只配了地址和密钥、一个模型都没拉，这种服务在对话页选得中，
+   二级模型列表却是空的。原先靠 providers.default_model 这个假默认遮着，那个
+   字段已删除，所以空清单必须自己浮出水面：概览页顶部一条汇总，服务商卡片上
+   挂一个 warn 徽标。这是「配了一半」，不是故障，所以用 warn 不用 err。 */
+.models-page .alertbar{display:flex;align-items:flex-start;gap:12px;margin:14px 0 0;padding:12px 14px;
+  border-radius:10px;border:1px solid color-mix(in srgb,var(--warn) 40%,transparent);
+  background:var(--warn-soft);color:var(--ink-2);font-size:12px;line-height:1.65}
+.models-page .alertbar .abody{flex:1;min-width:0}
+.models-page .alertbar b{display:block;color:var(--warn);font-size:12.5px;margin-bottom:4px}
+.models-page .alertbar ul{margin:0;padding-left:16px}
+.models-page .alertbar li+li{margin-top:2px}
+.models-page .alertbar .btn{flex:none;align-self:center}
+
+/* ══ 单模型连通状态（2026-11-16）════════════════════════════════
+   行尾那颗「移出」换成了「测试」。点一下真发一条最小对话请求（max_tokens:1，
+   内容就一个 ping），后端按「状态码 + 错误体关键词」分类，这里只负责摆一个小
+   标签：可用 / 欠费 / 限流 / 无此模型 / 密钥失效 / 超时 / 连不上 / 上游异常。
+   HTTP 码、耗时、上游原文全进 title，不上脸 —— 用户原话「比如 200 404 之类的
+   我不太懂」，所以外面只给结论。
+
+   主题：一个颜色都不写死。亮色下绿走 --success-text(#166534)、琥珀走
+   --warning-dark(#d97706)；深色下 base.css 的 body.theme-dark 会把这两个
+   翻成 #86efac / #fbbf24，同一个 CSS 两套主题都保得住对比度。
+   --grey-* 是「无此模型」这种中性结论，既不是故障也不是可用，不给红不给绿。 */
+.models-page{
+  --ok-ink:var(--success-text);--warn-ink:var(--warning-dark);
+  --grey-ink:var(--text3);--grey-soft:rgba(125,135,145,.10);
+}
+body.theme-dark .models-page{--warn-ink:#fbbf24;--grey-soft:rgba(255,255,255,.06)}
+.models-page .mtest{
+  display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;
+  height:20px;padding:0 8px;border-radius:999px;font-size:11px;line-height:1;
+  white-space:nowrap;font-variant-numeric:tabular-nums;
+  background:var(--grey-soft);color:var(--ok-ink);
+}
+.models-page .mtest::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}
+.models-page .mtest .mtest-ms{font-style:normal;opacity:.7;font-size:10px}
+/* 模型类型标签（生图/工具/对话）—— 实测出来的，跟状态徽章同尺寸但刻意不带圆点：
+   .mtest 的那个圆点表示「通不通」，类型不是状态，不该背同一个符号。 */
+.models-page .mkind{
+  display:inline-flex;align-items:center;flex:0 0 auto;
+  height:20px;padding:0 7px;border-radius:999px;font-size:10.5px;line-height:1;
+  white-space:nowrap;border:1px solid transparent;
+}
+.models-page .mkind.kd-image{color:#a78bfa;background:rgba(167,139,250,.13);border-color:rgba(167,139,250,.34)}
+.models-page .mkind.kd-tools{color:#38bdf8;background:rgba(56,189,248,.13);border-color:rgba(56,189,248,.34)}
+.models-page .mkind.kd-chat{color:var(--grey-ink);background:var(--grey-soft)}
+.models-page .mtest.st-ok{color:var(--ok-ink);background:var(--ok-soft)}
+.models-page .mtest.st-billing,
+.models-page .mtest.st-auth{color:var(--err);background:var(--err-soft)}
+.models-page .mtest.st-nomodel{color:var(--grey-ink);background:var(--grey-soft)}
+.models-page .mtest.st-nokey,
+.models-page .mtest.st-ratelimit,
+.models-page .mtest.st-timeout,
+.models-page .mtest.st-network,
+.models-page .mtest.st-upstream,
+.models-page .mtest.st-rejected,
+.models-page .mtest.st-unknown,
+.models-page .mtest.st-busy{color:var(--warn-ink);background:var(--warn-soft)}
+.models-page .mprobe{min-width:44px;justify-content:center}
+/* 来源密钥失败的红字原来写死 #ff9a92，那是深色专用色，浅色底上发虚，改成变量 */
+.models-page .mkey.bad,.models-page .msrc.bad{color:var(--err)}
+
+/* ── 密钥页：一行一把钥匙，主显服务名 ───────────────────────
+   以前的写法是 el('span','mono',k.name) 打头，屏幕上第一眼看到的是
+   CUSTOM_UMU5G7PYGOZES_API_KEY —— 用户认不出这是哪家的钥匙。现在名字
+   在前、变量名压成 11px 半透明小字，只在需要手查 .env 时才看它。 */
+.models-page .keylead{padding:9px 12px;margin:0 0 12px;border-radius:8px;
+  background:var(--bg1);border:1px solid var(--line);font-size:12px;color:var(--ink-2);line-height:1.5}
+.models-page .keywarn{padding:10px 12px;margin:0 0 12px;border-radius:8px;
+  border:1px solid var(--err);background:var(--err-soft);font-size:12px;line-height:1.5}
+.models-page .keywarn b{display:block;margin-bottom:4px;color:var(--err)}
+.models-page .krow{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--line)}
+.models-page .krow:last-child{border-bottom:0}
+.models-page .kmain{flex:1;min-width:0}
+.models-page .ktitle{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.models-page .kname{font-weight:600;font-size:13px}
+.models-page .ksub{margin-top:3px;display:flex;align-items:baseline;gap:6px;flex-wrap:wrap}
+.models-page .kvar{font-size:11px;opacity:.42;letter-spacing:0}
+.models-page .kuse{opacity:.55;margin-top:2px}
+.models-page .kbad{color:var(--err);margin-top:2px;line-height:1.45}
+.models-page .knote{opacity:.5;margin-top:2px}
+.models-page .kact{flex:none}
+.models-page .krow.off .kname{opacity:.62}
+.models-page .krow.miss .kname{opacity:.78}
+.models-page .kfixed{opacity:.85;font-size:12px;word-break:break-all}
+@media (max-width:640px){
+  .models-page .krow{gap:8px;padding:9px 0}
+  .models-page .kname{font-size:12.5px}
+}
+
+@media (max-width:640px){
+  .models-page .mrow{gap:6px;padding:7px 9px}
+  .models-page .mtest{height:19px;padding:0 7px}
+  .models-page .mtest .mtest-ms{display:none}   /* 窄屏只要结论，毫秒数没必要占位 */
+  .models-page .mprobe{min-width:40px}
+}
+
+
+/* ── 能力卡上的凭据区 ───────────────────────────────────────
+   一张卡自己说自己要哪把钥匙，用户不用在三个页面之间对着变量名找。 */
+.models-page .cardcred{margin:10px 0 0;padding:8px 0 0;border-top:1px dashed var(--line);
+  display:flex;flex-direction:column;gap:5px}
+.models-page .credrow{display:flex;align-items:center;gap:7px;flex-wrap:wrap;font-size:12px}
+.models-page .credhead{font-size:11px;opacity:.5;letter-spacing:.04em}
+.models-page .credname{font-weight:600;font-size:12px}
+.models-page .credvar{font-size:11px;opacity:.45}
+.models-page .credreuse{opacity:.7}
+.models-page .credrow.miss .credname{color:var(--err)}
+.models-page .cardwarn{margin:9px 0 0;padding:8px 10px;border-radius:8px;
+  border:1px solid var(--warn);background:var(--warn-soft);font-size:11.5px;line-height:1.5}
+.models-page .cardwarn b{display:block;margin-bottom:3px;color:var(--warn)}
