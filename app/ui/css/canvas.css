@@ -360,6 +360,20 @@ body.theme-light .cv-node.cv-node-active { animation-name: cv-sel-breathe-light;
   box-shadow: none;
   padding: 0;
 }
+/* 画板里「本轮能力」chip 行原来在输入框内部占流高（36px），把输入框从 58 撑到 92，
+   bottom 不变 → 顶边自己上移 34px，切视图就跳（2026-11-17 用户报「输入框太偏上了」）。
+   这里让它脱离文档流、浮在输入框上沿之上：视觉上还在，但不占输入框高度，
+   两个视图的输入框恢复成同一个 box。 */
+#chatComposer.cv-floating .skill-chips {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  margin: 0 0 6px 0;
+}
+/* chip 脱离流之后，`.chat-composer` 那条 column-gap 也跟着少了 8px，
+   画板输入框比对话矮 8px、顶边反而往下掉。补回来，两边严格同高同位置。 */
+#chatComposer.cv-floating { padding-bottom: 8px; }
 
 /* 左上角工具条（2026-11-16 用户要求）：生图模型下拉挪到画布左上。
    原来跟放大缩小挤在右下角一堆，一个是「用哪个模型」一个是「视图缩放」，
@@ -751,9 +765,34 @@ body.cv-mode #chatJumpBottom { display: none !important; }
   .cv-plus-icon { font-size: 32px; }
   .cv-image img { max-width: 220px; max-height: 220px; }
   /* 窄屏：浮动输入框贴边铺宽，别把两侧控制条挤掉 */
-  #chatComposer.cv-floating { width: calc(100% - 24px); bottom: 12px; }
-  .cv-controls { right: 10px; bottom: 10px; }
+  /* 移动端宽度必须跟对话视图完全一致（2026-11-17 用户报「输入框太偏上了，
+     画布视图正常、绘画视图往上走了一点」）。实测差在这里：
+     这句原来是 calc(100% - 24px)=366，对话视图是 calc(100% - 48px)=342，
+     宽 24px → 内容换行 → 高从 58 涨到 92，bottom 固定不变，顶边就自己上移 34px。
+     统一成 48px 之后两个视图的输入框是同一个 box，切视图不再跳。 */
+  #chatComposer.cv-floating { width: min(760px, calc(100% - 48px)); bottom: 12px; }
+  /* 右下角工具栏原来 bottom:10px，被浮动输入框（bottom:12 + 高 92）整个压住下半截
+     —— 2026-11-17 用户报「移动端画布右下角的工具给被输入框挡住」。
+     抬到输入框顶上：12 + 92 + 8 = 112。竖排 5 个按钮高约 184，
+     390x664 下落在 y≈304–488，既不压输入框也不出舞台。 */
+  .cv-controls { right: 10px; bottom: 112px; }
   .cv-drawer { width: min(280px, 82vw); }
+
+  /* 提示词浮层：手机上没有 hover，点图后就地弹在图片旁边，而图片本身只有
+     100x66，浮层 214x87 —— 实测 overlapArea 6481 = 图片面积，100% 盖住，
+     用户「看不到图变成看到一行字」。手机改成贴输入框上沿的一条（fixed，
+     不参与画布坐标），永远不压图，也不跟着 pan 跑。 */
+  .cv-prompt-tip {
+    left: 12px !important;
+    right: 12px !important;
+    top: 104px !important;
+    bottom: auto !important;
+    width: auto !important;
+    max-width: none !important;
+    transform: none !important;
+    pointer-events: none;
+  }
+  .cv-tip-text { max-height: 96px; }
 }
 
 

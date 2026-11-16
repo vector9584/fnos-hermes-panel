@@ -598,6 +598,48 @@ var CanvasMode = (function () {
       save();
     }, { passive: false });
 
+    /* ── 双指缩放（2026-11-17）──
+       上面只有 wheel，触屏没有轮子，手机上画布根本缩不了（用户原话「移动端画布没办法双指缩放」）。
+       CSS 里 #canvasStage 已经是 touch-action:none，浏览器不会自己接管手势，
+       所以必须自己算：两指距离比例 → 缩放系数，锚点取两指中点，跟 wheel 的锚点语义一致
+       （锚点下的世界坐标保持不动，感觉才像"捏住画面"）。
+       两指落下时要把平移和节点拖动都掐掉 —— pointerdown 比 touchstart 先触发，
+       不清的话指针捕获还挂在第一根手指上，画面会边缩边飘。 */
+    var pinch = null;
+    S.stage.addEventListener('touchstart', function (ev) {
+      if (ev.touches.length !== 2) return;
+      var a = ev.touches[0], b = ev.touches[1];
+      var d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (!d) return;
+      pinch = {
+        d: d, k: S.view.k, vx: S.view.x, vy: S.view.y,
+        mx: (a.clientX + b.clientX) / 2, my: (a.clientY + b.clientY) / 2
+      };
+      S.pan = null;
+      S.drag = null;
+      S.stage.classList.remove('cv-panning');
+    }, { passive: true });
+    S.stage.addEventListener('touchmove', function (ev) {
+      if (!pinch || ev.touches.length !== 2) return;
+      ev.preventDefault();
+      var a = ev.touches[0], b = ev.touches[1];
+      var d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY);
+      if (!d) return;
+      var k = Math.min(MAX_K, Math.max(MIN_K, pinch.k * (d / pinch.d)));
+      var r = S.stage.getBoundingClientRect();
+      var wx = (pinch.mx - r.left - pinch.vx) / pinch.k;
+      var wy = (pinch.my - r.top - pinch.vy) / pinch.k;
+      S.view.k = k;
+      S.view.x = pinch.mx - r.left - wx * k;
+      S.view.y = pinch.my - r.top - wy * k;
+      applyView();
+    }, { passive: false });
+    S.stage.addEventListener('touchend', function (ev) {
+      if (!pinch) return;
+      if (ev.touches.length < 2) { pinch = null; save(); }
+    }, { passive: true });
+    S.stage.addEventListener('touchcancel', function () { pinch = null; }, { passive: true });
+
     // 点击空白处收起悬浮输入框
     S.stage.addEventListener('click', function (ev) {
       /* 点节点交给节点自己的 onclick；画布底色、world 层、连线都算空白。

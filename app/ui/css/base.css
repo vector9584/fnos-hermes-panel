@@ -686,10 +686,8 @@
         background:
             /* 顶边锐利弧光：贴着圆角走，只占顶部 26% */
             radial-gradient(135% 52% at 50% -6%,rgba(255,255,255,.62) 0%,rgba(255,255,255,.16) 26%,rgba(255,255,255,0) 52%),
-            /* 左上角焦点已挪进 .input-outer 的 background-image 第 ③ 层（13%×24%、.85）。
-               这里原来还有一份 16%×30%/.72 —— 两层焦散叠在一起互相冲淡，
-               谁都不够锐利，实测两处的亮心根本对不上（8%6% vs 11%9%）。
-               同一个光学特征只留一处，这是「玻璃要准」和「堆特效」的分界。 */
+            /* 左上角焦点：小而亮，模拟光在水珠里的聚光点 */
+            radial-gradient(16% 30% at 11% 9%,rgba(255,255,255,.72) 0%,rgba(255,255,255,.14) 62%,rgba(255,255,255,0) 100%),
             /* 底部内反光：背景光从下方折回来那一抹 */
             radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.26) 0%,rgba(255,255,255,0) 58%);
         mix-blend-mode:screen;
@@ -935,7 +933,7 @@
       /* 移动端会话树入口只保留顶栏 #sidebarToggle 一个（它已按抽屉模式工作）；
          聊天头这个 ☰ 与它调同一个 openRailDrawer，重复入口一律隐藏 */
       .chat-header .rail-toggle.mobile-only{display:none}
-      .chat-body{padding:14px 12px}
+      .chat-body{padding:14px 12px calc(var(--composer-h,108px) + 24px)}
       .msg{max-width:92%}
       .msg-bubble{padding:10px 12px;font-size:14px}
       /* 2026-11-16：composer 已是贴底浮层，不该再有内边距（那圈内边距就是用户嫌的底板）。

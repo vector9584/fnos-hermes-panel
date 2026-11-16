@@ -186,6 +186,12 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
 .tool .ts.on{color:var(--green)}.tool .ts.off{color:var(--faint)}
 .tool .ta{display:flex;gap:4px;margin-top:8px}
 .tool .ta .btn{padding:4px 6px;font-size:8.5px;flex:1;text-align:center}
+.foldbar{display:none}
+@media(max-width:960px){
+  .toolgrid.mob-fold:not(.open)>.tool:nth-child(n+9){display:none}
+  .foldbar{display:block;margin-top:12px;text-align:center}
+  .foldbar .btn{padding:8px 20px;font-size:11px}
+}
 .verdict{background:var(--card);border:1px solid var(--line2);border-left:2px solid var(--red);padding:11px 13px;font:400 14px/1.7 var(--serif);color:var(--ink);min-height:56px}
 .verdict em{font-style:normal;color:var(--blue)}
 
@@ -1042,6 +1048,7 @@ body{
           <div class="row" style="margin-bottom:10px"><div class="chips" id="tabs5"></div><span class="spacer"></span><button class="btn sm" id="all5">全开</button><button class="btn sm" id="none5">全关 → 纯聊天</button><button class="btn sm" id="def5">恢复默认</button></div>
           <div class="verdict" id="vd5" style="margin-bottom:11px"></div>
           <div class="toolgrid" id="tools5"></div>
+            <div class="foldbar" id="fold5"><button class="btn sm" id="foldbtn5">展开全部 28 个</button></div>
           <div id="config5" style="margin-top:10px"></div>
         </div>
       </div>
@@ -1436,7 +1443,7 @@ var tools=defTools.slice(),tab5=0;
 chips('tabs5',['工具 28','技能 358','记忆','MCP'],function(i){tab5=i;draw5();markDone(5);});
 function draw5(){
   var g=document.getElementById('tools5');g.innerHTML='';
-  if(tab5>0){var sets=[['技能 · 文件夹','358 个 · 纯文本可改'],['SOUL.md','性格与语气'],['MEMORY.md','关于你的事'],['AGENTS.md','必须守的规矩'],['Skills','这类活怎么干'],['MCP','stdio / pinned'],['留痕录','改坏可回滚'],['知识库','744 篇']];
+  if(tab5>0){g.classList.remove('mob-fold','open');document.getElementById('fold5').style.display='none';var sets=[['技能 · 文件夹','358 个 · 纯文本可改'],['SOUL.md','性格与语气'],['MEMORY.md','关于你的事'],['AGENTS.md','必须守的规矩'],['Skills','这类活怎么干'],['MCP','stdio / pinned'],['留痕录','改坏可回滚'],['知识库','744 篇']];
     sets.forEach(function(s,i){var d=document.createElement('div');d.className='tool';d.innerHTML='<div class="tl"><span class="ti"></span><span class="tn">'+s[0]+'</span></div><div class="ts on"><span class="dot g"></span>'+s[1]+'</div><div class="ta"><button class="btn" data-open="'+i+'">打开</button></div>';g.appendChild(d)});
     document.getElementById('st5').textContent=tab5===1?'358 个技能':tab5===2?'3 个纯文本文件':'MCP 连接器';
     document.getElementById('vd5').innerHTML='这些都是<em>能读、能改、能加</em>的文本，不是被锁死的配置。';return}
@@ -1444,12 +1451,17 @@ function draw5(){
     d.innerHTML='<div class="tl"><span class="ti"></span><span class="tn" title="'+n+'">'+n+'</span></div>'+
       '<div class="ts '+(on?'on':'off')+'"><span class="dot '+(on?'g':'')+'"></span>'+(on?'已启用':'未启用')+'</div>'+
       '<div class="ta"><button class="btn" data-tog="'+i+'">'+(on?'关闭':'启用')+'</button>'+(i===4||i===1||i===21?'<button class="btn" data-cfg="'+i+'">配置</button>':'')+'</div>';g.appendChild(d)});
+  g.classList.add('mob-fold');document.getElementById('fold5').style.display='';document.getElementById('foldbtn5').textContent=g.classList.contains('open')?'收起':'展开全部 '+toolNames.length+' 个';
   var n=tools.filter(function(x){return x}).length;
   document.getElementById('st5').textContent=n+' / 28 已启用';
   var on=[];tools.forEach(function(v,i){if(v)on.push(toolNames[i])});
   document.getElementById('vd5').innerHTML=n===0?'现在它<em>只能聊天</em>：碰不到文件、终端和网络。':
     '现在它能：<em>'+on.slice(0,mobile?2:4).join(' · ')+'</em>'+(on.length>(mobile?2:4)?' 等 '+n+' 项':'')+'。<span style="font:9px var(--mono);color:var(--faint)"> 关掉的是真的碰不到。</span>';}
 draw5();
+document.getElementById('foldbtn5').addEventListener('click',function(){
+  var g=document.getElementById('tools5');g.classList.toggle('open');
+  this.textContent=g.classList.contains('open')?'收起':'展开全部 '+toolNames.length+' 个';
+});
 document.getElementById('tools5').addEventListener('click',function(e){
   var t=e.target.closest('[data-tog]'),c=e.target.closest('[data-cfg]'),o=e.target.closest('[data-open]');
   if(t){var i=+t.dataset.tog;tools[i]=tools[i]?0:1;draw5();markDone(5);return}

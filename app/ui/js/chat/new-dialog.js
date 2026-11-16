@@ -10,11 +10,15 @@ function openNewSessionModal(){
     '<div class="modal-head"><h3>新建会话</h3><button class="modal-close" aria-label="关闭" title="关闭" onclick="closeNewSessionModal()">\u00d7</button></div>' +
     '<div class="modal-body">' +
     '<div class="field"><label for="nsTitle">会话名称</label><input type="text" id="nsTitle" placeholder="留空自动命名，之后双击标题也能改"></div>' +
+    /* 会话类型提到第二位（2026-11-17 用户原话：「你新建的会话格式都是对话不是画板，我都看不到画板」）
+       —— 原来它排在「归类」后面当第三个字段，440px 弹窗里挤成一团，用户压根没看见。
+       同时默认值改成记住上次选择（_ndRememberType 写 localStorage），
+       选了画板之后下次新建就还是画板，不用每次手动挑。 */
+    '<div class="field"><label for="nsSessionType">会话类型</label><select id="nsSessionType" onchange="_ndRememberType();_ndRenderModels()"><option value="chat">对话</option><option value="canvas">画板</option></select><div id="nsTypeHint" style="font-size:11px;color:var(--text3);margin-top:4px">对话：普通聊天，可选任意对话模型。</div></div>' +
     '<div class="field"><label for="nsFolder">归类</label><select id="nsFolder">' + (window.pwFolderOptions ? window.pwFolderOptions('') : '<option value="">未分类</option>') + '</select></div>' +
-    '<div class="field"><label for="nsSessionType">会话类型</label><select id="nsSessionType" onchange="_ndRenderModels()"><option value="chat">对话</option><option value="canvas">画板</option></select><div id="nsTypeHint" style="font-size:11px;color:var(--text3);margin-top:4px">对话：普通聊天，可选任意对话模型。</div></div>' +
     '<div class="field"><label>模型</label><select id="nsModel"><option value="">默认模型</option></select></div>' +
     '<div class="field"><label>工作区文件夹</label><div style="display:flex;gap:6px"><input type="text" id="nsWorkspace" placeholder="留空使用默认工作区（可浏览选择或输入新名称）" value="" style="flex:1"><button class="ov-actbtn" onclick="openWsPicker()" title="浏览选择工作区文件夹">📂 浏览</button></div></div>' +
-    '<div style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:2px">留空直接点「创建」= 对话类型 + 默认模型 + 默认工作区。</div>' +
+    '<div style="font-size:11.5px;color:var(--text3);line-height:1.5;margin-top:2px">留空直接点「创建」= 上次选的会话类型 + 默认模型 + 默认工作区。</div>' +
     '</div>' +
     '<div class="modal-foot" style="padding:12px 16px;display:flex;justify-content:flex-end;gap:8px">' +
     '<button class="ov-actbtn" onclick="closeNewSessionModal()">取消</button>' +
@@ -23,6 +27,13 @@ function openNewSessionModal(){
   document.body.insertAdjacentHTML('beforeend', html);
   var _ndOv=document.getElementById('newSessionOverlay');
   if(_ndOv&&window.ui)window.ui.adoptOverlay(_ndOv);
+  /* 回填上次选的会话类型（2026-11-17）：选了画板就记住，下次新建默认还是画板。
+     读失败一律退回 chat，不让坏 localStorage 把弹窗搞挂。 */
+  try {
+    var _lt = localStorage.getItem('hermes_last_session_type');
+    var _ts = document.getElementById('nsSessionType');
+    if (_ts && _lt === 'canvas') _ts.value = 'canvas';
+  } catch (e) {}
   /* 会话类型与模型联动（2026-11-16）：
    * - 对话：列全部对话模型，排除生图专用模型（避免拿画图模型聊天）
    * - 画板：只列 image_gen 配置里真实可用的生图模型
@@ -39,6 +50,16 @@ function openNewSessionModal(){
 }
 /* 新建面板的数据缓存：模型列表与生图目标只取一次，切换类型时本地重算。 */
 var _ndData = { config: null, targets: null };
+/* 记住用户上次选的会话类型（2026-11-17）。用户要的是「新建就直接是画板」，
+   不能每次弹窗都退回对话 —— 那等于每次都得手动找下拉。
+   只在用户主动改下拉时写盘，读不到就当 chat，不猜。 */
+function _ndRememberType(){
+  try {
+    var el = document.getElementById('nsSessionType');
+    if (!el) return;
+    localStorage.setItem('hermes_last_session_type', el.value === 'canvas' ? 'canvas' : 'chat');
+  } catch (e) {}
+}
 function _ndImageTargets(){
   return (_ndData.targets && Array.isArray(_ndData.targets.targets)) ? _ndData.targets.targets : [];
 }
