@@ -62,14 +62,14 @@ var CanvasMode = (function () {
     if (!S.sid) return;
     try {
       var data = {
-        version: 1,
+        version: 2,
         view: S.view,
         order: S.order,
         nodes: S.order.map(function (id) {
           var n = S.nodes[id];
           /* injected 也存（2026-11-16）：点连线要看注入原文，
              刷新后丢了就等于这功能只在当轮有效。截到 800 字防 localStorage 爆。 */
-          return { id: n.id, kind: n.kind, x: n.x, y: n.y, parentId: n.parentId || '', url: n.url || '', text: n.text || '', injected: (n.injected || '').slice(0, 800) };
+          return { id: n.id, kind: n.kind, x: n.x, y: n.y, parentId: n.parentId || '', refId: n.refId || '', url: n.url || '', text: n.text || '', injected: (n.injected || '').slice(0, 800) };
         })
       };
       localStorage.setItem(storeKey(S.sid), JSON.stringify(data));
@@ -127,6 +127,10 @@ var CanvasMode = (function () {
       x: Math.round(spec.x || 0),
       y: Math.round(spec.y || 0),
       parentId: spec.parentId || '',
+      /* 引用凭据（2026-11-17）：这张图【真的】引用了哪张图。跟 parentId 分开存，
+         因为 parentId 只决定画在哪、连不连线，而 refId 是业务凭据 ——
+         「引用是画布分支的基础数据」，没有引用就不该有线。 */
+      refId: spec.refId || '',
       url: spec.url || '',
       text: spec.text || '',
       /* 这一轮实际发给 agent 的完整提示词（2026-11-16 加）：
@@ -1023,6 +1027,7 @@ var CanvasMode = (function () {
     var pos = parent ? placeChild(parentId) : freeSpot();
     var textNode = addNode({
       kind: 'text', x: pos.x, y: pos.y, parentId: parentId || '',
+      refId: parentId || '',
       text: text || (parent ? '（基于图片）' : '（新话题）')
     });
 
@@ -1032,7 +1037,11 @@ var CanvasMode = (function () {
       kind: 'pending',
       x: textNode.x + Math.max(0, (ts.w - 200) / 2),
       y: textNode.y + ts.h + 76,
-      parentId: textNode.id
+      parentId: textNode.id,
+      /* 凭据记在被引用的那张图上，不是记在中间的提示词节点上（2026-11-17）：
+         占位节点后来 setNodeKind 变成 image，它才是画布上那张图，
+         分支判断看它有没有真的引用过谁。没引用 → 空 → 迁移/重排时它就是根。 */
+      refId: parentId || ''
     });
     setLinkLive(pend.id, true);
     S.activeParent = textNode.id;
@@ -1119,6 +1128,43 @@ var CanvasMode = (function () {
     return out;
   }
 
+  /* 从历史消息原文里认出「这张图引用了谁」（2026-11-17）。
+     回填历史时节点上没有 parentId / refId 可继承，但 user 消息原文里留着证据：
+     基于某张图发的那条会带【引用上下文】+ 那张图的提示词。
+     把引用块里的提示词拿去跟已建节点的 injected 比，命中就是引用目标 ——
+     这样刷新之后分支还能重建出来，不会塌成一排散装根。
+     没有引用块（或者对不上任何节点）→ 返空 = 这张图是从新节点开始的，
+     跟用户定的规矩一致：没有引用凭据就不连线。 */
+  function refFromCtx(ctx, nodes) {
+    var m = /【引用上下文】([\s\S]*?)(?:【用户追问】|$)/.exec(ctx || '');
+    if (!m) return '';
+    /* 提示词有两种落盘格式，实测都出现过（2026-11-17 从 state.db 真实消息里抠的）：
+         生成时注入：  【画板生图】…生图目标：fan · gpt-image-2。提示词：请绘制 xxx
+         引用块里：    [图片] 提示词：请绘制 xxx
+       只认前一种的话，回填时引用块永远 strip 不干净、一个字都对不上，
+       四张图全散成独立根 —— 用户刷新后看到的还是「没有分支」。
+       两种都剥掉，剩下的纯提示词才好比。 */
+    var strip = function (s) {
+      return String(s || '')
+        .replace(/【画板生图】[\s\S]*?提示词：/, '')
+        .replace(/\[图片\]\s*提示词：/g, '')
+        /* 节点 injected 存的是整段 user 原文，尾部挂着前端自动追加的
+           【本轮参考上下文】能力清单。不剥掉的话「有图」那侧永远带几百字尾巴，
+           跟引用块里的纯提示词比不上，回填时分支就散了。 */
+        .replace(/【本轮参考上下文】[\s\S]*$/, '')
+        .trim();
+    };
+    var want = strip(m[1]);
+    if (!want) return '';
+    var hit = '';
+    (nodes || []).forEach(function (n) {
+      if (hit || !n || !n.injected) return;
+      var have = strip(n.injected);
+      if (have && (have === want || want.indexOf(have) >= 0 || have.indexOf(want) >= 0)) hit = n.id;
+    });
+    return hit;
+  }
+
   /* opts.chain = 回填历史时才用（历史消息里的图没有 parentId 信息，
      只能按出现顺序串成一条链）；真实生成结果一律挂 S.activeParent。 */
   function attachNewImages(srcs, opts) {
@@ -1152,10 +1198,23 @@ var CanvasMode = (function () {
         lastId = p.id;
         alive[src] = p.id;
       } else {
-        /* 回填历史串成链；真实生成只认本轮引用（可能为空 = 新链起点）。 */
-        var parent = chain ? (lastId || live) : live;
-        var pos = placeChild(parent);
-        var n = addNode({ kind: 'image', x: pos.x, y: pos.y, parentId: parent, url: src, injected: ctx });
+        /* 父节点怎么定（2026-11-17 重写）：
+           回填历史时按消息里的引用证据认父（refFromCtx），
+           没有证据 = 这张图是从新节点开始的，落成独立根。
+           原来这里 chain 分支用 `lastId || live` 一路串下去，
+           等于凭出现顺序硬造一条到底的线 —— 用户报「还是一条线」的根源之一。
+           真实生成照旧只认本轮引用 S.activeParent，没有就是根。 */
+        var refId = '';
+        if (chain) {
+          var existing = S.order.map(function (id) { return S.nodes[id]; })
+                                 .filter(function (x) { return x && x.url; });
+          refId = refFromCtx(ctx, existing);
+        } else {
+          refId = live;
+        }
+        var parent = refId;
+        var pos = parent ? placeChild(parent) : freeSpot();
+        var n = addNode({ kind: 'image', x: pos.x, y: pos.y, parentId: parent, refId: refId, url: src, injected: ctx });
         if (n && n.id) { lastId = n.id; alive[src] = n.id; }
       }
     });
@@ -1186,7 +1245,13 @@ var CanvasMode = (function () {
     if (cur && S.sid && cur !== S.sid) return 0;
     var before = S.order.length;
     var imgs = extractImages(body);
-    if (imgs.length) attachNewImages(imgs, { chain: true });
+    /* 回填不再按「出现顺序」串链（2026-11-17）。原来传 {chain:true} 是用
+       「上一张图」当父节点硬串，等于凭空中继出一条到底的线 —— 用户看到的
+       「还是一条线」有一半是这里每次进画板重新造出来的，迁 localStorage 也治不掉。
+       历史消息里判断不出用户当时有没有真引用某张图（引用块在 user 消息、
+       图在 assistant 消息，跨条且不可靠对齐），那就按他的规矩办：
+       没有引用凭据就不连线，一律落成独立根。 */
+    if (imgs.length) attachNewImages(imgs, {});
     return S.order.length - before;
   }
 
@@ -1647,13 +1712,27 @@ var CanvasMode = (function () {
 
   function restore(saved) {
     if (!saved || !Array.isArray(saved.nodes) || !saved.nodes.length) return false;
+    /* ── 老存档迁移（2026-11-17）───────────────────────────────────
+       旧代码发消息时无条件把新图接到「上一张图」下面，所以画出来是一条链到底，
+       节点上的 parentId 只是布局痕迹，不代表用户真的引用过。
+       用户的规矩是「引用才是分支的基础数据」：不引用某张图，就该从新节点开始。
+       老存档里没有 refId 这种凭据 —— 一律按「没引用」处理，断开成独立根。
+       （用户原话：老的在没有引用的情况下，按新的规矩都应该是断开的节点。）
+
+       幂等：版本号抬到 2 并立刻回写，第二次进来就走新口径，不会反复断。
+       断开只是不再连线，节点、坐标、图、提示词一个都不删。 */
+    var legacy = (saved.version || 1) < 2;
     saved.nodes.forEach(function (sn) {
+      var ref = sn.refId || '';
       addNode({
         id: sn.id, kind: sn.kind, x: sn.x, y: sn.y,
-        parentId: sn.parentId, url: sn.url, text: sn.text, injected: sn.injected
+        parentId: (legacy && !ref) ? '' : (sn.parentId || ''),
+        refId: ref,
+        url: sn.url, text: sn.text, injected: sn.injected
       });
     });
     if (saved.view) { S.view = saved.view; applyView(); }
+    if (legacy) save();
     return true;
   }
 

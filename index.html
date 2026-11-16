@@ -240,7 +240,7 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
 .ubar b{text-align:right;color:var(--ink);font-weight:600}
 
 /* 08 收尾 */
-.indexgrid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.indexgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
 .idxcard{padding:14px;background:var(--card);border:1px solid var(--line2);border-top:2px solid var(--mark)}
 .idxcard h3{font:500 15px var(--osw);letter-spacing:.08em;margin-bottom:9px}
 .idxcard p{font-size:11px;line-height:1.85;color:var(--dim)}
@@ -339,6 +339,7 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
   .sysinfo{grid-template-columns:repeat(2,minmax(0,1fr))}
   .svcgrid{grid-template-columns:1fr}
   .indexgrid{grid-template-columns:1fr}
+  #copy8{flex:1 0 100%;margin-top:7px;white-space:nowrap}
   .logline{grid-template-columns:76px 42px 1fr;font-size:8px;gap:5px}
   .logline .cp{display:none}
   .spec-bar .nm{font-size:8px}
@@ -715,7 +716,7 @@ body{
   /* grid 列与 item 一律可收缩，杜绝 min-content 顶开父级 */
   .stage,.hero-stage,.plate{grid-template-columns:minmax(0,1fr)}
   .stage>*,.hero-stage>*,.plate>*,.side,.spec,.spec-body,.rv{min-width:0}
-  .toolgrid,.backgrid,.indexgrid,.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .toolgrid,.backgrid,.grid3{grid-template-columns:repeat(2,minmax(0,1fr))}
   .taskgrid{grid-template-columns:minmax(0,1fr)}
   .arch{grid-template-columns:repeat(3,minmax(0,1fr))}
   .graphwrap{grid-template-columns:minmax(0,1fr)}
@@ -1138,9 +1139,9 @@ body{
       <div class="tags"><span>GPL-3.0</span><span>改完能验</span><span>数据不出本机</span></div><div class="hint"><i>↘</i> 切清单 / 复制地址</div></aside>
     <div class="rv" style="--d:90ms">
       <div class="spec">
-        <div class="spec-bar"><span class="nm">能做与还没做完</span><span class="st" id="st8">三件小事</span></div>
+        <div class="spec-bar"><span class="nm">能做与还没做完</span><span class="st" id="st8">四件小事</span></div>
         <div class="spec-body">
-          <div class="row" style="margin-bottom:11px"><button class="btn pri" data-cap="do">三件小事</button><button class="btn" data-cap="not">还没做完</button><span class="spacer"></span><button class="btn" id="copy8">复制仓库地址 ⧉</button></div>
+          <div class="row" style="margin-bottom:11px"><button class="btn pri" data-cap="do">四件小事</button><button class="btn" data-cap="not">还没做完</button><span class="spacer"></span><button class="btn" id="copy8">复制仓库地址 ⧉</button></div>
           <div class="indexgrid" id="cards8"></div>
           <div class="rule"></div>
           <div class="row"><span class="mini">基于 Hermes Agent 二次开发 · 代码已在 GitHub，README 写清怎么跑 · 正式发布会给能跑的包和数据迁移说明</span></div>
@@ -1562,9 +1563,10 @@ document.getElementById('live7').addEventListener('click',function(){live7=!live
 
 /* ===== 08 收尾 ===== */
 var capData={
- do:[['聊到哪，还在','162 个会话按项目分好组。三天后回来接着说，不用从头讲一遍。'],
-     ['在哪儿都能找到它','网页、手机、微信、QQ、Discord、飞书。地铁上说一句，回家打开电脑，活已经干完。'],
-     ['东西不出本机','装在自己的 NAS 或电脑上，模型 key 是你自己的；对话、文件、记忆都在本机。']],
+ do:[['不用每次重讲一遍','162 个会话按项目分好组。三天后回来接着说，不用把背景再交代一遍。'],
+     ['换个设备，接着干','网页、手机、微信、QQ、Discord、飞书，是同一个它。地铁上说一句，到家打开电脑，活已经干完。'],
+     ['数据不进别人服务器','装在自己的 NAS 或电脑上，模型 key 自己填；对话、文件、记忆全留在本机。'],
+     ['不顺眼，自己改','技能是纯文本，提示词、工具开关、界面样式都能打开改；改坏了，仓库里还留着上一版。']],
  not:[['移动端还在打磨','能用，但还有几页在打磨，手机上的手感不如桌面。'],
      ['团队权限没做','只做到一台机器多个入口，真正的成员与权限管理还没做。'],
      ['技能市场没有','358 个技能是一台台攒出来的，装到别人机器上不会自动同步。'],
@@ -1573,7 +1575,7 @@ var capData={
 };
 function drawCap(k){document.getElementById('cards8').innerHTML=capData[k].map(function(c,i){
   return '<div class="idxcard"><h3>'+String(i+1).padStart(2,'0')+' / '+c[0]+'</h3><p>'+c[1]+'</p></div>'}).join('');
-  document.getElementById('st8').textContent=k==='do'?'三件小事':'还没做完';
+  document.getElementById('st8').textContent=k==='do'?'四件小事':'还没做完';
   document.querySelectorAll('[data-cap]').forEach(function(b){b.classList.toggle('pri',b.dataset.cap===k)});markDone(8);}
 drawCap('do');
 document.querySelectorAll('[data-cap]').forEach(function(b){b.addEventListener('click',function(){drawCap(b.dataset.cap)})});
