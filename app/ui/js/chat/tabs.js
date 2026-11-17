@@ -906,6 +906,33 @@ function splitContent(content){
   }
   return { text: '', images: [], files:[], fileUrls:[] };
 }
+/* 系统注入文本剥离（2026-11-17 用户要求："这些提示词显式注入的格式能不能隐藏，
+   现在在会话气泡显示出来不好看"）。
+   ──────────────────────────────────────────────────────────────
+   服务端为了让我看懂上下文，会往 user 消息正文里拼几段机器话：
+     （语音消息，转写没成功，请直接听附件）
+     【画板生图】请直接调用 image_generate…提示词：xxx
+     【本轮参考上下文】 / 本轮可用的本机能力：…
+   这些话是给我读的，用户看到的就是一大坨不像自己说的话。
+   **只在渲染层剥掉**，服务端存的原文一个字不动：
+     · data-content 必须保留全文 —— 画板认父靠里面的【画板生图】提示词
+       和引用块，剥了它历史图的父子关系就重建不出来（extractImages 读的就是它）；
+     · 剥完如果空了但还挂着附件（语音条 / 文件卡），气泡留空是正确的，
+       播放器和文件名本身就在附件区。
+   剥完真的一无所有时退回原文，宁可难看也别把用户的话吞了。 */
+function stripInjections(t){
+  var s = String(t || '');
+  // 尾部能力清单：从【本轮参考上下文】一直到结尾
+  s = s.replace(/【本轮参考上下文】[\s\S]*$/, '');
+  // 有的版本没带小标题，直接是这一行
+  s = s.replace(/本轮可用的本机能力：[\s\S]*$/, '');
+  // 画板生图指令段：到下一个小标题或结尾
+  s = s.replace(/【画板生图】[\s\S]*?(?=\n\s*【|$)/g, '');
+  // 语音转写失败提示（全角/半角括号都算）
+  s = s.replace(/[（(]语音消息，转写没成功，请直接听附件[）)]/g, '');
+  s = s.replace(/\n{3,}/g, '\n\n').trim();
+  return s || '';
+}
 function toggleCronLead(btn){
   var box = btn.closest('.msg.cron-lead');
   if(!box) return;
@@ -1193,6 +1220,11 @@ function msgHTMLBase(m){
     if(_qi > 0){
       var _q = text.slice('【引用上下文】'.length, _qi).trim();
       var _a = text.slice(_qi + '【用户追问】'.length).trim();
+      /* 引用块里的「[图片] 提示词：xxx」是服务端存的字面格式（2026-11-17）。
+         直接显示等于把内部格式摊给用户看，只留提示词本身。
+         引用类型不止图片（文本/文件/视频/音频都可能），所以要按已知类型整类剥，
+         不能只写死 [图片]；但仍要求后面紧跟「提示词：」，避免误伤用户自己写的方括号开头。 */
+      _q = _q.replace(/^\[(?:图片|文本|文件|视频|音频)\]\s*提示词：/, '').trim();
       if(_q){ quoteHtmlHist = '<div class="quote-block"><div class="quote-label">引用</div>' + escapeHtml(_q) + '</div>'; text = _a; }
     }
   }
@@ -1211,7 +1243,12 @@ function msgHTMLBase(m){
        原样怼在正文里，chip 永远出不来（/compress 只能靠弹框提示，刷新即失忆）。
        现在和 assistant 同一条路：抽标记 → 弹 chip，正文只剩真内容。 */
     var _umk = splitSysMarkers(text), _uText = dedupeMarkdownImages(_umk.text);
-    return '<div class="msg user"'+(m.request_id?' data-request-id="'+DOM.escAttr(m.request_id)+'"':'')+' data-content="'+DOM.escAttr(_uText).replace(/\"/g,'&quot;').replace(/\n/g,'&#10;')+'"><div class="chat-sender">你</div><div class="msg-bubble">'+quoteHtmlHist+escapeHtml(_uText).replace(/\n/g,'<br>')+imgHtml+(fileHtml?'<div class="chat-file-list">'+fileHtml+'</div>':'')+flagsHTML(_umk.flags)+'</div><div class="msg-actions"><button class="msg-act-btn" onclick="copyMsg(this)" title="复制"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 0-2-2V4a2 2 0 0 0 2-2h9a2 2 0 0 0 2 2v1"/></svg>复制</button><button class="msg-act-btn" onclick="quoteMsg(this)" title="引用回复"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>引用</button></div><div class="msg-meta">你 · '+fmtDateTime(m.ts||m.created_at||Date.now())+'</div></div>';
+    /* 可见正文剥掉系统注入（2026-11-17 用户要求「这些提示词显式注入的格式能不能隐藏」）：
+       （语音消息，转写没成功…）、【画板生图】指令、尾部【本轮参考上下文】/本轮可用的本机能力清单，
+       全部不再显示在气泡里。data-content 仍写 _uText 全量 —— 画板 extractImages 从它里面
+       抠【画板生图】提示词重建父子关系，剥了画板就认不出谁接谁。 */
+    var _uShow = stripInjections(_uText);
+    return '<div class="msg user"'+(m.request_id?' data-request-id="'+DOM.escAttr(m.request_id)+'"':'')+' data-content="'+DOM.escAttr(_uText).replace(/\"/g,'&quot;').replace(/\n/g,'&#10;')+'"><div class="chat-sender">你</div><div class="msg-bubble">'+quoteHtmlHist+((_uShow||'').length?escapeHtml(_uShow).replace(/\n/g,'<br>'):'')+imgHtml+(fileHtml?'<div class="chat-file-list">'+fileHtml+'</div>':'')+flagsHTML(_umk.flags)+'</div><div class="msg-actions"><button class="msg-act-btn" onclick="copyMsg(this)" title="复制"><svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 0-2-2V4a2 2 0 0 0 2-2h9a2 2 0 0 0 2 2v1"/></svg>复制</button><button class="msg-act-btn" onclick="quoteMsg(this)" title="引用回复"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>引用</button></div><div class="msg-meta">你 · '+fmtDateTime(m.ts||m.created_at||Date.now())+'</div></div>';
   }
   var aFileHtml = fileChipsHTML(parts.files, parts.fileUrls);
   /* 历史渲染走三层：标记抽成 chip，正文只剩真正的内容。

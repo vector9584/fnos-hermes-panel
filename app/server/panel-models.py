@@ -888,6 +888,15 @@ def execute(body,path,state,var_root=None):
    group_name=((shared.get('group') or anchor_group or identifier) if len(incoming)>1 else '')
    container=copy.deepcopy(data.get('providers',{}))
    routes=[data.get('model',{})]+[item for _,_,item in effective_chain(data)]
+   # 2026-11-17 用户实测：加第三把密钥后，卡片上第一把是灰的（keyrow off）。
+   # 根因：config 里那条 ZeroAPI/Gemini 是 enabled: False —— 它以前被「删除」过，
+   # 面板删除其实是就地归档成 enabled:False，provider 和 base_url 全都还在。
+   # 用户重新加回来时 group_update 走 patch()，patch 从旧条目 deepcopy，
+   # 这个 False 就一路继承下来了，没人负责把它翻回来。
+   # 判据：整组本来有没有在用的（was_on）。有 → 这次保存就是「我还在用」，
+   # 顺手把保留成员全设成启用；整组本来就全停用 → 保持停用，别因为点开编辑页
+   # 保存一下就把用户停掉的服务悄悄唤醒。新加的密钥一律启用。
+   was_on=any(enabled(row) for row in members.values())
    kept=[];created=0
    for item in incoming:
     if not isinstance(item,dict):raise ConfigError('密钥条目格式不正确')
@@ -902,9 +911,11 @@ def execute(body,path,state,var_root=None):
     if item.get('credential') is not None:row['credential']=item['credential']
     if pid and pid in members:
      container[pid]=patch(container.get(pid,{}),row,'providers',legacy.get(pid,[]),pid,pending_secrets);kept.append(pid)
+     if was_on and not enabled(container[pid]):container[pid]['enabled']=True
     else:
      fresh='custom_'+secrets.token_hex(10)
      container[fresh]=patch({},row,'providers',[],fresh,pending_secrets);kept.append(fresh);created+=1
+     container[fresh]['enabled']=True
    # 2026-11-16：同一个服务下 key 值必须唯一。两把一样的密钥，「这个模型来自哪把
    # key」就成了废话，配额和计费也对不上。前端只能比新填的明文，已存的 ${VAR}
    # 只有这里能比 —— 按 .env 里的真值逐个核，前端拦不住的漏网在这里收。

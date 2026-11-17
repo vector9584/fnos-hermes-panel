@@ -456,10 +456,13 @@
     @keyframes genDot{0%,60%,100%{opacity:.2;transform:translateY(0)}30%{opacity:1;transform:translateY(-2px)}}
     .gen-timer{margin-left:auto;font-variant-numeric:tabular-nums;font-size:13px;font-weight:700;color:var(--success-dark)}
     /* ── 输入框内右侧按钮组（千问式）：麦克风 + 发送↔停止 ── */
-    .input-btns{display:flex;align-items:center;gap:8px;flex-shrink:0;padding:0 2px}
-    .input-btns .mic-btn{width:36px;height:36px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--text2)}
-    .input-btns .mic-btn:hover{background:var(--bg3);color:var(--text)}
-    .input-btns .mic-btn.recording{background:rgba(220,38,38,.12);color:var(--danger-h)}
+    .input-tools{display:flex;align-items:center;gap:2px;flex-shrink:0;align-self:flex-end}
+    .input-btns{display:flex;align-items:center;gap:2px;flex-shrink:0;align-self:flex-end;
+      /* 2026-11-17：多行输入时左右两侧控件一律贴底（align-self:flex-end），
+         随 textarea 长高而只上浮正文——这是 composer 的固定对齐契约。 */}
+    .input-tools .mic-btn{width:32px;height:32px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;background:transparent;color:var(--text2)}
+          .input-tools .mic-btn:hover{background:var(--bg3);color:var(--text)}
+          .input-tools .mic-btn.recording{background:rgba(220,38,38,.12);color:var(--danger-h)}
     /* 按住说话时的提示药丸：麦克风=发语音条，输入框=转文字 */
     .voice-hold-tip{position:fixed;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 104px);transform:translateX(-50%) translateY(6px);display:none;align-items:center;gap:8px;padding:9px 16px;border-radius:999px;background:rgba(17,24,39,.93);color:#fff;font-size:13px;line-height:1;z-index:9998;pointer-events:none;opacity:0;box-shadow:0 8px 26px rgba(0,0,0,.3);transition:opacity .14s ease,transform .14s ease}
     .voice-hold-tip.on{display:flex;opacity:1;transform:translateX(-50%) translateY(0)}
@@ -597,10 +600,10 @@
     /* 输入框玻璃参数（2026-11-16）：浅色=白玻璃，深色=黑玻璃。
        单独提出来是因为画板模式要复用同一套，写在主题块里比在 canvas.css 里再抄一份稳。 */
     :root{
-        --composer-glass-bg:rgba(255,255,255,.20);
-        --composer-glass-border:rgba(255,255,255,.62);
+        --composer-glass-bg:rgba(247,250,254,.42);
+        --composer-glass-border:transparent;
         --composer-glass-refract:rgba(122,92,255,.05);
-        --composer-glass-shadow:0 6px 18px rgba(22,26,44,.055),inset 0 1px 0 rgba(255,255,255,.92),inset 0 -1px 0 rgba(255,255,255,.40),inset 0 0 0 1px rgba(255,255,255,.18);
+        --composer-glass-shadow:0 4px 13px rgba(24,28,44,.07),0 1px 2px rgba(24,28,44,.05),inset 0 20px 24px -26px rgba(255,255,255,.35);
 
         /* ── 玻璃光学参数（2026-11-17）─────────────────────────────────
            用户：「输入框在深色模式下左上角太亮甚至影响了麦克风和字体，浅色模式下输入框
@@ -620,22 +623,24 @@
                     表达「玻璃」，靠亮度差而不是靠面积表达「体积」。
            下面 --glass-* 是浅色（默认）值，body.theme-dark 里整套覆盖。 */
         /* ① 整体曲率：左上受光 → 右下背光 */
-        --glass-curve:linear-gradient(162deg,rgba(255,255,255,.34) 0%,rgba(255,255,255,.10) 34%,rgba(255,255,255,.035) 66%,rgba(255,255,255,.015) 88%,rgba(255,255,255,.005) 100%);
+        /* 磨砂颗粒：feTurbulence 灰度噪点，纯色渐变做不出漫反射的雾感 */
+        --glass-noise:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.10'/%3E%3C/svg%3E");
+        --glass-curve:linear-gradient(162deg,rgba(255,255,255,.30) 0%,rgba(255,255,255,.08) 36%,rgba(255,255,255,0) 64%,rgba(158,168,190,.03) 88%,rgba(148,160,184,.05) 100%);
         /* ② 顶部水滴高光 */
-        --glass-drop:radial-gradient(88% 132% at 50% -40%,rgba(255,255,255,.44) 0%,rgba(255,255,255,.14) 38%,rgba(255,255,255,0) 66%);
+        --glass-drop:radial-gradient(88% 132% at 50% -40%,rgba(255,255,255,.26) 0%,rgba(255,255,255,.08) 38%,rgba(255,255,255,0) 66%);
         /* ③ 左上焦散点 */
-        --glass-caustic:radial-gradient(13% 22% at 7% 5%,rgba(255,255,255,.88) 0%,rgba(255,255,255,.14) 58%,rgba(255,255,255,0) 100%);
+        --glass-caustic:radial-gradient(13% 22% at 7% 5%,rgba(255,255,255,.46) 0%,rgba(255,255,255,.08) 58%,rgba(255,255,255,0) 100%);
         /* ③b 左侧竖向反光柱 */
-        --glass-column:linear-gradient(94deg,rgba(255,255,255,.20) 0%,rgba(255,255,255,.05) 2.4%,rgba(255,255,255,0) 5.5%);
+        --glass-column:linear-gradient(94deg,rgba(255,255,255,.10) 0%,rgba(255,255,255,.025) 2.4%,rgba(255,255,255,0) 5.5%);
         /* ④ 右下反折光（带主题色） */
         --glass-refract-img:radial-gradient(56% 70% at 98% 122%,var(--composer-glass-refract) 0%,rgba(255,255,255,0) 48%);
         /* 边缘三层：顶棱弧光 / 左上焦点 / 底部内反光 */
-        --glass-rim-top:radial-gradient(135% 52% at 50% -6%,rgba(255,255,255,.54) 0%,rgba(255,255,255,.14) 26%,rgba(255,255,255,0) 52%);
-        --glass-rim-dot:radial-gradient(15% 26% at 9% 7%,rgba(255,255,255,.66) 0%,rgba(255,255,255,.12) 62%,rgba(255,255,255,0) 100%);
-        --glass-rim-bottom:radial-gradient(150% 40% at 50% 108%,rgba(255,255,255,.28) 0%,rgba(255,255,255,0) 58%);
-        --glass-rim-opacity:.9;
+        --glass-rim-top:radial-gradient(135% 44% at 50% -8%,rgba(255,255,255,.42) 0%,rgba(255,255,255,.10) 24%,rgba(255,255,255,0) 48%);
+        --glass-rim-dot:radial-gradient(15% 26% at 9% 7%,rgba(255,255,255,.34) 0%,rgba(255,255,255,.06) 62%,rgba(255,255,255,0) 100%);
+        --glass-rim-bottom:radial-gradient(150% 34% at 50% 112%,rgba(255,255,255,.06) 0%,rgba(255,255,255,0) 52%);
+        --glass-rim-opacity:.55;
         /* 内边描边：上缘最亮、右缘最暗，不对称才读得出光照方向 */
-        --glass-edge:inset 0 1.5px 0 rgba(255,255,255,.52),inset 1.5px 0 0 rgba(255,255,255,.26),inset 0 -1px 0 rgba(255,255,255,.22),inset -1px 0 0 rgba(255,255,255,.14);
+        --glass-edge:inset 0 1px 0 rgba(120,132,158,.07),inset 1px 0 0 rgba(120,132,158,.07),inset -1px 0 0 rgba(120,132,158,.07);
     }
     body.theme-dark{
         --composer-glass-bg:rgba(22,26,32,.12);
@@ -690,7 +695,7 @@
            靠四层渐变自己造出体积，不再指望背后有东西可透。
            四层从外到内：整体曲率明暗 → 顶部水滴高光 → 左上焦散点 → 右下带色反折光。 */
         background-color:var(--composer-glass-bg);
-        background-image:var(--glass-curve),var(--glass-drop),var(--glass-caustic),var(--glass-column),var(--glass-refract-img);
+        background-image:var(--glass-noise),var(--glass-curve),var(--glass-drop),var(--glass-caustic),var(--glass-column),var(--glass-refract-img);
         -webkit-backdrop-filter:blur(24px) saturate(185%);
         backdrop-filter:blur(24px) saturate(185%);
         border:1px solid var(--composer-glass-border);
@@ -739,7 +744,7 @@
        继续加黑、继续调阴影都没用，因为黑不是我们画上去的，是背景透上来的。
        深色桌面不用改：底色本来就深，.12 的黑玻璃透黑等于没变化。 */
     @media (min-width:769px){
-        :root{ --composer-glass-bg:rgba(255,255,255,.52); }
+        :root{ --composer-glass-bg:rgba(255,255,255,.30); }
     }
     /* 输入内容必须在两层伪元素之上 */
     .input-outer > *{position:relative;z-index:1}
@@ -754,7 +759,7 @@
     .input-outer textarea:focus-visible,
     .input-outer input:focus,
     .input-outer input:focus-visible{outline:none!important;box-shadow:none!important}
-    .input-outer:focus-within{border-color:var(--accent);box-shadow:0 8px 32px rgba(94,100,243,.18),inset 0 1px 0 rgba(255,255,255,.85)}
+    .input-outer:focus-within{border-color:var(--accent);box-shadow:0 8px 32px rgba(94,100,243,.18)}
     /* 深色主题下 body.theme-dark .input-outer（0,2,1）权重高于 .input-outer:focus-within（0,2,0），
        会把聚焦反馈整条盖掉。补同级权重的一条。
        聚焦表现只保留「边框变色 + 一层柔和投影」——不再套 0 0 0 3px 的外扩光环，
@@ -776,21 +781,26 @@
     .cap-chip:hover{filter:brightness(.96)}
     .cap-chip-off{background:rgba(217,119,6,.12);color:#b45309;border-color:rgba(217,119,6,.3);font-weight:600}
     body.theme-dark .cap-chip-off{background:rgba(251,191,36,.14);color:#fbbf24;border-color:rgba(251,191,36,.32)}
-    .input-wrap{display:flex;align-items:flex-end;gap:10px;margin-bottom:10px}
-    .input-wrap textarea{flex:1;border:none;background:transparent;outline:none;resize:none;font-size:15px;line-height:1.6;max-height:200px;padding:4px 2px;font-family:inherit;color:var(--text)}
+    .input-wrap{display:flex;align-items:flex-end;gap:8px;margin-bottom:10px}
+    .input-wrap textarea{flex:1;min-width:0;border:none;background:transparent;outline:none;resize:none;font-size:15px;line-height:1.6;max-height:200px;overflow-y:auto;padding:4px 2px;font-family:inherit;color:var(--text);scrollbar-width:thin}
     .input-wrap textarea::placeholder{color:var(--text3)}
     .input-wrap .send{width:40px;height:40px;border-radius:11px;border:none;background:var(--accent);color:var(--white);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:background .15s}
     .input-wrap .send:disabled{background:var(--border2);cursor:not-allowed}
     .input-wrap .send:not(:disabled):hover{background:var(--accent-h)}
     .input-wrap .send svg{width:20px;height:20px;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke:currentColor}
 
-    .toolbar{display:flex;align-items:center;gap:6px;padding-left:2px;position:relative}
+    .toolbar{display:flex;align-items:center;justify-content:center;gap:10px;padding:8px 2px 0;
+      margin-top:2px;border-top:1px solid var(--border);position:relative}
     .toolbar-toggle{display:none}
-    .tool-btn{width:32px;height:32px;padding:0;border-radius:var(--radius-md);border:1px solid transparent;background:transparent;color:var(--text2);display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s;position:relative}
-    .tool-btn:hover{background:var(--bg3);color:var(--text);border-color:var(--border)}
+    .tool-btn{width:32px;height:32px;padding:0;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text3);display:inline-flex;align-items:center;justify-content:center;cursor:pointer;transition:background .16s,color .16s,transform .12s;position:relative;flex-shrink:0}
+    @media (hover:hover){.tool-btn:hover{background:var(--bg3);color:var(--text)}}
     .tool-btn:active{transform:scale(.94)}
     .tool-btn:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
     .tool-btn[disabled]{opacity:.4;cursor:not-allowed}
+    /* composer 工具条分组（2026-11-17）：配置组 4 个 | 分隔线 | 工具组 3 个，整条居中 */
+    .tb-group{display:flex;align-items:center;gap:4px}
+    .tb-sep{width:1px;height:16px;background:var(--border);border-radius:1px;flex-shrink:0}
+    
     /* 统一气泡提示：单例层由 js/panel-tooltip.js 管理（2026-11-12 重做）
        旧方案是 [data-tip]::after{white-space:nowrap} 伪元素，三个问题：
        ① 长文案不折行，靠边按钮把气泡顶出视口；② 触屏上 :hover 粘住，气泡压在输入框上不走；
@@ -798,9 +808,10 @@
     #tipLayer{position:fixed;left:0;top:0;z-index:2000;max-width:min(78vw,280px);padding:6px 10px;border-radius:8px;background:var(--text);color:var(--bg1);font-size:11.5px;font-weight:500;line-height:1.4;white-space:normal;overflow-wrap:anywhere;text-align:center;box-shadow:0 6px 18px rgba(0,0,0,.22);pointer-events:none;opacity:0;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease}
     #tipLayer.show{opacity:1;transform:translateY(0)}
     @media (hover:none){#tipLayer{display:none!important}}
-    .tool-btn:hover{background:var(--bg3);color:var(--text)}
-    .tool-btn.active{background:var(--accent-bg);color:var(--accent);border-color:var(--accent)}
-    .tool-btn svg{width:20px;height:20px;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke:currentColor}
+    @media (hover:hover){.tool-btn:hover{background:var(--bg3);color:var(--text)}}
+    .tool-btn.active{background:transparent;color:var(--accent);border-color:transparent}
+    /* 2026-11-17：工具栏的「当前模型」是状态不是 tab。原来 accent-bg + accent 边框，底和描边一起来，在 7 个灰线图标里重得像被选中的标签页；去掉边框、底降到 12%，只留颜色提示。 */
+    .tool-btn svg{width:18px;height:18px;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;fill:none;stroke:currentColor}
     .model-badge{position:absolute;bottom:-2px;left:50%;transform:translateX(-50%);font-size:8px;max-width:40px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;background:var(--accent);color:var(--white);padding:1px 3px;border-radius:3px;line-height:1.2;pointer-events:none}
     .toolbar-spacer{flex:1}
 
@@ -975,19 +986,19 @@
       .chat-composer{padding:0;bottom:12px}
       .input-outer{padding:10px 12px 8px;border-radius:18px}
       .input-wrap textarea{font-size:16px}
-      .input-btns .gen-send{width:30px;height:30px}
-      .input-btns .gen-send svg{width:14px;height:14px}
+      .input-btns .gen-send{width:32px;height:32px}
+      .input-btns .gen-send svg{width:18px;height:18px}
       /* iOS 输入框聚焦放大：<16px 一律抬到 16px（Safari 只在 font-size<16px 时自动 zoom） */
       .chat-composer input,.chat-composer textarea,.chat-composer select,
       input[type=text],input[type=search],input[type=url],input[type=email],input[type=number],input[type=password],input:not([type]),textarea,select{font-size:16px}
       #railSearchInput,#pwSessionTitle,#pwSessionFolder,.vs-row input,.pw-form input{font-size:16px}
       /* 底部不再有任何执行提示条：状态只落在标题行 + 消息气泡描边（队列条仅在 failed/interrupted 时由 JS 放出） */
       #genBar,.gen-bar{display:none!important}
-      .input-btns .mic-btn{width:34px;height:34px}
-      .toolbar{flex-wrap:nowrap;overflow-x:auto;gap:4px;padding-left:0;-webkit-overflow-scrolling:touch;scrollbar-width:none}
+      .input-tools .mic-btn{width:32px;height:32px}
+      .toolbar{flex-wrap:nowrap;gap:10px;padding:8px 2px 0}
       .toolbar::-webkit-scrollbar{display:none}
       .tool-btn{flex-shrink:0;width:32px;height:32px}
-      .tool-btn svg{width:20px;height:20px}
+      .tool-btn svg{width:18px;height:18px}
       /* 手机端精简：隐藏低频/桌面功能按钮，减少顶栏与头部拥挤（工作区/多会话按钮保留：工作区面板手机端可用） */
       .global-topbar .right .glob-btn[onclick*="openNewWindow"],
       .global-topbar .right .glob-btn[onclick*="openGitHub"],
@@ -1013,7 +1024,10 @@
       .toolbar-toggle{display:none}
       .toolbar{display:none}
       .toolbar.visible{display:flex}
-      .toolbar-toggle{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:var(--bg1);color:var(--text2);font-size:18px;line-height:1;flex-shrink:0;cursor:pointer}
+      .toolbar-toggle{display:inline-flex;align-items:center;justify-content:center;width:32px;height:32px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--text3);flex-shrink:0;cursor:pointer;transition:background .16s,color .16s}
+      .toolbar-toggle svg{width:18px;height:18px;transition:transform .22s cubic-bezier(.4,0,.2,1)}
+      .toolbar-toggle[aria-expanded="true"]{color:var(--text)}
+      .toolbar-toggle[aria-expanded="true"] svg{transform:rotate(45deg)}
       /* 用量统计手机端：卡片与模型行紧凑、防溢出 */
       .usage-summary{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:8px}
 /* 1fr 的最小值是 min-content：长标签会把两列各撑到 186px，两列＋间距就顶出 375 视口，

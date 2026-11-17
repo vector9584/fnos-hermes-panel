@@ -8,28 +8,53 @@
 .maintenance-commit pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font:13px var(--font);color:var(--text2)}
 #maintenanceMore[hidden]{display:none!important}#maintenanceMore{min-height:44px}
 #page-settings .setting-row{gap:20px;flex-wrap:wrap}#page-settings .setting-row>div{flex:1;min-width:180px}#page-settings .setting-row button,#settingsToolsMode{min-height:44px;flex-shrink:0}#settingsToolsMode{background:var(--bg1);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px}#settingsRetry[hidden]{display:none!important}
-/* 2026-11-16：连接器选择弹框按三段式（.navigation-head / .navigation-body）重排后的样式。
-   旧规则 .connector-picker>div{display:grid;gap:8px;margin:12px 0 20px} 已删——它会命中
-   新骨架里的 .navigation-body（直接子 div），把 body 的 padding 和 grid 一起搅乱。 */
+/* 2026-11-17：连接器选择弹框对齐 mini-popup。
+   原先容器是 .navigation-dialog（宽 460 / 底 var(--bg1) / 圆角 18 / 有遮罩），
+   列表 .cc-item 用 accent 绿 hover；而模型·技能·专家·能力四个工具弹框都是
+   .mini-popup（宽 360 / 底 var(--bg2) / --radius-lg / 无遮罩）+ .pop-item（中性 --bg3 hover）。
+   用户反馈「本轮连接器的弹框和其他几个工具弹框不一样」即指此。
+   骨架类名已在 panel-connectors-ui.js 换成 .mini-popup-head/-title/-close/-body，
+   这里补容器与列表，数值直接照 .mini-popup / .pop-item 抄，不另创一套。 */
+.connector-picker{
+  width:min(360px,calc(100vw - 16px));max-height:min(72vh,520px);
+  padding:0;overflow:hidden;
+  background:var(--bg2);color:var(--text);
+  border:1px solid var(--border);border-radius:var(--radius-lg);
+  box-shadow:0 12px 40px rgba(0,0,0,.12);
+}
+body.theme-dark .connector-picker{box-shadow:0 12px 40px rgba(0,0,0,.35)}
+.connector-picker[open]{display:flex;flex-direction:column}
+.connector-picker:not([open]){display:none}
+.connector-picker::backdrop{background:rgba(0,0,0,.16)}
+@media (max-width:720px){
+  .connector-picker{width:auto;max-width:none;margin:auto 8px 8px;border-radius:16px;max-height:72vh}
+}
+/* 标题拿的是 tabindex=-1 的程序化焦点（dialog 打开时把焦点送进来），
+   不是用户 Tab 过来的，不能被画出可见 outline —— 否则像一圈黑框套在「本轮连接器」上。
+   对照 mini-popup 的标题没有这问题，因为它不做 heading.focus()。 */
+.connector-picker .mini-popup-title:focus,.connector-picker .mini-popup-title:focus-visible{outline:none}
 .connector-picker .cc-hint{font-size:12.5px;line-height:1.65;color:var(--text3);margin:0 0 10px}
 .connector-picker .cc-status{font-size:13px;line-height:1.65;color:var(--text2);margin:0 0 12px}
-.connector-picker .cc-list{display:grid;gap:6px}
-.connector-picker .cc-item{display:flex;align-items:center;gap:10px;width:100%;min-height:46px;padding:8px 12px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font:inherit;text-align:left;cursor:pointer;transition:border-color .15s,background .15s}
-.connector-picker .cc-item:hover{border-color:var(--accent);background:var(--accent-bg)}
-.connector-picker .cc-item[aria-pressed="true"]{border-color:var(--accent);background:var(--accent-bg)}
+.connector-picker .cc-list{display:block}
+.connector-picker .cc-item{display:flex;align-items:center;gap:10px;width:100%;min-height:0;padding:10px;margin-bottom:6px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--bg1);color:inherit;font:inherit;text-align:left;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,.03);transition:background .15s,border-color .15s}
+.connector-picker .cc-item:last-child{margin-bottom:0}
+.connector-picker .cc-item:hover{background:var(--bg3);border-color:var(--border2)}
+.connector-picker .cc-item[aria-pressed="true"]{border-color:var(--accent);background:var(--bg3)}
 .connector-picker .cc-item.is-off{opacity:.55}
 .connector-picker .cc-item-ico{flex:0 0 auto;font-size:15px;line-height:1}
 .connector-picker .cc-item-txt{min-width:0}
 .connector-picker .cc-item-name{font-size:13.5px;font-weight:500;line-height:1.35}
 .connector-picker .cc-item-meta{font-size:11.5px;color:var(--text3);margin-top:1px}
 .connector-picker .cc-sep{margin:12px 0 2px;font-size:11.5px;line-height:1.6;color:var(--text3)}
-.connector-picker .cc-empty{padding:14px 16px;border:1px solid var(--border);border-radius:12px;background:var(--bg2)}
+.connector-picker .cc-empty{padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--bg1)}
 .connector-picker .cc-empty-t{font-size:13.5px;font-weight:500;color:var(--text)}
 .connector-picker .cc-empty-n{margin-top:6px;font-size:12px;line-height:1.75;color:var(--text3)}
 .connector-picker .cc-manage{margin-top:16px;width:100%;min-height:38px;border:1px solid var(--border);border-radius:10px;background:transparent;color:var(--text2);font:inherit;font-size:13px;cursor:pointer}
 .connector-picker .cc-manage:hover{border-color:var(--accent);color:var(--accent)}
 .connector-picker .cc-manage.is-primary{border-color:var(--accent);background:var(--accent-bg);color:var(--accent);font-weight:500}
-.connector-picker .cc-retry{min-height:38px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font:inherit;cursor:pointer}.connector-picker p{font-size:13px;line-height:1.7;color:var(--text2)}.connector-chip .cc-name{min-width:0;overflow-wrap:anywhere}.connector-chip{flex-wrap:wrap}
+.connector-picker .cc-retry{min-height:38px;padding:0 14px;border:1px solid var(--border);border-radius:10px;background:var(--bg2);color:var(--text);font:inherit;cursor:pointer}.connector-picker p{font-size:13px;line-height:1.7;color:var(--text2)}
+/* chip（输入框上方的「本轮连接器」标签）跟弹框无关，2026-11-17 改弹框时别顺手删掉 */
+.connector-chip .cc-name{min-width:0;overflow-wrap:anywhere}.connector-chip{flex-wrap:wrap}
 .panel-connector-dialog{width:min(680px,calc(100vw - 24px));max-height:calc(100dvh - 24px);padding:0;border:1px solid var(--border);border-radius:16px;background:var(--bg1);color:var(--text)}
 .panel-connector-dialog[open]{display:flex;flex-direction:column}.panel-connector-dialog::backdrop{background:var(--shade)}.panel-connector-dialog .modal-head,.panel-connector-dialog .modal-foot{flex-shrink:0}.panel-connector-dialog .modal-foot{flex-wrap:wrap;gap:8px}.panel-connector-dialog .modal-body{overflow:auto;min-height:0;padding:20px}.panel-connector-dialog p{font-size:13px;line-height:1.7;color:var(--text2)}.panel-connector-dialog a{font-size:13px;color:var(--accent)}
 .connector-field{display:grid;gap:8px;margin:16px 0;font-size:13px}.connector-field input,.connector-tools select{width:100%;min-height:44px;padding:10px;background:var(--bg2);color:var(--text);border:1px solid var(--border);border-radius:8px;box-sizing:border-box}.panel-connector-dialog button{min-height:44px}.connector-tools{margin-top:20px}.connector-tools summary{min-height:44px;cursor:pointer}.connector-tools select{margin:12px 0}.connector-tools pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:320px;overflow:auto}.connector-tools [hidden]{display:none!important}

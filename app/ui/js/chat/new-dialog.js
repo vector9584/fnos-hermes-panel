@@ -212,23 +212,41 @@ function createNewSession(){
     })
     .then(function(s){
       _sessions.unshift(s);
-      currentSession=s.id;
       _applyPendingModel(s.id);
       _openTabs.push(s.id); persistTabs();
-      saveDraft(currentSession);   // 新建前保存当前会话草稿
       var ta=document.getElementById('chatInput'); if(ta) ta.value='';
-      renderSessionTabs(); renderRail(); updateHeader();
-      var body=document.getElementById('chatBody');
-      if(body) body.innerHTML='<div class="system-tip">新会话已创建'+(sessionType==='canvas'?' · 画板':'')+(model?' · 模型: '+esc(model):'')+'</div>';
       if(workspace) _fmCwd=workspace;
-      /* 画板会话（2026-11-16）：先把 workspace state 刷一遍再进画板，
-         这样后续 switchTab 走 window.pwSessionType 就能查到 canvas。
+      /* 2026-11-17 用户原话：「新建对话或者画板之后，就要跳转到对应的会话，
+         而不是还停留在原有的会话」。
+         老写法是 currentSession=s.id 之后自己补 renderSessionTabs/renderRail/updateHeader，
+         看着像切了，实际 switchTabCore 那套副作用一个都没跑 —— 旧会话的 HTML 快照没存、
+         saveDraft 存错对象（写在 currentSession=s.id 后面，存的是新会话的空草稿，
+         旧会话草稿因此丢失）、_syncModelBtn 没跑（模型按钮还显示旧会话的模型）、
+         _syncGenBarToTab/_checkActiveGen 没跑（生成条和「正在继续生成」还是旧的）、
+         CanvasMode.leave 没跑（从画板会话新建对话时画布还挂着）、
+         chatChannel.afterSwitch 没跑（旧会话 channel 还挂着）。
+         改成交给 switchTab 走完整流程；注意不能先赋 currentSession ——
+         switchTabCore 开头有 sid===currentSession 就早退的分支，先赋值等于让它空转。 */
+      var goSwitch=function(){
+        if(typeof switchTab==='function') {
+          switchTab(s.id);
+        } else {
+          /* 兜底：switchTab 万一没加载，至少保证会话切换本身成立 */
+          currentSession=s.id;
+          renderSessionTabs(); renderRail(); updateHeader();
+        }
+        var body=document.getElementById('chatBody');
+        if(body) body.innerHTML='<div class="system-tip">新会话已创建'+(sessionType==='canvas'?' · 画板':'')+(model?' · 模型: '+esc(model):'')+'</div>';
+        toast('✅ 新会话已创建');
+      };
+      /* 画板会话：先把 workspace state 刷一遍再切，这样 switchTab 内部走
+         window.pwSessionType(sid) 才能查到 canvas 并进画板（否则会当成普通对话）。
          pwReload 是 panel-workspace-ui IIFE 暴露的入口（reload 本身是私有的）。 */
-      if(sessionType==='canvas'){
-        var goCanvas=function(){ if(window.CanvasMode){ try{ CanvasMode.enter(s.id); }catch(e){} } };
-        if(typeof window.pwReload==='function'){ Promise.resolve(window.pwReload()).then(goCanvas).catch(goCanvas); } else { goCanvas(); }
+      if(sessionType==='canvas' && typeof window.pwReload==='function'){
+        Promise.resolve(window.pwReload()).then(goSwitch).catch(goSwitch);
+      } else {
+        goSwitch();
       }
-      toast('✅ 新会话已创建');
     }).catch(function(){ toast('创建会话失败','error'); });
 }
 function updateHeader(){

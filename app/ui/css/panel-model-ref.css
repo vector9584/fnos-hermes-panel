@@ -74,6 +74,24 @@ body.theme-dark .models-page{--primary-ink:#06251d}
 .models-page .input,.models-page .select,.models-page .textarea{width:100%;padding:9px 11px;border-radius:8px;border:1px solid var(--line-2);background:var(--surface);color:var(--ink);font-size:12px;outline:none}
 .models-page .input:focus,.models-page .select:focus,.models-page .textarea:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
 .models-page .select{appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--ink-3) 50%),linear-gradient(135deg,var(--ink-3) 50%,transparent 50%);background-position:calc(100% - 16px) 52%,calc(100% - 11px) 52%;background-size:5px 5px,5px 5px;background-repeat:no-repeat;padding-right:34px}
+/* 下拉框跟输入框等高（2026-11-17，用户报「又小又漂移」）。
+   实测：桌面 select 32px / input 34px，手机 select 37px / input 39px —— 永久差 2px。
+   原因不是宽度（两者都是满宽的 722/358），是 <select> 不吃 input 那套
+   line-height，浏览器按内部行高自己收 2px。一排 field 排下来，
+   下拉框看着比旁边的输入框矮一截、像凹进去，箭头也跟着偏上，就是「漂移」。
+   这里把它撑到与 .input 同高：桌面 34、手机 39（16px 字号时）。
+   宽度那一侧已经满宽，补 min-width:0 + 省略号防长选项把格子撑破。 */
+.models-page .select{
+  min-height:34px;height:34px;box-sizing:border-box;
+  min-width:0;max-width:100%;
+  line-height:1.2;
+  text-overflow:ellipsis;white-space:nowrap;overflow:hidden;
+}
+@media (max-width:760px){
+  /* 移动端全局把控件字号抬到 16px 防 iOS 聚焦缩放（base.css:993），
+     输入框跟着长到 39px，下拉框的固定 34px 就会显得更矮，这里同步抬。 */
+  .models-page .select{min-height:39px;height:39px}
+}
 .models-page .input[readonly]{background:var(--surface-2);color:var(--ink-2)}
 /* 官方预设锁住的地址：虚线边框 + 禁用光标。深色主题下 --surface-2 跟正常输入框
    色差太小，实测肉眼分不出「能改」和「不能改」，必须再给一道形状上的提示。 */
@@ -542,6 +560,14 @@ body.theme-dark .models-page .overlay{background:rgba(0,0,0,.66)}
    中间、小得像标签（2026-11-16 用户反馈「像标签一样」即此）。 */
 .models-page .pcard .keylist{margin-top:10px}
 
+/* 多把密钥的折叠条（2026-11-17）。3 把密钥铺三行会把卡片撑到一屏只放得下两张，
+   用户原话「一个密钥就一行把卡片撑的很高」。折叠后卡片高度与单密钥一致，
+   「几把 · 几把启用」一句话交代完，明细点开才看。 */
+.models-page .pcard .keybar{display:flex;align-items:center;justify-content:space-between;
+  gap:10px;margin-top:10px;padding-top:9px;border-top:1px solid var(--line)}
+.models-page .pcard .keybar .mini{opacity:.75}
+.models-page .pcard .keybar .btn{padding:4px 10px;font-size:11px;flex:none}
+
 /* 每把密钥这次拉取的成绩（2026-11-16）。不做切换器 —— 一次问完全部密钥，
    这里只交代「哪把几个模型、哪把失败」，列表本身是合并过的。 */
 .models-page .msrcs{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0 0 10px}
@@ -689,3 +715,38 @@ body.theme-dark .models-page{--warn-ink:#fbbf24;--grey-soft:rgba(255,255,255,.06
 .models-page .cardwarn{margin:9px 0 0;padding:8px 10px;border-radius:8px;
   border:1px solid var(--warn);background:var(--warn-soft);font-size:11.5px;line-height:1.5}
 .models-page .cardwarn b{display:block;margin-bottom:3px;color:var(--warn)}
+
+/* ── 图像生成卡的模型勾选区（2026-11-17）─────────────────────
+   多选 + 一个默认：勾上的进 image_gen.targets（画板下拉能切的那几个），
+   圆点选中的那个落到 custom.model（内核真正读的那一个）。
+   以前这里是一个「生图模型名」输入框，用户得自己背模型 ID —— 明明服务里
+   已经存了一串模型，却要他手打。 */
+.models-page .imgmodels{display:flex;flex-direction:column;gap:2px;
+  border:1px solid var(--line);border-radius:11px;padding:6px;
+  background:var(--surface);max-height:250px;overflow:auto}
+.models-page .imgmodel-row{display:flex;align-items:center;gap:8px;padding:7px 8px;
+  border-radius:8px;transition:background .15s ease}
+.models-page .imgmodel-row:hover{background:var(--accent-bg)}
+.models-page .imgmodel-row.on{background:var(--accent-bg)}
+.models-page .imgmodel-cb{width:15px;height:15px;margin:0;flex:none;
+  accent-color:var(--accent);cursor:pointer}
+.models-page .imgmodel-name{flex:none;min-width:0;max-width:60%;font-size:12.5px;line-height:1.4;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--ink);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 服务名跟在模型名后面（2026-11-17 跨服务多选）：候选来自多个服务商，
+   不标来源的话「gpt-image-2」出现两行会让人以为是重复了。
+   margin-right:auto 把它之后的圆点/「默认」全部推到右端。 */
+.models-page .imgmodel-src{flex:none;max-width:34%;margin-right:auto;
+  font-size:10.5px;line-height:1.4;color:var(--ink-3);
+  padding:1px 6px;border-radius:5px;background:var(--surface-2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.models-page .imgmodel-row.on .imgmodel-src{color:var(--ink-2);background:transparent}
+.models-page .imgmodel-rd{width:14px;height:14px;margin:0;flex:none;
+  accent-color:var(--accent);cursor:pointer}
+.models-page .imgmodel-rd:disabled{opacity:.28;cursor:default}
+.models-page .imgmodel-tag{flex:none;font-size:10.5px;color:var(--ink-2);opacity:.7}
+.models-page .imgmodel-row.on .imgmodel-tag{opacity:1;color:var(--accent)}
+.models-page .imgmodel-manual{display:flex;gap:6px;margin-top:7px}
+.models-page .imgmodel-manual input{flex:1;min-width:0}
+.models-page .imgmodel-manual .btn{flex:none;align-self:auto;margin-top:0}
+

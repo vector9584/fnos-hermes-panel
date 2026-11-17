@@ -488,6 +488,21 @@ def backends_view(data, path=None):
             # 地址和密钥不再存在图像卡里：custom 只记「引用哪条 LLM 服务」，
             # 真正的 base_url / api_key 全在 providers.<id> 上。
             detail['provider_id'] = str(scoped.get('provider_id') or '')
+            # 候选模型列表（2026-11-17）：面板要回显「勾了哪几个、哪个是默认」，
+            # 光有当前生效的那一条不够。targets 在 image_gen 顶层（不在 custom 下面），
+            # /api/workspace-ui/image-targets 读的就是它。
+            raw_targets = section.get('targets')
+            clean_targets = []
+            if isinstance(raw_targets, list):
+                for item in raw_targets:
+                    if isinstance(item, dict) and item.get('model'):
+                        clean_targets.append({'provider_id': str(item.get('provider_id') or ''),
+                                              'model': str(item.get('model'))})
+            # 老配置没有 targets：用当前生效的 provider_id+model 兜一条，
+            # 否则面板打开是一片空白，看着像"一个都没配"。
+            if not clean_targets and detail['model']:
+                clean_targets = [{'provider_id': detail['provider_id'], 'model': detail['model']}]
+            detail['targets'] = clean_targets
             key_name = IMAGE_GEN_KEYS.get(current, '')
             detail['key_env'] = key_name
             if key_name:
@@ -650,6 +665,35 @@ def save_backend(data, body):
                         sub[fname] = cleaned
                     else:
                         sub.pop(fname, None)
+            # 候选生图模型（2026-11-17）。用户要的是「在这里能勾多个模型、勾一个默认」，
+            # 而画板那张下拉（cvTargetBtn）和新建画板面板读的都是
+            # /api/workspace-ui/image-targets —— 那个接口解析的是 image_gen.targets 数组
+            # （顶层，不是 custom 下面，别放错层）。真正生效的仍是 custom.model：
+            # 内核只认 image_gen.<plugin>.model 这一个值，所以默认模型必须同步写进去，
+            # 否则面板上勾的默认和实际生图用的不是同一个。
+            if 'targets' in extras:
+                raw = extras.get('targets')
+                if not isinstance(raw, list):
+                    raise ConfigError('候选生图模型格式不正确')
+                if len(raw) > 40:
+                    raise ConfigError('候选生图模型最多 40 个')
+                clean_targets = []
+                seen = set()
+                for item in raw:
+                    if not isinstance(item, dict):
+                        continue
+                    pid = _scalar(item.get('provider_id') or '', '引用的 LLM 服务', 120)
+                    mid = _scalar(item.get('model') or '', '生图模型名', 200)
+                    if not mid or (pid, mid) in seen:
+                        continue
+                    seen.add((pid, mid))
+                    clean_targets.append({'provider_id': pid, 'model': mid})
+                if clean_targets:
+                    section['targets'] = clean_targets
+                    sub['provider_id'] = clean_targets[0]['provider_id']
+                    sub['model'] = clean_targets[0]['model']
+                else:
+                    section.pop('targets', None)
             # 旧方案在图像卡里单独存过地址和密钥变量名，现在全部走 provider，
             # 这两项直接清掉 —— 留着只会让人以为还有第二处要配。
             sub.pop('base_url', None)

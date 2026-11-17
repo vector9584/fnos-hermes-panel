@@ -631,7 +631,9 @@
       var meta = el('div', 'meta');
       /* 不再显示「服务商 <group>」：group 是后端内部聚合键（值是第一条
          provider 的 id），别的卡片没有，露出来就成了一张卡比别人多一个标签。 */
-      meta.append(chip(keys.length + ' 把密钥'));
+      /* 多把时候由下面的 .keybar 统一说「N 把密钥 · M 把启用」，这里只在单把时
+         补一个，别让同一张卡上同一件事说两遍。 */
+      if (keys.length === 1) meta.append(chip('1 把密钥'));
       /* 2026-11-16：模型数只数启用的。取消勾选的模型会归档成 enabled:false 留在
          数组里（不丢历史元数据），数 length 会让「取消了还显示 4 个」——用户会以为
          保存没生效。总数不丢，有停用的补一句「共 N」。 */
@@ -641,8 +643,26 @@
       }, 0);
       meta.append(chip(onM + ' 模型' + (allM > onM ? '（共 ' + allM + '）' : '')));
       card.append(meta);
+      /* 多把密钥默认折叠（2026-11-17 用户原话：「已经配置的多个可以做一个折叠，
+         一个密钥就一行把卡片撑的很高」）。
+         卡片要回答的是「这服务能不能用、有几把、几个模型」，密钥明细是第二层。
+         折叠状态记在 S.keyExpand 上 —— render 每次重画 DOM，状态不存就点了就弹回去。 */
+      var gid = g.group || keys[0].id;
+      S.keyExpand = S.keyExpand || {};
+      var open = !!(S.keyExpand[gid]);
       var list = el('div', 'keylist');
       keys.forEach(function (k) { list.append(svcKeyRow(S, k)); });
+      if (keys.length > 1) {
+        var onN = keys.filter(function (k) { return k.enabled !== false; }).length;
+        var bar = el('div', 'keybar');
+        bar.append(el('span', 'mini', keys.length + ' 把密钥 · ' + onN + ' 把启用'));
+        bar.append(btn(open ? '收起' : '展开', 'btn sm', function () {
+          S.keyExpand[gid] = !open;
+          M.render();
+        }));
+        card.append(bar);
+        if (!open) list.style.display = 'none';
+      }
       card.append(list);
       /* 服务商级三个按钮：卡片最底部一行（.foot 有 margin-top:auto + 顶部
          分隔线 + flex:1 等宽），作用于整个服务商；key 级的编辑/启停/删除
@@ -877,6 +897,8 @@
     });
     return wrap;
   }
+  /* 导出给编辑弹层用：凭据块跟着卡片一起搬进弹层，两处各画一遍迟早走样。 */
+  M.credBlock = credBlock;
 
   function backendsAll(S) {
     var out = frag();
@@ -921,24 +943,30 @@
       if (d.detail && d.detail.language) meta.append(chip('语言 ' + d.detail.language));
       if (d.detail && d.detail.providers) meta.append(chip(d.detail.providers + ' 个提供方'));
       if (d.note && d.kernel !== false) meta.append(chip(d.note));
+      /* 密钥状态进摘要：外层留一眼就能看出「这张卡还缺东西」，不用点开弹层才知道。
+         只说缺哪个，已配的不占地方 —— 七八张卡全列「已配」等于没有信息。 */
+      var missingCreds = (d.creds || []).filter(function (c) { return !c.configured && !c.reuse; });
+      if (missingCreds.length) {
+        meta.append(chip('缺 ' + missingCreds.map(function (c) { return c.name; }).join(' / '), false));
+      }
       card.append(meta);
 
-      // 内核不读这张卡的键（目前只有 ocr）就先说清楚，别让用户以为换一下引擎就换了。
-      if (d.kernel === false) {
-        var warn = el('div', 'cardwarn');
-        warn.append(el('b', null, '这张卡的选项内核不读'));
-        warn.append(el('div', 'mini', d.note || ''));
-        card.append(warn);
-      }
-      var cb = credBlock(S, d);
-      if (cb) card.append(cb);
+      /* 内核不读这张卡的键（目前只有 ocr）这句提示已经搬进「编辑」弹层
+         （2026-11-17 用户原话：这个元素把卡片撑开了，放到打开编辑后的面板里去）。
+         卡片外层只留摘要，警告属于「点开才知道」的那类细节。 */
 
+      /* 外层只留摘要，所有可编辑的东西（来源、密钥、模型、参数）全进「编辑」弹层。
+         以前是整块内联展开：一屏七八张卡各自摊着下拉框、密钥行、保存按钮，
+         想改哪张得先在一堆控件里把它认出来，改完还得担心点错行。 */
+      var cardFoot = el('div', 'foot');
       if (d.writable) {
-        var inline = M.sheets.backendInlineForm && M.sheets.backendInlineForm(S, d);
-        card.append(inline || el('p', 'mini', d.note || ''));
+        cardFoot.append(btn('编辑', 'btn sm', function () {
+          if (M.sheets.backendEdit) M.sheets.backendEdit(S, d);
+        }));
       } else {
-        card.append(el('p', 'mini', d.note || '跟随服务商原生能力，没有独立配置项'));
+        cardFoot.append(el('span', 'mini', '跟随服务商原生能力，没有独立配置项'));
       }
+      card.append(cardFoot);
       cards.append(card);
     });
     if (!shown.length) cards.append(el('div', 'empty', '这个筛选下没有卡'));

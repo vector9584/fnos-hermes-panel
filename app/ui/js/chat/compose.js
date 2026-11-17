@@ -38,6 +38,12 @@ function onSendOrStop(){
   sendChat();
 }
 function setSendState(streaming){
+  /* 生成中标记挂在 #chatComposer 上，供 CSS 三态互斥把右侧槽位让给停止键
+     （2026-11-17 用户报：空输入框时停止键被麦克风顶掉，没法中断）。
+     必须放在下面那个 return 之前——「已经是 stop 态且无输入就提前返回」那条路径
+     会把类漏掉，生成中该出现的停止键就还是不出现。 */
+  var _cc=document.getElementById('chatComposer');
+  if(_cc) _cc.classList.toggle('streaming', !!streaming);
   var btn=document.getElementById('sendBtn'); if(!btn) return;
   var ta=document.getElementById('chatInput');
   if(streaming){
@@ -233,6 +239,10 @@ function _genBarHideStale(sid){
 }
 function autoResize(t){
   t.style.height='auto'; t.style.height=t.scrollHeight+'px';
+  /* 2026-11-17 四态：右侧「麦 ⟷ 飞机」互斥靠 #chatInput.has-text 切。
+     程序化写 value（转写回填、恢复草稿、插模板）不触发 input 事件，类会僵在原地，
+     结果就是发完了麦回不来。autoResize 是所有「内容变了」路径的必经之地，在这里统同步。 */
+  if(typeof _syncInputHasText==='function') _syncInputHasText();
   var btn=document.getElementById('sendBtn'); if(!btn) return;
   if(_msgState.streaming){
     _setSendBtnMode(btn, t.value.trim() ? 'send' : 'stop');   // 流式：有输入=发送纠偏，无输入=停止
@@ -245,8 +255,23 @@ function toggleToolbar(){
   var tb=document.getElementById('toolbar'), tg=document.getElementById('toolbarToggle');
   if(!tb) return;
   var show=tb.classList.toggle('visible');
-  if(tg){tg.textContent=show?'−':'＋';tg.setAttribute('aria-expanded',String(show));tg.setAttribute('aria-label',show?'收起输入工具':'展开输入工具');}
+  /* 2026-11-17：按钮内容改成 SVG 图标，这里只翻 aria —— 图标靠 CSS 的
+     [aria-expanded="true"] svg{rotate 45deg} 从 ＋ 变 ×，不许再写 textContent（会抹掉 SVG）。*/
+  if(tg){tg.setAttribute('aria-expanded',String(show));tg.setAttribute('aria-label',show?'收起输入工具':'展开输入工具');}
 }
+/* 桌面工具条历来是常开的，现在由 .visible 控高度，得在进页面时补上这个类；
+   窄屏保持折叠，等拇指去点。放在 DOMContentLoaded 里，脚本加载时机不确定。 */
+(function(){
+  function seed(){
+    if(window.innerWidth<=820) return;
+    var tb=document.getElementById('toolbar'), tg=document.getElementById('toolbarToggle');
+    if(!tb || tb.classList.contains('visible')) return;
+    tb.classList.add('visible');
+    if(tg){tg.setAttribute('aria-expanded','true');tg.setAttribute('aria-label','收起输入工具');}
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded', seed);
+  else seed();
+})();
 /* 回车行为：桌面回车=发送；手机（触屏/窄屏）回车=换行，发送只交给小飞机按钮 */
 /* 触屏判定只管「UI 要不要放大」；回车键行为必须只按屏幕宽度分 —— 带触摸屏的笔记本
  * (pointer:coarse 为真) 曾被当成手机，于是 PC 上回车换行不发送。 */
@@ -306,7 +331,7 @@ function sendChat(){
   }
   if(!text && _pendingAttachments.length===0) return;
   genBarReset(currentSession);   // 新的一轮：清掉上一轮 done 终态，状态条重新可用
-  ta.value=''; ta.style.height='auto';
+  ta.value=''; ta.style.height='auto'; if(typeof _syncInputHasText==='function') _syncInputHasText();   // 清空后麦必须立刻回来（这条路径不走 autoResize）
   if(currentSession) delete _tabDrafts[currentSession];   // 发送成功：清空该会话草稿
   var btn=document.getElementById('sendBtn'); if(btn && !_msgState.streaming) btn.disabled=true;
   if(text.charAt(0)==='/'){ handleSlashCommand(text); return; }

@@ -253,6 +253,11 @@ function micIconHtml(){
 function stopIconHtml(){
   return '<svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="7" y="7" width="10" height="10" rx="2"/></svg>';
 }
+/* 录音波谱的开关。类挂在 .input-wrap 上，13 根柱子由 CSS 动画自己跑，不占 JS。 */
+function _voiceWave(on){
+  var wrap = document.querySelector('#chatComposer .input-wrap');
+  if(wrap) wrap.classList.toggle('voice-recording', !!on);
+}
 function setMicButtonState(btn,recording,mode){
   if(!btn) return;
   var label = recording ? (mode==='voice' ? '松手发语音' : (mode==='text' ? '松手转文字' : '停止录音并识别'))
@@ -344,6 +349,7 @@ function startVoiceRecord(mode){
       var doneMode = v.mode;
       if(btn){ btn.classList.remove('recording'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,doneMode); }
       var ta = document.getElementById('chatInput'); if(ta) ta.classList.remove('voice-holding');
+      _voiceWave(false);
       voiceHoldTip(false);
       var blob = new Blob(v.chunks, { type: (v.recorder.mimeType||'audio/webm').split(';')[0] || 'audio/webm' });
       v.chunks = [];
@@ -382,7 +388,7 @@ function startVoiceRecord(mode){
       btn.innerHTML = stopIconHtml();
       setMicButtonState(btn,true,mode);
     }
-    if(mode==='voice'){ voiceHoldTip(true,'<b>正在听</b>：松手发语音'); }
+    if(mode==='voice'){ voiceHoldTip(true,'<b>正在听</b>：松手发语音'); _voiceWave(true); }
     else if(mode==='text'){
       voiceHoldTip(true,'<b>正在听</b>：松手转成文字');
       var ta=document.getElementById('chatInput'); if(ta) ta.classList.add('voice-holding');
@@ -399,6 +405,7 @@ function startVoiceRecord(mode){
   }).catch(function(err){
     voiceHoldTip(false);
     var ta=document.getElementById('chatInput'); if(ta) ta.classList.remove('voice-holding');
+    _voiceWave(false);
     var n = err && err.name ? err.name : '';
     if(n==='NotAllowedError'){ toast('麦克风权限被拒绝：请在浏览器地址栏的站点设置里允许麦克风'); }
     else if(n==='NotFoundError'){ toast('没找到麦克风设备'); }
@@ -415,6 +422,7 @@ function stopVoiceRecord(){
     var btn = document.getElementById('btnMic'); if(btn){ btn.classList.remove('recording'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,v.mode); }
     voiceHoldTip(false);
     var ta=document.getElementById('chatInput'); if(ta) ta.classList.remove('voice-holding');
+    _voiceWave(false);
   }
 }
 /* mode=text 时插到光标处，不发送 */
@@ -471,10 +479,13 @@ function audioVoiceGate(blob, cb){
 function transcribeVoice(dataUrl, mime, mode){
   var btn = document.getElementById('btnMic');
   toast('语音识别中…');
+  /* 上传+识别要等几百毫秒，这段空白期麦克风必须有反应，
+     否则按完松手界面一动不动，像没收到指令。外圈扩散的环区别于录音时的实心红。 */
+  if(btn) btn.classList.add('transcribing');
   fetch(voiceAudioUrl('/transcribe'), { method:'POST', headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken||''}, body: JSON.stringify({ data_url: dataUrl, mime_type: mime }) })
     .then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){ if(!r.ok){ var e = new Error((j.error||j.detail)||('transcribe '+r.status)); e.j=j; throw e; } return j; }); })
     .then(function(j){
-      if(btn){ btn.classList.remove('recording'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,mode); }
+      if(btn){ btn.classList.remove('recording'); btn.classList.remove('transcribing'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,mode); }
       var t = (j.transcript || '').trim();
       if(!t){ if(_voice.chatLoop && mode==='legacy'){ _voiceChatSilent(); } else { toast('没有听清，请再说一次'); } return; }
       var ta = document.getElementById('chatInput');
@@ -488,7 +499,7 @@ function transcribeVoice(dataUrl, mime, mode){
       else { toast('识别完成'); try{ ta.focus(); }catch(e){} }
     })
     .catch(function(err){
-      if(btn){ btn.classList.remove('recording'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,mode); }
+      if(btn){ btn.classList.remove('recording'); btn.classList.remove('transcribing'); btn.innerHTML = micIconHtml(); setMicButtonState(btn,false,mode); }
       var msg = err && err.j && err.j.error ? err.j.error : (err && err.message ? err.message : '语音识别失败');
       toast('语音识别失败：'+msg);
     });

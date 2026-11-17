@@ -44,16 +44,19 @@
   window.clearConnectorChip=function(){_selectedConnector='';renderConnectorChip();saveDraft(currentSession);};
   window.panelConnectorRestore=function(){renderConnectorChip();if(_selectedConnector)refresh().then(renderConnectorChip).catch(function(){});};
   async function choose(){
-    var dialog=node('dialog');dialog.className='navigation-dialog connector-picker';dialog.setAttribute('aria-label','本轮连接器');
-    /* 三段式骨架（2026-11-16 修）：原来六个元素直接 append 到 dialog，
-       「关闭」被套上 .navigation-close 的 32px 图标宽度，两个字挤成竖排并溢出弹框；
-       「管理连接器」通栏拉满、字只有 13px，正文和按钮之间全是空白。
-       按 panel-navigation.js 的 .navigation-head / .navigation-body 规范重排。 */
-    var head=node('div');head.className='navigation-head';
-    var heading=node('h2','本轮连接器');
-    var close=node('button');close.type='button';close.className='navigation-close';close.innerHTML='&times;';close.setAttribute('aria-label','关闭');close.onclick=function(){dialog.close();};
+    var dialog=node('dialog');dialog.className='connector-picker';dialog.setAttribute('aria-label','本轮连接器');
+    /* 2026-11-17：骨架改用 mini-popup 那套类名（.mini-popup-head/-title/-close/-body）。
+       原先这里是 'navigation-dialog connector-picker' + .navigation-head/-close/-body，
+       和模型/技能/专家/能力四个工具弹框（统一 .mini-popup 浮层）差了四项外观：
+       宽 460 vs 360、底 var(--bg1) vs var(--bg2)、圆角 18 vs --radius-lg、
+       列表 .cc-item 用 accent 绿 hover 而 .pop-item 用中性 --bg3。看着像两个功能。
+       这套类名在 base.css 里都是独立选择器（不带 .mini-popup 前缀），直接复用即可。
+       保留 <dialog> 元素本身：showModal 的 Esc 关闭与焦点陷阱是白拿的，别丢。 */
+    var head=node('div');head.className='mini-popup-head';
+    var heading=node('span','本轮连接器');heading.className='mini-popup-title';
+    var close=node('button');close.type='button';close.className='mini-popup-close';close.innerHTML='&times;';close.setAttribute('aria-label','关闭');close.onclick=function(){dialog.close();};
     head.append(heading,close);dialog.append(head);
-    var bodyEl=node('div');bodyEl.className='navigation-body';dialog.append(bodyEl);
+    var bodyEl=node('div');bodyEl.className='mini-popup-body';dialog.append(bodyEl);
     var hint=node('p','选中后随本轮消息声明连接器意图；实际调用由模型按可用工具决定。');hint.className='cc-hint';
     var status=node('p','正在读取配置…');status.setAttribute('role','status');status.className='cc-status';
     var list=node('div');list.className='cc-list';
@@ -71,7 +74,11 @@
       var ico=node('span',c.mode==='remote'?'\uD83C\uDF10':'\uD83D\uDD0C');ico.className='cc-item-ico';ico.setAttribute('aria-hidden','true');
       var txt=node('div');txt.className='cc-item-txt';
       var name=node('div',c.name);name.className='cc-item-name';
-      var meta=node('div',c.configured?(c.tools?c.tools+' 个工具':'已配置'):'未配置凭证');meta.className='cc-item-meta';
+      /* c.tools 是数组（见下面 131 行的 (c.tools||[]).length、132 行的 c.tools[n]）。
+         原来写 c.tools+' 个工具'：空数组也是真值，拼出来就是「 个工具」，数字是空的。
+         改成取 length；没有工具就退化成「已配置」。 */
+      var toolN=Array.isArray(c.tools)?c.tools.length:(typeof c.tools==='number'?c.tools:0);
+      var meta=node('div',c.configured?(toolN?toolN+' 个工具':'已配置'):'未配置凭证');meta.className='cc-item-meta';
       txt.append(name,meta);button.append(ico,txt);
       if(c.configured){button.onclick=function(){_selectedConnector=c.kind;renderConnectorChip();saveDraft(currentSession);dialog.close();};}
       else{button.onclick=jumpManage;}

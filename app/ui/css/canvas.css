@@ -106,9 +106,14 @@ body.theme-dark {
 }
 .cv-link {
   fill: none;
-  stroke: var(--cv-accent-a55);
+  /* 2026-11-17: a55 在深色背景 + 细线宽下几乎不可见，抬到 a70。
+     线宽由 JS 的 syncLinkWidth() 按 2/k 动态写 stroke-width（屏幕恒 2px）。 */
+  stroke: var(--cv-accent);
   stroke-width: 2;
   stroke-linecap: round;
+  /* 轻微外发光（2026-11-17）：纯色线在点阵背景上「有线但不跳出来」，
+     drop-shadow 让它浮起来一层。模糊半径跟着画布缩，k=0.25 时约 1px，不会糊。 */
+  filter: drop-shadow(0 0 5px rgba(113, 219, 192, .55));
   transition: stroke .15s ease, stroke-width .15s ease;
 }
 /* 生成中的连线流动感：只对「正在跑」的那条加 */

@@ -208,10 +208,20 @@
     return node;
   }
 
+  /* 当前值不在选项里时补一条「当前值」。以前遇到这种情况一个都选不中，
+     浏览器就默认显示第一项 —— 用户打开编辑看到的是「我明明选了 X，怎么变成
+     别的了」。服务商被删、模型被禁用、来源选项改了都会踩这个；补这一条还有个
+     用处：不改原样存回去，不会因为打开一次编辑就把配置悄悄改成第一项。 */
   function select(options, value) {
     var node = el('select', 'select');
-    (options || []).forEach(function (option) {
-      var item = Array.isArray(option) ? option : [option, option];
+    var list = (options || []).map(function (option) {
+      return Array.isArray(option) ? option.slice(0, 2) : [option, option];
+    });
+    var known = list.some(function (item) { return String(item[0]) === String(value); });
+    if (value != null && String(value) !== '' && !known) {
+      list = list.concat([[value, value + ' · 当前值']]);
+    }
+    list.forEach(function (item) {
       var opt = el('option', null, item[1] === '' ? '（不指定，自动）' : item[1]);
       opt.value = item[0];
       if (String(item[0]) === String(value)) opt.selected = true;

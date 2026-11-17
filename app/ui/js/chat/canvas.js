@@ -89,6 +89,47 @@ var CanvasMode = (function () {
   function applyView() {
     if (!S.world) return;
     S.world.style.transform = 'translate(' + S.view.x + 'px,' + S.view.y + 'px) scale(' + S.view.k + ')';
+    syncLinkWidth();
+  }
+
+  /* 连线线宽必须跟着缩放反向补偿（2026-11-17 实测根因）
+     ────────────────────────────────────────────────────────────
+     .cv-link 的 stroke-width:2 是**世界坐标**里的 2px，挂在 #canvasWorld 上，
+     会跟着 transform 一起被 scale 缩。fitToNodes 在 15 个节点、总宽 4900px
+     的画布上把 k 压到 0.25，屏幕上线只剩 2×0.25 = 0.5px，
+     再叠上 a55 的 55% 透明度，抗锯齿一摊就是「一个像素都没有」。
+     这就是用户反复说「连接线还是没有」的原因 —— path 一直在，d 也对，
+     getBoundingClientRect 也有值，只是画出来淡到看不见。
+
+     修法：stroke-width 取 2.5 / k，屏幕上恒定 2.5px。上限 12px 防止 k 极小时
+     世界坐标线宽离谱（k=0.25 → 10px，屏幕正好 2.5px）。
+     四档实测（都是 1:1 全图视觉复核）：
+       2px + a70  「看不到」  ← 用户反馈的原始状态
+       2px + a85  「勉强看到」
+       2.5px+a85  「需要留意」
+       3px 纯色   「一眼就看到」但略突兀
+       2.5px 纯色 ← 定稿，看得见且不抢节点
+     线本身只有 50–90px 长（节点世界坐标间距 45–370px），散在大画布上
+     视觉权重低，只能靠线宽和纯色补。
+     线本身只有 50–90px 长（节点世界坐标间距只有 45–370px），
+     散在大画布上视觉权重低，只能靠线宽和纯色补。 */
+  function syncLinkWidth() {
+    if (!S.svg) return;
+    var k = S.view.k || 1;
+    var w = Math.min(12, 2.5 / k).toFixed(2);
+    /* 必须写内联 style，不能写 presentation attribute（2026-11-17 实测打脸）：
+       .cv-link 的 CSS 里写死 stroke-width:2，优先级高于 <path stroke-width="8">，
+       setAttribute 写进去 computed 依然是 2px，屏幕上还是 0.5px。
+       同一个坑在这个文件里已经踩过第二次（第一次是 stroke 颜色），
+       SVG 的 presentation attribute 就是低于 CSS 规则，只有 element.style 能压过。 */
+    var dash = (7 / k).toFixed(2) + ' ' + (6 / k).toFixed(2);
+    Array.prototype.slice.call(S.svg.querySelectorAll('path[id^="cvlink_"]')).forEach(function (p) {
+      p.style.strokeWidth = w;
+      /* 虚线段同样得按 k 反向补偿（cv-link-live 的 7 6 在 0.25 下碎成 1.75/1.5，
+         屏幕上等于一排气孔，看着还是「没有线」）。非 live 的实线不受影响。 */
+      if (p.classList.contains('cv-link-live')) p.style.strokeDasharray = dash;
+      else p.style.strokeDasharray = '';
+    });
   }
 
   /* ── 输入框在画板里的位置（2026-11-16 用户第 45 条）──────────────
@@ -143,6 +184,10 @@ var CanvasMode = (function () {
     if (S.order.indexOf(n.id) < 0) S.order.push(n.id);
     n.el = renderNode(n);
     S.world.appendChild(n.el);
+    /* 强制一次同步排版（2026-11-17）：下一轮 freeSpot/placeChild 靠 nodeSize()
+       读 offsetWidth，不先排版拿到的全是 0，节点会挤成一横排、连线全被压住。
+       读一次 offsetWidth 就够了，不要为此加 rAF 打乱现有顺序。 */
+    void n.el.offsetWidth;
     if (n.parentId) renderLink(n.parentId, n.id);
     /* 「画布开始了就不要开始节点」：真实节点一落，plus 当场让位。
        不放在 enter() 的 setTimeout 里统一清 —— backfillFromHistory 靠观察器异步补图，
@@ -168,6 +213,23 @@ var CanvasMode = (function () {
          选中态本来就有发光边框，写着字反而多余。 */
       e = mk('div', 'cv-node cv-image',
         '<img src="' + esc(n.url) + '" alt="">');
+      /* 图片下载完尺寸才定型（2026-11-17）：节点刚建时 img 还没加载，
+         节点尺寸只有边框的 2px，靠 nodeSize 的后备值算出来的位置只是近似。
+         图真出来之后重画一次连线，端点才对得上；父节点同理要跟着修正子节点。
+         不重排整张图 —— 用户可能已经手动拖过位置，那样会把他摆的位子打乱。 */
+      (function (node) {
+        var im = e.querySelector('img');
+        if (!im) return;
+        var relink = function () {
+          if (node.parentId) renderLink(node.parentId, node.id);
+          S.order.forEach(function (cid) {
+            var c = S.nodes[cid];
+            if (c && c.parentId === node.id) renderLink(node.id, cid);
+          });
+        };
+        if (im.complete && im.naturalWidth) { relink(); }
+        else { im.addEventListener('load', relink, { once: true }); }
+      })(n);
       e.onclick = function (ev) {
         ev.stopPropagation();
         openComposer(n.id);
@@ -197,7 +259,22 @@ var CanvasMode = (function () {
 
   function nodeSize(n) {
     if (!n.el) return { w: 0, h: 0 };
-    return { w: n.el.offsetWidth || 0, h: n.el.offsetHeight || 0 };
+    var w = n.el.offsetWidth, h = n.el.offsetHeight;
+    /* 拿不到尺寸时给后备值（2026-11-17 实测）：回填历史时节点刚 appendChild，
+       同步 JS 里浏览器还没排版 / 图片还没下载完，offsetWidth 是 0。
+       原来返回 {0,0}，freeSpot 里 maxX = n.x + 0，于是每个新节点只比上一个
+       前进固定的 160px —— 15 张图排成一串互相重叠的横排，连线全被压在节点下面，
+       看着就是「PC 端画板没有连接线」。后备值取 .cv-image img 的 max 尺寸。 */
+    /* 阈值 20 而不是 !w（2026-11-17 实测）：.cv-node 有 1px border，
+       图片没下载完时 offsetWidth 是 2 而不是 0，!w 判断放过它，
+       freeSpot 仍然只前进 2+160px，节点照样叠在一起。 */
+    if (w < 20 || h < 20) {
+      if (n.kind === 'image') return { w: 300, h: 300 };
+      if (n.kind === 'text') return { w: 220, h: 80 };
+      if (n.kind === 'pending') return { w: 300, h: 200 };
+      return { w: 200, h: 100 };
+    }
+    return { w: w, h: h };
   }
 
   function setNodeKind(n, kind, extra) {
@@ -275,9 +352,17 @@ var CanvasMode = (function () {
         if (!S.world) return;
         S.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
         S.svg.setAttribute('id', 'canvasLinks');
-        S.svg.style.width = '1px';
-        S.svg.style.height = '1px';
+        /* 2026-11-17 实测根因：1px 的 SVG 挂在 0x0 的 #canvasWorld 里，
+           SVG viewport 塌成 0.362px，所有 path 被裁在 viewport 外，
+           overflow:visible 救不回来 —— PC 端连线一个像素都不出。
+           给足尺寸；不设 viewBox，用户坐标仍 1:1 映射 CSS px，节点坐标不用动。 */
+        S.svg.style.position = 'absolute';
+        S.svg.style.left = '0';
+        S.svg.style.top = '0';
+        S.svg.style.width = '4000px';
+        S.svg.style.height = '4000px';
         S.svg.style.overflow = 'visible';
+        S.svg.style.pointerEvents = 'none';
         S.world.appendChild(S.svg);
       }
       path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
@@ -286,6 +371,7 @@ var CanvasMode = (function () {
       S.svg.appendChild(path);
     }
     path.setAttribute('d', d);
+    syncLinkWidth();
 
     /* 连线不再有任何交互（2026-11-17 用户第 3 条「把原来关于链接线的点击交互删了」）：
        16px 透明热区、pointer-events、hover 高亮全部撤掉。线只表达「这张图从哪来」，
@@ -1173,32 +1259,75 @@ var CanvasMode = (function () {
      这样刷新之后分支还能重建出来，不会塌成一排散装根。
      没有引用块（或者对不上任何节点）→ 返空 = 这张图是从新节点开始的，
      跟用户定的规矩一致：没有引用凭据就不连线。 */
+  /* 从一段消息原文里剥出「纯提示词」（2026-11-17 提取成公共函数）。
+     提示词有两种落盘格式，实测都出现过（2026-11-17 从 state.db 真实消息里抠的）：
+       生成时注入：  【画板生图】…生图目标：fan · gpt-image-2。提示词：请绘制 xxx
+       引用块里：    [图片] 提示词：请绘制 xxx
+     只认前一种的话，回填时引用块永远 strip 不干净、一个字都对不上，
+     四张图全散成独立根 —— 用户刷新后看到的还是「没有分支」。
+     两种都剥掉，剩下的纯提示词才好比。 */
+  function promptOf(s) {
+    var t = String(s || '');
+    /* 一条 user 消息里其实有两段提示词，含义完全不同（2026-11-17 实测）：
+         【引用上下文】[图片] 提示词：请绘制技术架构图   ← 被引用的那张（父）
+         【画板生图】… 提示词：风格改成抽象画风          ← 这张图自己要画的（子）
+       老写法只做「删前缀」，两段拼在一起存成一个字符串，于是
+       ① 画板悬停弹出来的提示词一坨两段的怪东西；
+       ② 拿它去跟别人比字面，永远差着另一半。
+       改成按优先级取整段：有自己的生图提示词就用它，没有才退回引用块。 */
+    var paint = /【画板生图】[\s\S]*?提示词：([\s\S]*)$/.exec(t);
+    if (paint) {
+      var v = paint[1].replace(/【本轮参考上下文】[\s\S]*$/, '').trim();
+      if (v) return v;
+    }
+    var ref = /\[图片\]\s*提示词：([^\n]*)/.exec(t);
+    if (ref && ref[1].trim()) return ref[1].trim();
+    return t
+      .replace(/【引用上下文】/g, '')
+      .replace(/\[图片\]\s*提示词：/g, '')
+      .replace(/【用户追问】[\s\S]*$/, '')
+      .replace(/【本轮参考上下文】[\s\S]*$/, '')
+      /* 语音转写失败时服务端会在正文里留这一句提示，它跟"这张图画了什么"无关。
+         不剥的话画板悬停弹出来就是这句话，看着像个没标题的节点。 */
+      .replace(/[（(]语音消息，转写没成功，请直接听附件[）)]/g, '')
+      .trim();
+  }
+
   function refFromCtx(ctx, nodes) {
     var m = /【引用上下文】([\s\S]*?)(?:【用户追问】|$)/.exec(ctx || '');
     if (!m) return '';
-    /* 提示词有两种落盘格式，实测都出现过（2026-11-17 从 state.db 真实消息里抠的）：
-         生成时注入：  【画板生图】…生图目标：fan · gpt-image-2。提示词：请绘制 xxx
-         引用块里：    [图片] 提示词：请绘制 xxx
-       只认前一种的话，回填时引用块永远 strip 不干净、一个字都对不上，
-       四张图全散成独立根 —— 用户刷新后看到的还是「没有分支」。
-       两种都剥掉，剩下的纯提示词才好比。 */
-    var strip = function (s) {
-      return String(s || '')
-        .replace(/【画板生图】[\s\S]*?提示词：/, '')
-        .replace(/\[图片\]\s*提示词：/g, '')
-        /* 节点 injected 存的是整段 user 原文，尾部挂着前端自动追加的
-           【本轮参考上下文】能力清单。不剥掉的话「有图」那侧永远带几百字尾巴，
-           跟引用块里的纯提示词比不上，回填时分支就散了。 */
-        .replace(/【本轮参考上下文】[\s\S]*$/, '')
-        .trim();
-    };
-    var want = strip(m[1]);
+    var want = promptOf(m[1]);
     if (!want) return '';
     var hit = '';
     (nodes || []).forEach(function (n) {
-      if (hit || !n || !n.injected) return;
-      var have = strip(n.injected);
+      /* 取「最近一张」而不是「第一张」（2026-11-17）：同一 prompt 迭代出来的
+         七八张图提示词一字不差，取第一个匹配会把后续全挂到最早那张上，
+         画板上就是一根棍子扇出七八条线（实测 maxFanout=3）。
+         用户真实动作是「在最新那张上继续改」，所以后出现的覆盖前者。 */
+      if (!n || !n.injected) return;
+      var have = promptOf(n.injected);
       if (have && (have === want || want.indexOf(have) >= 0 || have.indexOf(want) >= 0)) hit = n.id;
+    });
+    return hit;
+  }
+
+  /* 同 prompt 迭代认父（2026-11-17，用户第 4 次报「看不到连接线」的根因）
+     ──────────────────────────────────────────────────────────────
+     实况：__canvas_probe__ 会话里连着 8 次发同一个「请绘制 Hermes 技术架构概念图」，
+     一次都没点图片引用 → 消息里没有【引用上下文】块 → refFromCtx 只返回 ''，
+     8 张图全落成孤立根，画板上一条线都没有。
+     用户每次报「还是看不到连接线」，前几轮我都去修渲染（线宽、viewport 塌陷），
+     但拿同一份 7 张图做 A/B 实测：全独立根 = 0 条线，串成链 = 6 条线、
+     每条屏幕上 2.5px 薄荷绿可见 —— 渲染是好的，缺的是父子关系。
+     所以补一条不撒谎的判据：**提示词完全相同 = 同一系列在迭代**，挂到最近那张
+     同 prompt 的图下面。提示词不同就仍然不连线，绝不凭出现顺序硬串。 */
+  function samePromptParent(ctx, nodes) {
+    var want = promptOf(ctx);
+    if (!want || want.length < 4) return '';   // 太短（"-"、"继续"）不足以判定同系列
+    var hit = '';
+    (nodes || []).forEach(function (n) {
+      if (!n || !n.injected) return;
+      if (promptOf(n.injected) === want) hit = n.id;   // order 升序遍历，后者覆盖 = 取最近一张
     });
     return hit;
   }
@@ -1250,7 +1379,47 @@ var CanvasMode = (function () {
     srcs.forEach(function (item) {
       var src = item.src, ctx = item.ctx || '';
       var key = imgKey(src);
-      if (alive[key]) { lastId = alive[key]; return; }
+      if (alive[key]) {
+        lastId = alive[key];
+        /* 老节点补提示词（2026-11-17 用户报「提示词写的是老节点」）。
+           节点已经按 url 在册，这里直接 return 的话永远补不上 injected ——
+           早期存档 / 早一轮回填建出来的节点没有这个字段，点图只弹
+           「老节点，画板开始记录提示词之前生成的」。
+           这次回填手里就有 ctx，缺了补上；已经有的一字不动。 */
+        var av = S.nodes[alive[key]];
+        if (av) {
+          var changed = false;
+          if (!av.injected && ctx) { av.injected = ctx; changed = true; }
+          /* 老节点补父（2026-11-17 第 5 次修 —— 用户说「不对啊，我引用了的啊」）。
+             前一轮只改了判据没用，因为判据上线前画板已经按旧逻辑回填过一轮，
+             节点落在 localStorage 里、parentId 全是空。这次回填撞上 alive[key]
+             就 return，父永远补不上 —— 用户看到的现象就是「代码改了，线还是不出现」，
+             而我拿自己造的探针会话（0 条引用）当证据，还反过来怪他没引用。
+             这里用同一套判据补：有引用块按 refFromCtx 认，没有按同 prompt 认。
+             **已经有 parentId 的一字不动**（用户可能手动连过，不能覆盖他的选择）。 */
+          if (chain && !av.parentId && ctx) {
+            var sib = S.order.map(function (id) { return S.nodes[id]; })
+                             .filter(function (x) { return x && x.url && x.id !== av.id; });
+            var rid = refFromCtx(ctx, sib) || samePromptParent(ctx, sib);
+            if (rid && rid !== av.id) {
+              /* 防环：顺着 rid 往上追，碰到自己就是接成闭环，放弃 */
+              var g = rid, guard = 0, cyc = false;
+              while (g && guard++ < 64) {
+                if (g === av.id) { cyc = true; break; }
+                g = (S.nodes[g] && S.nodes[g].parentId) || '';
+              }
+              if (!cyc) {
+                av.parentId = rid;
+                av.refId = rid;
+                renderLink(rid, av.id);   /* 立刻补线，不等下一帧 */
+                changed = true;
+              }
+            }
+          }
+          if (changed) save();
+        }
+        return;
+      }
       // 有占位节点就把它变成图，没有就新建
       var pendId = Object.keys(S.nodes).filter(function (id) { return S.nodes[id].kind === 'pending'; })[0];
       if (pendId) {
@@ -1271,6 +1440,11 @@ var CanvasMode = (function () {
           var existing = S.order.map(function (id) { return S.nodes[id]; })
                                  .filter(function (x) { return x && x.url; });
           refId = refFromCtx(ctx, existing);
+          /* 没有引用证据时，看提示词是不是同一个（2026-11-17）：
+             用户在同一张图上反复迭代同一个 prompt，消息里压根没有引用块，
+             按旧逻辑全散成根、一条线没有。同 prompt 挂最近那张下面，
+             prompt 不同就还是根 —— 不凭出现顺序硬串。 */
+          if (!refId) refId = samePromptParent(ctx, existing);
         } else {
           refId = live;
         }
@@ -1732,6 +1906,24 @@ var CanvasMode = (function () {
     S._stageTop = top;
   }
 
+  /* 标签栏显隐会改 stage 的起点（2026-11-17 用户反馈「画板下展开多会话标签看不到」）：
+     进画板那一刻标签栏若收着，syncStageTop() 只算到 header 底边；此后用户点
+     「显示多会话标签」把标签栏撑出 59px，没有任何人再调 syncStageTop，stage 就停在
+     旧 top 上——它又是 absolute + DOM 末尾，整条标签栏被蒙在底下。
+     onWinResize 只管窗口缩放，管不到标签栏。这里用 ResizeObserver 盯住标签栏本身：
+     收起/展开/换会话/窗口缩放都会触发，比在 tabs.js 五处调用点上各挂一次回调稳。 */
+  var _tabsRO = null;
+  function watchStageTop() {
+    if (_tabsRO || typeof ResizeObserver === 'undefined') return;
+    var tabs = document.getElementById('sessionTabs');
+    if (!tabs) return;
+    _tabsRO = new ResizeObserver(function () {
+      if (!S.on || !S.stage) return;
+      syncStageTop();
+    });
+    _tabsRO.observe(tabs);
+  }
+
   /* 视图切换按钮已挪进 header（见 buildViewSwitch），位置交给 flex 排，
      不再需要按 header 底边算 top —— syncViewSwitchTop 整段删除。
      留着它只会让人以为还有个浮层要定位。 */
@@ -1910,6 +2102,7 @@ var CanvasMode = (function () {
     stage.classList.remove('cv-hidden');
     S.stage = stage;
     syncStageTop();
+    watchStageTop();
     if (!S._resizeHooked) { S._resizeHooked = true; window.addEventListener('resize', onWinResize); }
     buildTopLeft();
     /* 画板专用：本轮能力默认勾上图像生成 */
@@ -1924,9 +2117,14 @@ var CanvasMode = (function () {
       S.world.appendChild(S.svg);
     }
     if (S.svg) {
-      S.svg.style.width = '1px';
-      S.svg.style.height = '1px';
+      /* 同上：尺寸给足，否则连线全被裁在 0.36px 的 viewport 外 */
+      S.svg.style.position = 'absolute';
+      S.svg.style.left = '0';
+      S.svg.style.top = '0';
+      S.svg.style.width = '4000px';
+      S.svg.style.height = '4000px';
       S.svg.style.overflow = 'visible';
+      S.svg.style.pointerEvents = 'none';
     }
 
     bindCanvas();
@@ -2031,7 +2229,24 @@ var CanvasMode = (function () {
     viewMode: function () { return S.viewMode; },
     openGallery: function () { if (S.on) toggleDrawer(true); },
     /* 供外部在会话切换时判断 */
-    refresh: function (sid) { if (S.on && S.sid !== sid) enter(sid); }
+    refresh: function (sid) { if (S.on && S.sid !== sid) enter(sid); },
+    /* 只读调试口（2026-11-17）：S 在闭包里，连线出问题时外部连"有几个节点、
+       谁是谁的父节点"都看不到，只能靠截图猜。给一个只读快照，
+       不含任何写操作，也不改布局。 */
+    _debug: function () {
+      var nodes = {};
+      Object.keys(S.nodes || {}).forEach(function (k) {
+        var n = S.nodes[k];
+        nodes[k] = { id: n.id, kind: n.kind, parentId: n.parentId || null,
+                     x: n.x, y: n.y, w: n.w, h: n.h,
+                     /* 提示词截断一段就够了：排查「为什么这张没连上」时，
+                        第一件事就是看它和上一张的 prompt 是不是同一个。 */
+                     prompt: promptOf(n.injected || '').slice(0, 60) };
+      });
+      return { on: S.on, sid: S.sid, layout: S.layout, view: S.view,
+               order: (S.order || []).slice(), nodeCount: Object.keys(nodes).length,
+               nodes: nodes, svgParent: !!(S.svg && S.svg.parentNode) };
+    }
   };
 })();
 

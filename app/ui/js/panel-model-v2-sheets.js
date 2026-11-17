@@ -502,9 +502,12 @@
     /* ── 密钥：一行一把，两态同一套 ──
        新增态默认给一行空白，编辑态载入已有密钥。编辑时留空 = 保持原值；
        ✕ 只动草稿，点「保存」那一刻才真删。 */
+    /* value 存字符串，不存 DOM 引用：drawKeys() 每次加点新密钥都会把整排 input
+       重建，值挂在元素上的话，加第三把就把第二把的明文抹了（2026-11-17 用户报的
+       「添加第三个会丢失第二个密钥，不能临时存储」）。 */
     var keyRows = editing
-      ? members.map(function (m) { return { id: m.id, label: m.key_label || '', val: null }; })
-      : [{ id: '', label: '', val: null }];
+      ? members.map(function (m) { return { id: m.id, label: m.key_label || '', value: '' }; })
+      : [{ id: '', label: '', value: '' }];
     var keyBox = el('div', 'keylist');
     var mp = null;   /* 编辑态下方的模型区 */
 
@@ -512,19 +515,40 @@
       if (!mp) return;
       var seen = {};
       keyRows.forEach(function (r) { if (r.id) seen[r.id] = 1; });
-      mp.setMembers(members.filter(function (m) { return seen[m.id]; }));
+      mp.setMembers(members.filter(function (m) { return seen[m.id]; }), keyRows);
       var st = sheet.box.querySelector('.sheet-h .st');
       if (st) st.textContent = keyRows.length + ' 把密钥 · 共用名称和地址';
     }
 
+    /* 草稿行在 keyRows 里的序号（第几个 id 为空的）。模型区拿它当虚拟来源 id
+       __draft_<di>：一把草稿一个标签、一次端点发现。原来全折成 __draft_0，
+       加两把新密钥只出一个标签。 */
+    function draftIndexOf(at) {
+      var di = -1;
+      for (var i = 0; i < keyRows.length; i++) {
+        if (!keyRows[i].id) di++;
+        if (i === at) return keyRows[i].id ? -1 : di;
+      }
+      return -1;
+    }
+
     function drawKeys() {
+      /* replaceChildren 会把 input 整个扔掉，值存在元素上就等于没存 ——
+         重绘前先把眼下 DOM 里的内容收回 keyRows。 */
+      var live = keyBox.querySelectorAll('.keyrow');
+      Array.prototype.forEach.call(live, function (row, i) {
+        var r = keyRows[i]; if (!r) return;
+        var ins = row.querySelectorAll('input');
+        if (ins[0]) r.label = ins[0].value;
+        if (ins[1]) r.value = ins[1].value;
+      });
       keyBox.replaceChildren();
       keyRows.forEach(function (r) {
         var row = el('div', 'keyrow');
         var lab = input(r.label || '', '名称（必填），例如 主用');
         lab.oninput = function () { r.label = lab.value; if (mp) mp.refresh(); };
-        var val = input('', r.id ? '已配置 · 留空不改' : '填明文密钥', 'password');
-        r.val = val;
+        var val = input(r.value || '', r.id ? '已配置 · 留空不改' : '填明文密钥', 'password');
+        val.oninput = function () { r.value = val.value; };
         var del = btn('✕', 'btn sm danger kdel', function () {
           keyRows = keyRows.filter(function (x) { return x !== r; });
           drawKeys();
@@ -545,7 +569,7 @@
     sheet.body.append(khead);
     sheet.body.append(keyBox);
     sheet.body.append(btn('+ 添加一把密钥', 'btn', function () {
-      keyRows.push({ id: '', label: '', val: null });
+      keyRows.push({ id: '', label: '', value: '' });
       drawKeys();
       syncModelKeys();
     }));
@@ -559,17 +583,23 @@
       mWrap.append(mHost, mBar);
       sheet.body.append(mWrap);
       mp = M.sheets.modelPanel(S, p, mHost, mBar, function (wantId) {
-        /* 取一把能拿来问端点的明文：wantId 指了哪把就只认那把；没指就退到
-           第一把填了明文的。草稿行 id 是空串，不能写 r.id && r.id !== wantId ——
-           短路后草稿行永远不被跳过，几把 key 全拿同一把去问端点。 */
+        /* wantId 有三种：已存密钥的真实 id、'__draft_<n>'（第 n 个草稿行）、空。
+           草稿行 id 是空串，拿真实 id 那套直接比对永远匹配不上 —— 之前
+           getCtxSafe('__draft_0') 返回空 key，草稿密钥既测不了连通也拉不了模型。 */
+        var dm = /^__draft_(\d+)$/.exec(String(wantId || ''));
         var fresh = '', freshLabel = '';
         for (var i = 0; i < keyRows.length; i++) {
-          if (wantId && keyRows[i].id !== wantId) continue;
-          var v = keyRows[i].val ? keyRows[i].val.value.trim() : '';
-          if (v) { fresh = v; freshLabel = String(keyRows[i].label || '').trim(); break; }
+          var kr = keyRows[i];
+          if (dm) { if (draftIndexOf(i) !== Number(dm[1])) continue; }
+          else if (wantId && kr.id !== wantId) continue;
+          var v = String(kr.value || '').trim();
+          if (v) { fresh = v; freshLabel = String(kr.label || '').trim(); break; }
         }
-        var rowSnap = keyRows.map(function (r) {
-          return { id: r.id || '', label: String(r.label || '').trim() };
+        /* rowSnap 带 di：模型区靠它给每个草稿行分配 __draft_<di>，
+           原来全挤到 __draft_0 上，三把草稿只出一个来源。 */
+        var rowSnap = keyRows.map(function (r, i) {
+          return { id: r.id || '', label: String(r.label || '').trim(),
+                   di: r.id ? -1 : draftIndexOf(i) };
         });
         return { key: fresh, base_url: urlI.value, api_mode: modeSel.value,
                  label: freshLabel, rows: rowSnap };
@@ -588,7 +618,7 @@
       for (var i = 0; i < keyRows.length; i++) {
         var r = keyRows[i];
         var lb = String(r.label || '').trim();
-        var v = r.val ? r.val.value.trim() : '';
+        var v = String(r.value || '').trim();
         if (!lb) { warn('第 ' + (i + 1) + ' 把密钥还没起名字 —— 模型清单靠它标来源'); return null; }
         if (v) out.push({ id: r.id || '', label: lb, value: v });
         else if (r.id) out.push({ id: r.id, label: lb, value: '' });
@@ -788,6 +818,11 @@
     var query = '';
     var hidden = {};   /* 后端「移出」是 enabled=false 归档，视图自己记住，否则重绘又回来 */
     var src = {};      /* keyId -> {state:'ok'|'fail'|'empty', msg, n} 这次请求的结果 */
+    /* 草稿来源拉回来的模型清单：__draft_<di> -> [{id,name,ctx}]。
+       setMembers 一调 rebuild 就从 cur 重铺，而草稿行不在 cur 里 —— 不把这份
+       重放回去，用户加完密钥一点模型区，刚拉到的草稿分组整块消失
+       （「加第三个密钥下方没有对应的标签」的另一半，2026-11-17）。 */
+    var draftModels = {};
     /* 2026-11-16：单条连通测试的结果，modelId -> {state,label,code,ms,detail,busy,at}。
        state 和中文短标签都由后端 classifyProbe 判定（可用/欠费/限流/无此模型/密钥失效/
        超时/连不上/上游异常/被拒绝），前端只负责摆位置，不自己编判断。
@@ -855,16 +890,20 @@
          留着兜底等于同一个人有两个名字来源，正是「临时和正式混为一谈」的根。 */
       var live = getCtxSafe('') || {};
       var list = live.rows || [];
-      var out = [], seenDraft = false, i;
+      var out = [], i;
       for (i = 0; i < list.length; i++) {
         var row = list[i];
         if (row.id) {
           out.push({ id: row.id, label: row.label || '密钥', draft: false });
-        } else if (!seenDraft) {
-          /* 草稿行只算一把：端点发现一次只问一把新增的密钥。 */
-          seenDraft = true;
-          var got = src[DRAFT_ID] || {};
-          out.push({ id: DRAFT_ID, label: row.label || got.label || '新密钥', draft: true });
+        } else {
+          /* 一把草稿一个来源。原来用 seenDraft 把草稿全折成 __draft_0，
+             加两把新密钥只出一个标签、端点也只问一把 —— 用户报的
+             「模型标签只能有 2 个」「3 把密钥只获取 2 把的模型」都在这里
+             （2026-11-17）。di 由编辑页的 rowSnap 算好带进来。 */
+          var di = (row.di != null && row.di >= 0) ? row.di : 0;
+          var did = '__draft_' + di;
+          var got = src[did] || {};
+          out.push({ id: did, label: row.label || got.label || '新密钥', draft: true });
         }
       }
       return out;
@@ -916,8 +955,12 @@
        点保存都抛 rows is not defined：界面不提示，看着像点成功了，配置一个字节没写。
        留这一个出口，别再跨闭包摸 rows。 */
     M.modelDraftPool = function () {
-      return rows.filter(function (r) { return r.keys.indexOf(DRAFT_ID) >= 0; })
-        .map(function (r) { return { id: r.id, name: r.name, enabled: !!r.on[DRAFT_ID] }; });
+      return rows.filter(function (r) {
+        return r.keys.some(isDraft);
+      }).map(function (r) {
+        var on = r.keys.some(function (k) { return isDraft(k) && r.on[k]; });
+        return { id: r.id, name: r.name, enabled: on };
+      });
     };
 
     /* 打开弹层：把各把 key 已存的 models 合并成一张表。
@@ -932,6 +975,19 @@
       cur.forEach(function (m) {
         normModels(m.models).forEach(function (x) {
           absorb(x.id, x.name, x.context_window, x.enabled !== false, m.id);
+        });
+      });
+      /* 草稿来源重放。cur 里没有这些虚拟 key，光铺 cur 的话，编辑页那边
+         「+ 添加一把密钥」→ syncModelKeys → setMembers → 这里，用户刚在端点
+         拉到的草稿模型分组就会整块被洗掉。草稿行被删掉时顺手清缓存。 */
+      var liveDraft = {};
+      sources().forEach(function (o) { if (o.draft) liveDraft[o.id] = 1; });
+      Object.keys(draftModels).forEach(function (did) {
+        if (!liveDraft[did]) { delete draftModels[did]; return; }
+        draftModels[did].forEach(function (x) {
+          var pk = x.id + '\u0001' + did;
+          var on = Object.prototype.hasOwnProperty.call(prev, pk) ? prev[pk] : true;
+          absorb(x.id, x.name, x.ctx, on, did);
         });
       });
       /* 逐 (模型, 密钥) 还原勾选 —— 按模型 id 还原会把 A 密钥的勾泼到 B 密钥上 */
@@ -1158,37 +1214,36 @@
         }));
       });
 
-      /* 还没保存的密钥也一起问 —— 用户原话「我不测我怎么知道要不要保存」。
-         这是先有鸡还是先有蛋，不给一个只读的试探口，就只能靠猜着存。
-         凭证从 getCtxSafe('') 拿：它会挑表单里「第一个填了明文的密钥框」，
-         正好就是刚填进去那把。这里不能直接读 keyRows —— 那是 providerEdit 的
-         局部变量，跨作用域拿不到（第一版那么写，静默什么都没发）。
-         纯读操作，一个字节都不写配置；结果并进清单，归属挂 '__draft_0'，
-         保存时由 pool 兜底让新 key 继承 —— 跟「新加密钥继承同服务模型」同一条路。 */
-      var draftCtx = getCtxSafe('') || {};
-      var draftKey = String(draftCtx.key || '').trim();
-      var draftBase = String(draftCtx.base_url || '').trim();
-      /* 用户给这把密钥起的名字。来源标签直接用这个，不编「未保存」——
-         临时测试的密钥凭什么不能有自己的名字（2026-11-16 用户指出）。 */
-      /* 草稿行自己的名字，从行快照里按「没有 id」找 —— 不能拿 getCtx 返回的那个
-         label，那是「第一把填了明文的密钥」的名字，可能是另一把。
-         原来写 draftCtx.draftLabel || draftCtx.label，draftLabel 这个字段早就没人
-         返回了，实际一直走的是后者，草稿标签显示别人的名字。 */
-      var draftRow = (draftCtx.rows || []).filter(function (x) { return !x.id; })[0];
-      var draftLabel = String((draftRow && draftRow.label) || '').trim();
-      if (draftKey && draftBase) {
-        jobs.push(M.api({
-          action: 'discover', provider_id: '', base_url: draftBase,
-          api_mode: draftCtx.api_mode || '', api_key: draftKey, model: ''
-        }).then(function (res) {
-          var ids = ((res && res.models) || []).map(function (x) {
-            return typeof x === 'string' ? x : (x && x.id);
-          }).filter(Boolean);
-          return { id: DRAFT_ID, ids: ids, label: draftLabel };
-        }, function (err) {
-          return { id: DRAFT_ID, error: (err && err.message) || '获取失败', label: draftLabel };
-        }));
-      }
+      /* 每个草稿行各问各的 —— 原来只拿 getCtxSafe('') 挑出来的那一把，
+         加几把新密钥都只问第一把，于是「填了 3 把密钥只能获取 2 把的模型」。
+         did 在闭包里必须显式捕获：var 循环变量进 .then 时只剩最后一个值。 */
+      var allRows = (getCtxSafe('') || {}).rows || [];
+      allRows.forEach(function (row) {
+        if (row.id) return;
+        var di = (row.di != null && row.di >= 0) ? row.di : 0;
+        var did = '__draft_' + di;
+        var lab = String((row.label || '') ).trim();
+        var dctx = getCtxSafe(did) || {};
+        (function (did, dctx, lab) {
+          var k = String(dctx.key || '').trim();
+          var b = String(dctx.base_url || '').trim();
+          if (!k || !b) {
+            src[did] = { state: 'fail', msg: k ? '没有服务地址' : '还没填明文密钥', label: lab || dctx.label || '' };
+            return;
+          }
+          jobs.push(M.api({
+            action: 'discover', provider_id: '', base_url: b,
+            api_mode: dctx.api_mode || '', api_key: k, model: ''
+          }).then(function (res) {
+            var ids = ((res && res.models) || []).map(function (x) {
+              return typeof x === 'string' ? x : (x && x.id);
+            }).filter(Boolean);
+            return { id: did, ids: ids, label: lab || dctx.label || '' };
+          }, function (err) {
+            return { id: did, error: (err && err.message) || '获取失败', label: lab || dctx.label || '' };
+          }));
+        })(did, dctx, lab);
+      });
 
       if (!jobs.length) { setBar('bad', '每把密钥都没有服务地址', '先把服务地址填上'); return; }
       setBar('busy', '正在问 ' + jobs.length + ' 把密钥的模型清单…');
@@ -1235,6 +1290,11 @@
          跟「新加密钥继承同服务清单」是同一条路。 */
       Object.keys(got).forEach(function (kid) {
         if (!isDraft(kid)) return;
+        /* 记一份给 rebuild 重放用，否则 setMembers 一来分组就没了 */
+        draftModels[kid] = got[kid].map(function (id) {
+          var old = infoOf(id);
+          return { id: id, name: old.name || id, ctx: old.ctx || 0 };
+        });
         got[kid].forEach(function (id) {
           var old = infoOf(id);
           absorb(id, old.name || id, old.ctx || 0, true, kid);
@@ -1577,27 +1637,168 @@
       box.append(field('来源', sel));
 
       // 图像生成走「自定义中转站」时，地址和密钥全部复用 LLM 服务里已经配好的那份 ——
-      // 这张卡只负责挑「用哪个服务」和「用哪个图像模型」，不再重复存一遍地址。
+      // 这张卡只负责挑「用哪个服务」和「用哪些图像模型」。
       var linkSel = null;
-      var modelI = null;
       if (d.key === 'image_gen') {
         var det = d.detail || {};
         var all = (S.catalog && S.catalog.providers) || [];
         var extraBox = el('div', 'backend-form');
+
+        /* 已勾的候选按顺序存，[0] 就是默认模型。老配置只有单条 model，
+           回落到它，否则一打开编辑看着像"一个都没配"。 */
+        var picked = (det.targets || []).map(function (t) {
+          return { provider_id: t.provider_id || '', model: t.model || '' };
+        }).filter(function (t) { return t.model; });
+        if (!picked.length && det.model) picked = [{ provider_id: det.provider_id || '', model: det.model }];
+
         linkSel = select(
           [['', '不用（走插件自己的密钥）']].concat(all.map(function (p) {
             return [p.id, (p.name || '未命名服务') + ' — ' + (p.base_url || '无地址')];
           })),
           det.provider_id || ''
         );
-        modelI = input(det.model || '', '例如 gemini-2.5-flash-image');
-        extraBox.append(field('用哪把密钥', linkSel, '地址和密钥都复用这个 LLM 服务，不在这里重填'));
-        extraBox.append(field('生图模型名', modelI, '该服务下真实的图像模型 ID，不是显示名'));
-        extraBox.append(el('p', 'mini', '列表里没有？去「LLM 服务商」加一条。'));
-        var syncVisible = function () { extraBox.style.display = sel.value === 'custom' ? '' : 'none'; };
-        sel.onchange = syncVisible;
-        syncVisible();
+        extraBox.append(field('用哪把密钥', linkSel,
+          '地址和密钥都复用这个 LLM 服务，不在这里重填。下面候选已跨服务聚合，这里只决定手填的模型挂到哪个服务'));
+
+        var modelBox = el('div', 'imgmodels');
+        var modelField = field('生图模型', modelBox,
+          '所有服务保存过的模型都在这里，可以跨服务多选；圆点选中的那个是默认，对话面板的「能力 · 图像生成」用的就是它');
+        extraBox.append(modelField);
+
+        function providerModels(pid) {
+          var hit = all.filter(function (x) { return x.id === pid; })[0];
+          if (!hit) return [];
+          var seen = {};
+          return ((hit.models || []).map(function (m) {
+            return typeof m === 'string' ? m : (m.id || m.name || '');
+          })).filter(function (v) {
+            if (!v || seen[v]) return false;
+            seen[v] = 1;
+            return true;
+          });
+        }
+        /* 跨服务聚合候选（2026-11-17 用户要求「多选应该跨供应商也可以」）。
+           以前只列 linkSel 选中那一个服务的 models，等于把「多选」锁死在单服务里，
+           想同时勾 A 服务的 gpt-image-2 和 B 服务的 nano-banana 根本做不到。
+           现在把所有已保存服务商的模型平铺出来，每行标出它来自哪家；
+           勾中时记住自己的 provider_id，保存写进 image_gen.targets 就是多服务数组。
+           linkSel 退化成「手填的模型归到哪个服务」，不再限制候选范围。 */
+        function allCandidates() {
+          var out = [];
+          var seen = {};
+          all.forEach(function (p) {
+            providerModels(p.id).forEach(function (mid) {
+              var k = (p.id || '') + '\u0000' + mid;
+              if (seen[k]) return;
+              seen[k] = 1;
+              out.push({ provider_id: p.id || '', model: mid,
+                         pname: p.name || p.id || '未命名服务' });
+            });
+          });
+          /* 已勾但不在任何服务模型表里的（手填的、或那个服务被删了）
+             也得列出来 —— 否则勾上之后就再也取消不掉，只能去改配置文件。 */
+          picked.forEach(function (t) {
+            var k = (t.provider_id || '') + '\u0000' + t.model;
+            if (seen[k]) return;
+            seen[k] = 1;
+            var hp = all.filter(function (x) { return x.id === t.provider_id; })[0];
+            out.push({ provider_id: t.provider_id || '', model: t.model,
+                       pname: hp ? (hp.name || hp.id) : (t.provider_id || '手填') });
+          });
+          return out;
+        }
+        /* 判重必须带上 provider_id：不同服务可能有同名模型（各家都叫 gpt-image-2），
+           只比模型名会把两家当成同一个，勾一个另一个跟着亮。 */
+        function isPicked(pid, mid) {
+          return picked.some(function (t) {
+            return t.model === mid && (t.provider_id || '') === (pid || '');
+          });
+        }
+
+        /* 勾选区每次整块重画：数量少、状态只有"勾没勾"和"谁是默认"两种，
+           用不着精细 diff，重画反而不会留下指向旧节点的闭包。 */
+        function renderModels() {
+          modelBox.textContent = '';
+          var cands = allCandidates();
+          if (!cands.length) {
+            modelBox.append(el('p', 'mini',
+              '还没有任何服务保存过模型。先去「LLM 服务商」加一条，或在下面手动补。'));
+            return;
+          }
+          cands.forEach(function (c) {
+            var on = isPicked(c.provider_id, c.model);
+            var row = el('div', 'imgmodel-row' + (on ? ' on' : ''));
+            var cb = el('input');
+            cb.type = 'checkbox';
+            cb.className = 'imgmodel-cb';
+            cb.checked = on;
+            cb.onchange = function () {
+              if (cb.checked) {
+                if (!isPicked(c.provider_id, c.model)) {
+                  picked.push({ provider_id: c.provider_id, model: c.model });
+                }
+              } else {
+                picked = picked.filter(function (t) {
+                  return !(t.model === c.model && (t.provider_id || '') === c.provider_id);
+                });
+              }
+              renderModels();
+            };
+            var name = el('span', 'imgmodel-name', c.model);
+            var srcTag = el('span', 'imgmodel-src', c.pname);
+            var isDef = on && picked[0] && picked[0].model === c.model &&
+                        (picked[0].provider_id || '') === c.provider_id;
+            var rd = el('input');
+            rd.type = 'radio';
+            rd.className = 'imgmodel-rd';
+            rd.name = 'img_default_target';
+            rd.title = '设为默认';
+            rd.disabled = !on;
+            rd.checked = isDef;
+            rd.onchange = function () {
+              if (!on) return;
+              // 默认 = 挪到数组第一项，保存时后端照这个顺序写进 custom.model
+              picked = [{ provider_id: c.provider_id, model: c.model }].concat(
+                picked.filter(function (t) {
+                  return !(t.model === c.model && (t.provider_id || '') === c.provider_id);
+                }));
+              renderModels();
+            };
+            row.append(cb, name, srcTag, rd);
+            /* 「默认」只标在真正是默认的那一行。以前每行都印「默认」，
+               未勾的也印 —— 一眼看过去像三个都是默认。 */
+            if (isDef) row.append(el('span', 'imgmodel-tag', '默认'));
+            else if (on) row.append(el('span', 'imgmodel-tag', '设为默认'));
+            modelBox.append(row);
+          });
+        }
+
+        /* 手动补一个：gpt-image-2 这种模型并不在 provider 的 models 列表里
+           （它只借用那个服务的地址和密钥），实测踩过，所以必须留口。 */
+        var manualI = input('', '不在上面？手填模型 ID，例如 gpt-image-2');
+        var manualBtn = btn('加入', 'btn sm', function () {
+          var mid = (manualI.value || '').trim();
+          if (!mid) return;
+          if (!isPicked(mid)) picked.push({ provider_id: linkSel.value, model: mid });
+          manualI.value = '';
+          renderModels();
+        });
+        var manualRow = el('div', 'imgmodel-manual');
+        manualRow.append(manualI, manualBtn);
+        // 挂在 modelBox 外面：renderModels() 每次都把 modelBox 清空重画，
+        // 挂里面的话点一次"加入"自己就被抹掉了（输到一半的文本也一起没）。
+        extraBox.append(manualRow);
+
+        linkSel.onchange = renderModels;
+        renderModels();
         box.append(extraBox);
+        /* 只有来源选了「自定义中转站」才谈得上"用哪把密钥、用哪些模型"。
+           别的来源是插件自己带 key，这三行在那种情况下纯属噪音。 */
+        var syncCustom = function () {
+          extraBox.style.display = sel.value === 'custom' ? '' : 'none';
+        };
+        sel.onchange = syncCustom;
+        syncCustom();
       }
 
       var saveBtn = btn('保存', 'btn sm primary', async function () {
@@ -1605,10 +1806,25 @@
         saveBtn.textContent = '写入中…';
         var payload = { action: 'save_backend', domain: d.key, provider: sel.value, revision: (S.backends || {}).revision };
         if (d.key === 'image_gen' && sel.value === 'custom' && linkSel) {
-          payload.extras = { provider_id: linkSel.value, model: (modelI.value || '').trim() };
+          /* targets 的顺序就是优先级，第一项是默认模型 —— 后端照这个顺序同时写
+             image_gen.targets（画板下拉/新建面板读它）和 custom.provider_id+model
+             （内核真正读的那一个）。两边不写齐就会出现「面板勾了 A，实际还在用 B」。
+             **每条 target 带自己的 provider_id，不许再统一覆盖成 linkSel 的值**：
+             2026-11-17 之前就是那句覆盖，把「勾了跨服务的两个模型」写成了
+             两个都指向同一个服务 —— 用户点的跨服务多选等于白点。 */
+          var tgt = picked.map(function (t) {
+            return { provider_id: t.provider_id || '', model: t.model };
+          }).filter(function (t) { return t.model; });
+          var head = tgt[0] || { provider_id: linkSel.value || '', model: '' };
+          payload.extras = {
+            provider_id: head.provider_id,
+            model: head.model,
+            targets: tgt
+          };
         }
         await M.mutate(payload,
           { done: d.label + ' 来源已改为 ' + (sel.value || '默认'), body: '写入 ' + d.path });
+        M.closeSheet();
       });
       box.append(saveBtn);
 
@@ -1678,6 +1894,7 @@
         }
         await M.voiceMutate({ section: section, revision: voice.revision, changes: changes },
           { done: d.label + ' 已保存', body: '写入 ' + d.path });
+        M.closeSheet();
       });
       box.append(vsave);
 
@@ -1728,11 +1945,42 @@
           asave.textContent = '写入中…';
           await M.auxMutate({ key: task.key, revision: task.revision, changes: ed.changes() },
             { done: task.label + ' 已更新' });
+          M.closeSheet();
         });
         box.append(asave);
       }
     }
     return box;
+  };
+
+  /* ── 能力后端 · 编辑弹层（2026-11-17）────────────────────
+     卡片外层只留摘要，能改的东西全收进这里。
+     表单本体仍然用 backendInlineForm —— 那套代码没有一条逻辑依赖"内联"，
+     只是原先被塞在卡片里；挪进 sheet.body 一行都不用改，voice / auxiliary
+     两个分支也就跟着一起搬进来了，不会出现"编辑框只改好了 config 那类"。 */
+  M.sheets.backendEdit = function (S, d) {
+    var sheet = M.sheet({
+      title: d.label || d.key,
+      sub: (d.path || '') + (d.kernel === false ? ' · 内核不读这一节，选项只留个记录' : ''),
+      wide: true
+    });
+    /* 「这张卡的选项内核不读」从卡片外层搬进来（2026-11-17 用户原话：
+       这个元素把卡片撑开了，放到打开编辑后的面板里去）。
+       放在弹层第一屏最显眼的位置 —— 用户点开就是想改它，
+       先看到这句才不会以为换个引擎就真换了 OCR。 */
+    if (d.kernel === false) {
+      var warn = el('div', 'cardwarn');
+      warn.append(el('b', null, '这张卡的选项内核不读'));
+      warn.append(el('div', 'mini', d.note || ''));
+      sheet.body.append(warn);
+    }
+    if (M.credBlock) {
+      var creds = M.credBlock(S, d);
+      if (creds) sheet.body.append(creds);
+    }
+    var form = M.sheets.backendInlineForm(S, d);
+    if (form) sheet.body.append(form);
+    return sheet;
   };
 
   M.sheets.backendSwap = function (S, d) {
