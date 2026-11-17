@@ -419,7 +419,7 @@
     var seed = opts.preset || {};
     var sheet = M.sheet({
       title: editing ? '编辑 ' + (self.name || p.id) : '添加 LLM 服务',
-      sub: editing ? (members.length + ' 把密钥 · 共用名称和地址') : '填完保存，接着进编辑页勾模型',
+      sub: editing ? (members.length + ' 把密钥 · 共用名称和地址') : '密钥 · 模型 · 一次填完',
       wide: true
     });
 
@@ -574,15 +574,23 @@
       syncModelKeys();
     }));
 
-    /* 模型区只对已存在的服务开放：新增时还没有 id，既拉不了模型也存不了，
-       保存成功后会自动打开这张编辑页。 */
-    if (editing && p.id) {
+    /* ── 模型区：两态都开（2026-11-18）──
+       用户报「添加模型的面板功能更少，一点都不方便」。原来这里写着
+       `if (editing && p.id)`，理由是「新增时还没有 id，拉不了模型」。但模型区
+       从头到尾没读过 p.id —— 它要的是服务地址 + 明文密钥 + 协议，新增态这三样
+       已经在输入框里。于是新增只能盲存：先存一把、再自动跳编辑页、再勾模型。
+       现在新增态照样能「获取模型 / 勾选 / 测连通」，勾好的清单直接跟着 create
+       一次写进去；保存后仍进编辑页，但那是给补测连通用，不是必经步骤。
+       p 只在 modelPanel 里当 cur 的兜底用，新增态给一个空壳即可。 */
+    {
       var mWrap = el('div', 'mblock');
       var mHost = el('div', 'mhost');
       var mBar = el('div', 'mbar idle');
       mWrap.append(mHost, mBar);
       sheet.body.append(mWrap);
-      mp = M.sheets.modelPanel(S, p, mHost, mBar, function (wantId) {
+      /* 新增态没有 provider 对象，给 modelPanel 一个空壳：它只拿 p 当 cur 的兜底，
+         真正的来源由下面 getCtx 现读输入框（含未保存的草稿行）。 */
+      mp = M.sheets.modelPanel(S, editing ? p : null, mHost, mBar, function (wantId) {
         /* wantId 有三种：已存密钥的真实 id、'__draft_<n>'（第 n 个草稿行）、空。
            草稿行 id 是空串，拿真实 id 那套直接比对永远匹配不上 —— 之前
            getCtxSafe('__draft_0') 返回空 key，草稿密钥既测不了连通也拉不了模型。 */
@@ -603,7 +611,7 @@
         });
         return { key: fresh, base_url: urlI.value, api_mode: modeSel.value,
                  label: freshLabel, rows: rowSnap };
-      }, members);
+      }, editing ? members : []);
     }
 
     var err = el('div', 'errline');
@@ -697,9 +705,28 @@
          点进去是空的壳），再 create 建起第一条 provider，剩下的密钥用
          group_update 补齐，最后自动打开编辑页勾模型。 */
       var plan = [];
+      /* 模型区在新增态也开着（2026-11-18），所以先看用户在下面勾了什么：
+         勾过的直接照勾选结果写，不再重扫端点 —— 他手动取消的模型不能被
+         「自动发现」又塞回去。没拉过清单的密钥才退回探测。 */
+      var pool = (mp && mp.draftPoolBySource) ? mp.draftPoolBySource() : {};
+      var poolOfLabel = {};
+      keyRows.forEach(function (r, i) {
+        var lb = String(r.label || '').trim();
+        if (lb) poolOfLabel[lb] = '__draft_' + draftIndexOf(i);
+      });
       for (var k = 0; k < list.length; k++) {
         var one = list[k];
         if (!one.value) { warn('第 ' + (k + 1) + ' 把密钥还没填值'); return; }
+        var did = poolOfLabel[one.label];
+        var picked = did ? pool[did] : null;
+        if (picked) {
+          if (!picked.length) {
+            warn('「' + one.label + '」下面一个模型都没勾 —— 勾上要用的，或者把这把密钥删掉');
+            return;
+          }
+          plan.push({ label: one.label, value: one.value, models: picked, count: picked.length });
+          continue;
+        }
         err.className = 'errline';
         err.textContent = '正在探测模型（' + (k + 1) + '/' + list.length + '）…';
         try {
@@ -811,7 +838,10 @@
     /* 打开弹层：members 是这个服务全部已存密钥（提交时要原样带回去，否则后端
        group_update 是按 keys 全量替换的，少一把就是删一把）。
        cur = 模型展示、拉取、勾选认的那几把 —— 打开时就是全部已存密钥。 */
-    var cur = (members && members.length) ? members.slice() : [p];
+    /* 新增态（p 为 null）cur 必须是空数组，不能退回 [p]：那个空壳的 id 是 ''，
+       会被当成「一把没有 id 的真实密钥」跑一遍 discover，和同一行草稿
+       __draft_0 各拉一份 —— 同一把密钥出两组标签、模型表里每个模型挂两份来源。 */
+    var cur = (members && members.length) ? members.slice() : (p ? [p] : []);
     var getCtxSafe = getCtx || function () { return {}; };
     var rows = [];     /* 合并视图：{id, name, enabled, context_window, keys:[keyId]} */
     var byId = {};
@@ -1586,6 +1616,24 @@
       refresh: function () { paint(); refreshBar(); },
       /* 「保存」按钮从这里拿最终清单（含空清单校验），落盘只在那一刻发生 */
       draftKeys: draftKeys,
+      /* 新增态专用：按草稿来源分组导出勾选结果（__draft_<di> -> 已勾的模型）。
+         编辑态走 draftKeys()，它按 cur（已存密钥）遍历，加新服务时 cur 里没有 id，
+         刚拉回来的草稿分组一把都拿不到 —— 那正是「添加面板勾不了模型」的根。
+         返回的键就是编辑页 rowSnap 里算好的 di，外面按下标取。 */
+      draftPoolBySource: function () {
+        var out = {};
+        sources().forEach(function (o) {
+          if (!o.draft) return;
+          out[o.id] = rows.filter(function (r) {
+            return r.keys.indexOf(o.id) >= 0 && r.on[o.id];
+          }).map(function (r) {
+            /* 只带三个键：后端 entries 校验写的是 set(m)-{'id','name','enabled'}
+               必须为空，多一个 context_window 就整次 create 报「模型条目格式不正确」。 */
+            return { id: r.id, name: r.name, enabled: true };
+          });
+        });
+        return out;
+      },
       /* 编辑页在草稿里删掉一把密钥时调这个：模型区立刻只认剩下的密钥，不用等
          保存 —— 「我删了就应该实时变化，才能方便下面的测试」。keep 保住用户已经
          勾好的选择，只把消失的那把来源摘掉。 */

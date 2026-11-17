@@ -487,7 +487,11 @@ window.Archive = (function () {
     };
   }
 
-  function openDoc(st, source, path) {
+  /* focusTerm：从搜索结果点进来时带的词，正文渲染完要滚到第一处命中并高亮。
+     放在 st 上而不是串参数下去，是因为渲染要等接口回来（异步），参数接不住。
+     只带一次：doc.render 里的 focusHit() 读完就清空，之后翻其他文档不会误定位。 */
+  function openDoc(st, source, path, focusTerm) {
+    st.docFocus = focusTerm ? String(focusTerm) : null;
     if (modules.doc && modules.doc.beforeLeave) modules.doc.beforeLeave(st);
     if (st.view !== 'doc') { st.view = 'doc'; writeView(st); render(st); }
     elsActive(st, source, path);

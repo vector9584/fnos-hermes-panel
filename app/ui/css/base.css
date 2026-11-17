@@ -1068,15 +1068,19 @@
       .log-filter-toggle{display:none !important}
       .log-filter-row{display:none !important}
       /* 运行服务：Gateway/Dashboard 一行 2 列横排（紧凑，每行只显示名称+开关） */
-      .ov-card-services .ov-card-body{display:flex;flex-direction:row;gap:6px}
-      .service-row{padding:8px 6px !important;gap:4px !important;background:var(--bg2);border-radius:var(--radius-sm);border-bottom:none !important;display:flex !important;flex:1;flex-wrap:nowrap;flex-direction:column;align-items:flex-start;justify-content:center;min-width:0;overflow:hidden;max-width:100%}
+      .ov-card-services .ov-card-body{display:flex;flex-direction:column;gap:6px}
+      .service-row{padding:10px 12px !important;gap:4px !important;background:var(--bg2);border-radius:var(--radius-sm);border-bottom:none !important;display:flex !important;flex:0 0 auto;flex-wrap:nowrap;flex-direction:row;align-items:center;justify-content:flex-start;min-width:0;overflow:hidden;max-width:100%}
       .service-row:last-child{margin-bottom:0}
       .service-info{flex:1;min-width:0;width:100%;overflow:hidden}
       .service-title{font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block}
       .service-meta{font-size:9px;gap:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;width:100%;display:block;color:var(--text3)}
-      .ov-toggle{flex-shrink:0;transform:scale(0.85);transform-origin:right top;position:absolute;top:6px;right:6px;margin-left:0}
-      .service-row{position:relative;padding-right:48px !important}
-      .ov-card-services .ov-card-body .service-row .ov-toggle{position:absolute;top:6px;right:6px;transform:scale(0.8)}
+      /* 2026-11-17：原来这里 scale(0.85)/scale(0.8) + position:absolute 钉右上角，
+         44×24 缩成 35.2×19.2，非整数像素渲染让圆头发糊、看着不像胶囊。
+         service-row 本来就是 flex + align-items:center，直接回行内原尺寸即可。 */
+      .ov-toggle{flex-shrink:0;margin-left:auto;transform:none;position:static}
+      .service-row{position:relative;padding-right:12px !important}
+      /* 原 .ov-card-services .ov-card-body .service-row .ov-toggle{position:absolute;transform:scale(0.8)}
+         已删除：它特异性更高，会盖掉上面回行内的修复 */
       .ov-logbox-head{padding:8px 12px;font-size:12px}
       .ov-logbox-ctrl{gap:6px}
       .ov-logbox-ctrl .ov-refresh{width:24px;height:24px;font-size:10px;padding:0}
@@ -1085,8 +1089,7 @@
       .ov-icon{display:none !important}
       .ov-card-head > div:first-child{display:none !important}
       .local-banner{font-size:12px}
-      /* 日志窗口始终显示 */
-      .ov-logbox{flex:1;min-height:200px;max-height:50vh}
+      /* 日志窗口始终显示 —— 高度规则见下方 Modules 段之后的 @media(768) 覆盖块 */
       /* 页签模板自带横向滚动，扩展页/技能子页签不再单独换行缩字号（2026-11-12 统一） */
       /* 技能市场搜索栏：搜索框独占一行，按钮次行堆叠 */
       #skillMarketBar > div:first-child{flex-wrap:wrap}
@@ -1098,7 +1101,13 @@
     }
   
 /* ---------- Modules ---------- */
-#page-overview .page-body{display:flex;flex-direction:column;overflow:hidden}
+/* overflow-y:auto 而不是 hidden：这张页的卡片总高会随屏幕高度变化（568~844 实测溢出 0~247px），
+   hidden 把溢出部分直接裁掉且没有任何可滚祖先，手机上底部日志永远够不到。
+   overscroll-behavior:contain 防止滚到底时把滚动继续传给对话区。 */
+#page-overview .page-body{display:flex;flex-direction:column;overflow-y:auto;overscroll-behavior:contain}
+/* 桌面保持 flex:1 + min-height:0：由 .ov-logbox 的 flex:1 吸收剩余高度，一屏塞满不产生滚动。
+   真正撑开让页面可滚的是下面 @media(768) 里的覆盖 —— 在 auto 高度容器里 flex:1 会失去参照，
+   实测桌面日志区被撑到 2016px，所以这条不能全局改。 */
 .overview-wrap{display:flex;flex-direction:column;gap:16px;flex:1;min-height:0}
 .ov-header{display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .ov-title{font-size:18px;font-weight:700}
@@ -1152,6 +1161,19 @@
 .ov-actbtn.danger{background:var(--red);color:var(--white)}
 .ov-actbtn:hover{opacity:.9}
 .ov-logbox{border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--bg1);overflow:hidden;flex:1;min-height:140px;display:flex;flex-direction:column}
+/* 移动端日志区必须写在上面这条基础规则【之后】：
+   原先写在 max-width:768px 媒体查询里（旧 1089 行），同特异性但更早出现，被这条整段压掉，
+   手机端一直是 140px 而不是 200px。这里用 #page-overview 提特异性，避免再次被吃。 */
+@media (max-width:768px){
+  /* 移动端才让 wrap 按内容撑开，父级 page-body 才有可滚内容 */
+  #page-overview .overview-wrap{flex:0 0 auto;min-height:100%}
+  #page-overview .ov-logbox{flex:0 0 auto;height:220px;min-height:220px;max-height:44vh}
+  /* 服务卡头部：右侧操作区固定占 245px，375 及以下把「运行服务」从 69px 挤到 54px 断成两行。
+     允许换行让按钮整体落到第二行右对齐，别把标题掰断。overflow-x 必须显式放开，
+     上面通用的 .ov-card-head{overflow-x:auto} 会把换行后的内容变成横向滚动条。 */
+  .ov-card-services .ov-card-head{flex-wrap:wrap;row-gap:6px;overflow-x:visible}
+  .ov-card-services .ov-card-title{white-space:nowrap}
+}
 .ov-logbox-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--border);font-size:13px;font-weight:600}
 .ov-logbox-ctrl{display:flex;align-items:center;gap:10px}
 .ov-refresh-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text3)}
@@ -1771,7 +1793,10 @@ body.theme-dark .boot-panel{box-shadow:0 2px 8px rgba(0,0,0,.2)}
   /* 只放大真点不准的：实测 .ov-iconbtn/.ov-refresh 26–28px，远低于 Apple 的 44px 建议。
      文字按钮 31–33px 保持原样——差 3px 不值得把整页撑高一圈。 */
   .ov-refresh,.ov-iconbtn{min-width:36px;min-height:36px}
-  .toggle{min-height:28px}
+  /* 触控补偿不能用 min-height 撑盒子（2026-11-17）：.toggle 是 44×24、圆角 12 = 高度一半，
+     撑到 28 就变成圆角矩形，滑块 top:2px 也跟着偏上。改用透明伪元素扩命中区，
+     视觉尺寸不动，可点范围上下各多 6px。 */
+  .toggle::before{content:"";position:absolute;inset:-6px 0;border-radius:inherit}
   .modal-head button,.modal-foot .btn{min-height:36px}
   .discussion-item{min-height:44px}
 }

@@ -439,6 +439,10 @@ body.theme-light .cv-node.cv-node-active { animation-name: cv-sel-breathe-light;
   white-space: nowrap;
   max-width: 148px;
   font-weight: 500;
+  /* 2026-11-17：按钮上 line-height:1，行盒只有 12px 高，配合这里的 overflow:hidden
+     会把 g/p/y 的降部切掉（"gpt-image-2" 的 g 和 p 正是）。给文字盒留出降部空间。 */
+  line-height: 1.45;
+  padding-block: 1px;
 }
 .cv-target-caret {
   width: 10px;

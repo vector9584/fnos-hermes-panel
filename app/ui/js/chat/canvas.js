@@ -1089,6 +1089,11 @@ var CanvasMode = (function () {
     }
     setTimeout(function () {
       function h(e) {
+        /* 2026-11-17：按钮自己不能被这里关掉。document 用的是捕获阶段，
+           比按钮上的冒泡监听先跑 —— 若这里把菜单 remove 了，冒泡到按钮时
+           toggleTargetMenu 又建一个新的，「点按钮关菜单」就变成闪一下关不掉，
+           表现为时灵时不灵。按钮交给 toggleTargetMenu 自己判断（有就关）。 */
+        if (anchorBtn.contains(e.target)) return;
         if (!m.contains(e.target)) { m.remove(); document.removeEventListener('click', h, true); }
       }
       document.addEventListener('click', h, true);
@@ -1856,8 +1861,14 @@ var CanvasMode = (function () {
             'stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>' +
         '</span>' +
       '</button>';
+    /* 2026-11-17 修「有的时候点不开」：原来判 ev.target.id === 'cvTargetBtn'，
+       但按钮里包着 svg 图标、模型名 span、箭头 span —— 点到这些子元素时
+       ev.target 是它们，id 是空串，判定直接不成立。而 span.cv-target-name
+       占了按钮九成面积，等于只有戳到边缘留白才弹得出菜单。
+       改成 closest('#cvTargetBtn')，按钮任意位置都算命中。 */
     bar.addEventListener('click', function (ev) {
-      if (ev.target && ev.target.id === 'cvTargetBtn') { toggleTargetMenu(ev.target); return; }
+      var btn = ev.target && ev.target.closest ? ev.target.closest('#cvTargetBtn') : null;
+      if (btn) { toggleTargetMenu(btn); return; }
     });
     S.stage.appendChild(bar);
     syncTargetLabel();

@@ -260,6 +260,52 @@ window.Archive.register('doc', (function () {
       var n = String(area.value || '').split('\n').length;
       footText.textContent = n + ' 行 · ' + String(area.value || '').length + ' 字符 · 编辑中';
     }
+    /* 从搜索结果点进来：把正文里的命中包成 <mark class="arc-hit">，滚到第一处。
+       只消费一次（st.docFocus 读完清空），之后翻别的文档不会误定位。
+       命中词可能被 markdown 拆进不同 Text 节点（**词** / [[词]] / `词`），
+       这里不跨节点拼接——匹配不到就老实提示，不假装定位成功。 */
+    function focusHit() {
+      var term = st.docFocus;
+      if (!term) return;
+      st.docFocus = null;
+      var needle = term.toLowerCase();
+      if (needle.length < 2) return;
+      var targets = [], n;
+      var walker = document.createTreeWalker(article, NodeFilter.SHOW_TEXT, {
+        acceptNode: function (node) {
+          if (!node.nodeValue || !node.nodeValue.trim()) return NodeFilter.FILTER_REJECT;
+          var p = node.parentNode;
+          if (!p || !p.closest || p.closest('script,style,mark')) return NodeFilter.FILTER_REJECT;
+          return node.nodeValue.toLowerCase().indexOf(needle) >= 0
+            ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
+        }
+      });
+      while ((n = walker.nextNode())) targets.push(n);
+      targets.forEach(function (node) {
+        var raw = node.nodeValue, lower = raw.toLowerCase();
+        var frag = document.createDocumentFragment(), from = 0, at;
+        while ((at = lower.indexOf(needle, from)) >= 0) {
+          if (at > from) frag.append(document.createTextNode(raw.slice(from, at)));
+          var m = document.createElement('mark');
+          m.className = 'arc-hit';
+          m.textContent = raw.slice(at, at + needle.length);
+          frag.append(m);
+          from = at + needle.length;
+        }
+        if (from === 0) return;
+        if (from < raw.length) frag.append(document.createTextNode(raw.slice(from)));
+        node.parentNode.replaceChild(frag, node);
+      });
+      var hit = article.querySelector('mark.arc-hit');
+      if (!hit) {
+        if (A.toast) A.toast('正文里没找到「' + term + '」', 'warn');
+        return;
+      }
+      hit.scrollIntoView({ block: 'center' });
+      hit.classList.add('is-flash');
+      setTimeout(function () { if (hit.isConnected) hit.classList.remove('is-flash'); }, 2400);
+    }
+
     function paintRead() {
       /* 条目文件（MEMORY/USER）：§ 渲染成「编号 + 虚线」的条目卡，正文不再出现 § 裸字符。
          源码不动，存回去的还是带 § 的原文。 */
@@ -281,6 +327,7 @@ window.Archive.register('doc', (function () {
         if (oldE) { if (oldE.__cleanup) oldE.__cleanup(); oldE.remove(); }
         outlineBox = null; outlineHas = false;
         controls();
+        focusHit();
         return;
       }
       var outline = A.modules.md.paint(article, bodyText);
@@ -305,6 +352,7 @@ window.Archive.register('doc', (function () {
       outlineHas = !box.hidden;
       layoutOutline();
       controls();
+      focusHit();
     }
     function controls() {
       var dirty = state.editing && area.value !== bodyText;

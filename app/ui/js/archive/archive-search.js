@@ -161,10 +161,14 @@ window.Archive.register('search', (function () {
     });
   }
 
+  /* 打开命中：把搜索词一起带下去，正文渲染完要滚到第一处命中并高亮。
+     2026-11-17 用户报「点击之后只能打开笔记，不能定位到对应的位置」——原来这里
+     只传 source/path，openDoc 不知道在找什么，打开就是从头读。 */
   function pick(item) {
     var st = current;
+    var term = (input && input.value || '').trim();
     if (dlg) dlg.close('pick');
-    A.openDoc(st, item.source, item.path);
+    A.openDoc(st, item.source, item.path, item.focus || item.term || term || null);
   }
 
   function open(st, initial) {

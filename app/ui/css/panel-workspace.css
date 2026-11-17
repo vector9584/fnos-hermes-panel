@@ -61,11 +61,12 @@
 .pw-avatar-actions{display:flex;flex-direction:column;gap:4px;min-width:0}
 .pw-avatar-pick{min-height:30px;padding:4px 12px;font-size:12.5px;align-self:flex-start;white-space:nowrap}
 .pw-avatar-tip{font-size:11px;color:var(--text3);line-height:1.35}
-/* 外链头像输入（2026-11-11）：文件上传之外的第二条路，粘贴公网图片地址 */
-.pw-avatar-url{display:block;width:100%;margin-top:8px;padding:8px 10px;box-sizing:border-box;background:var(--bg1);color:var(--text);border:1px solid var(--border);border-radius:8px;font:inherit;font-size:12.5px;min-height:36px}
-.pw-avatar-url::placeholder{color:var(--text3)}
-.pw-avatar-url:focus{outline:none;border-color:var(--accent)}
-@media (max-width:520px){.pw-avatar-input{gap:10px}.pw-avatar-tip{white-space:normal}}
+/* 排版（2026-11-17）：删掉网址输入框后 actions 吃满剩余宽度；tip 允许换行，禁止用省略号吞掉说明 */
+.pw-avatar-actions{flex:1 1 auto;gap:6px}
+.pw-avatar-tip{white-space:normal;line-height:1.5}
+/* 头像块比输入框高 36px，.pw-row 的 align-items:center 会让矮的那列居中下移 18px；含头像的 row 整行改顶对齐，不动 .pw-row 其它用法 */
+.pw-row:has(>.pw-avatar-field)>.field{align-self:flex-start}
+@media (max-width:520px){.pw-avatar-input{gap:10px;align-items:flex-start;flex-wrap:wrap}.pw-avatar-actions{flex:1 1 100%}}
 .pw-rail-summary{display:flex;align-items:center;justify-content:space-between;padding:8px 10px 14px;color:var(--text3);font-size:12px}.pw-rail-summary button{background:transparent;color:var(--text2);border:0;cursor:pointer;min-height:40px}
 .pw-quick-prompts{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:20px}.pw-quick-prompts button{max-width:100%;white-space:normal;text-align:left}
 .chat-sender{display:flex;align-items:center;font-size:12px;font-weight:600;color:var(--text2);margin-bottom:7px}

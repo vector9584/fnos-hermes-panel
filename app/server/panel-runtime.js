@@ -16,6 +16,12 @@ export class PanelRuntime{
   this.cleanupRetryAt=this.now()+5000;
  }
  status(){if(this.pendingFailure){const pending=this.pendingFailure;this.failed(pending.id,pending.error);if(this.pendingFailure)throw stateError('重启结果暂时无法保存，请检查状态目录后重试',503);}const data=this.file.read(),restart=data.restart,healthy=this.available(),config_recovery=this.recovery();let dirty=false;
+  /* 待重启清单只认「当前进程启动之前/之后」这条界：进程启动前改的配置，当前进程装载时已经读进去了，
+     不需要再重启。旧逻辑用 restart.requested_at 当界线，只有面板自己发起的重启才会更新它；
+     用户用 fnos-cli 手工重启时不经过面板，界线永远停在很久以前，旧的改动就永远清不掉
+     （2026-11-17 实测：restart.requested_at 停在 11-14 22:13，16:48 改的「扩展配置」一直报需要重启）。 */
+  {const live=Array.isArray(data.changes)?data.changes.filter(change=>Number(change.at)>this.started):[];
+   if(live.length!==(data.changes||[]).length){data.changes=live;dirty=true;}}
   if(restart?.drain_cleanup?.status==='pending'&&this.now()>=this.cleanupRetryAt){this.releaseDrain(restart);dirty=true;}
   const awaitingReceipt=restart?.status==='requested'||(restart?.status==='failed'&&restart.failure_reason==='timeout');
   if(awaitingReceipt&&(this.receipt?this.receipt.verify(restart.before,restart.id,restart.worker&&{pid:restart.worker.pid,start:restart.worker.start}):this.started>restart.requested_at)){restart.status='restarted';restart.observed_at=this.started;dirty=true;}

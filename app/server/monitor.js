@@ -1627,13 +1627,23 @@ async function autoTitle(userMsg, provider) {
   }
 }
 
-async function chatRequest(provider, message, history, reqSignal) {
+async function chatRequest(provider, message, history, reqSignal, sessionId) {
   const providerBase = resolveProviderBase(provider);
   const isGateway = providerBase === GATEWAY_API.replace(/\/$/, "");
   const apiKey = MONITOR_TOKEN;
   const headers = { "Content-Type": "application/json" };
   if (apiKey && apiKey !== "none") {
     headers["Authorization"] = `Bearer ${apiKey}`;
+  }
+  // 2026-11-17：把面板会话 UUID 透传给网关，取代网关的兜底哈希。
+  // 网关 api_server.py 的 _derive_chat_session_id 用 sha256(系统提示 + 首条用户消息)[:16]
+  // 当 session id，于是所有以「你好」开头的面板会话都算同一个会话——实测
+  // api-e7ef006cba0d55e9 堆了 7773 条消息、跨 4 天，并共享同一个 task_state，
+  // 每轮把 11-13 的「2/2 已完成」当新任务注入。
+  // 网关侧 request.headers.get("X-Hermes-Session-Id") 有值就直接采用（api_server.py:4149）。
+  // 只在网关链路加；直连上游供应商时这个 header 无意义。
+  if (isGateway && sessionId) {
+    headers["X-Hermes-Session-Id"] = String(sessionId);
   }
   const upstream = await fetch(`${providerBase}/chat/completions`, {
       method: "POST",
@@ -2138,7 +2148,7 @@ function createChatStream(sessionId, message, reqSignal, systemOverride, modelOv
             const timeoutTimer = setTimeout(() => timeoutController.abort(), PROVIDER_TIMEOUT_MS);
             const signal = combineSignals([timeoutController.signal, stopCtrl.signal]);
 
-            const upstream = await chatRequest(provider, normalizedMessage, history, signal);
+            const upstream = await chatRequest(provider, normalizedMessage, history, signal, sessionId);
             {const linked=getSession(sessionId);if(linked&&recordGatewaySession(linked,upstream,{streamId}))saveSession(linked);}
             clearTimeout(timeoutTimer);
 
@@ -2576,7 +2586,7 @@ async function runChatWS(ws, sessionId, message, systemOverride, modelOverride, 
         armTimeout();
         const signal = combineSignals([timeoutController.signal, stopCtrl.signal]);
 
-        const upstream = await chatRequest(provider, normalizedMessage, history, signal);
+        const upstream = await chatRequest(provider, normalizedMessage, history, signal, sessionId);
             {const linked=getSession(sessionId);if(linked&&recordGatewaySession(linked,upstream,{streamId}))saveSession(linked);}
 
         const localParser = createSSEParser(

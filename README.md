@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <img alt="version" src="https://img.shields.io/badge/manifest-0.21.102-71dbc0">
+  <img alt="version" src="https://img.shields.io/badge/manifest-0.21.149-71dbc0">
   <img alt="license" src="https://img.shields.io/badge/license-GPL--3.0-5e64f3">
   <img alt="platform" src="https://img.shields.io/badge/platform-fnOS-2f3a46">
   <img alt="tests" src="https://img.shields.io/badge/tests-185-71dbc0">
@@ -107,12 +107,14 @@ node dev/tests/interrupted-tools.cjs app/server/monitor.js
 
 前提：fnOS、约 1 GB 空间、`nodejs_v24`（安装时自动处理）、Python 虚拟环境（`uv` 安装）。
 
-1. 从 [Releases](https://github.com/vector9584/fnos-hermes-panel/releases/latest) 下载 `.fpk`，应用中心手动安装
-2. 桌面图标打开面板
-3. 「模型」页填供应商 API Key
-4. 启动服务，开始对话
+1. 从 [Releases](https://github.com/vector9584/fnos-hermes-panel/releases/latest) 下载 `hermes-agent_0.21.149.fpk`（66 MB）
+2. 自检：`sha256sum hermes-agent_0.21.149.fpk` 应为 `049bcd861d776a5ed4f8f49b9dcbbec7a896643133d422e285da79fc3811853c`
+3. 应用中心 → 右上角「手动安装」→ 选文件 → 下一步到底；装完应用名是 `hermes-agent-clean`，与原实例并存不冲突
+4. 桌面图标打开面板，「模型」页填供应商 API Key，启动服务
 
-运行时：面板走应用运行目录下的 `hermes-agent.sock`；`monitor.js` 把请求代理到 Gateway。Gateway 默认 `8742`、Dashboard 默认 `9219`，都可用环境变量覆盖。写操作（改配置、重启进程）必须带 `monitor.token`，只读查询免鉴权，token 每次启动重新生成。
+包内不带任何密钥，装完必须自己配；不配模型时网关不起、`18742` 空闲属正常。
+
+运行时：面板走应用运行目录下的 `hermes-agent.sock`；`monitor.js` 把请求代理到 Gateway。发布包内面板 `18650`、Gateway `18742`、Dashboard `19219`，与原实例（`8650` / `8742` / `9219`）错开，都可用环境变量覆盖。写操作（改配置、重启进程）必须带 `monitor.token`，只读查询免鉴权，token 每次启动重新生成。
 
 ### 二、本地起面板（不依赖 fnOS）
 

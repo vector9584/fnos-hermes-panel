@@ -7,7 +7,7 @@
 .maintenance-meta{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--text3)}.maintenance-commit details{margin-top:12px;font-size:13px}.maintenance-commit summary{cursor:pointer;min-height:32px;display:flex;align-items:center;color:var(--accent)}
 .maintenance-commit pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7;font:13px var(--font);color:var(--text2)}
 #maintenanceMore[hidden]{display:none!important}#maintenanceMore{min-height:44px}
-#page-settings .setting-row{gap:20px;flex-wrap:wrap}#page-settings .setting-row>div{flex:1;min-width:180px}#page-settings .setting-row button,#settingsToolsMode{min-height:44px;flex-shrink:0}#settingsToolsMode{background:var(--bg1);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px}#settingsRetry[hidden]{display:none!important}
+#page-settings .setting-row{gap:20px;flex-wrap:wrap}#page-settings .setting-row>div{flex:1;min-width:180px}#page-settings .setting-row button:not(.toggle),#settingsToolsMode{min-height:44px;flex-shrink:0}#settingsToolsMode{background:var(--bg1);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font:inherit;font-size:13px}#settingsRetry[hidden]{display:none!important}
 /* 2026-11-17：连接器选择弹框对齐 mini-popup。
    原先容器是 .navigation-dialog（宽 460 / 底 var(--bg1) / 圆角 18 / 有遮罩），
    列表 .cc-item 用 accent 绿 hover；而模型·技能·专家·能力四个工具弹框都是
