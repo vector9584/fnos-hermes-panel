@@ -86,7 +86,7 @@
 
   function providerName(S, id) {
     var hit = (S.catalog.providers || []).filter(function (p) { return p.id === id; })[0];
-    return hit ? hit.name : (id || '');
+    return hit ? (hit.display_name || hit.name) : (id || '');
   }
 
   function providerOf(S, id) {
@@ -606,7 +606,7 @@
     // 后端给 groups：同一个中转站的多把 key 收成一张卡。老后端没有 groups 就按
     // providers 一对一渲染 —— 没有 group 的服务，行为跟以前完全一样。
     var groups = (cat.groups && cat.groups.length) ? cat.groups
-      : providers.map(function (p) { return { group: '', name: p.name || p.id, base_url: p.base_url || '', keys: [p] }; });
+      : providers.map(function (p) { return { group: '', name: p.name || p.id, display_name: p.display_name || p.name || p.id, base_url: p.base_url || '', keys: [p] }; });
 
     var cards = el('div', 'cards');
     groups.forEach(function (g) {
@@ -617,14 +617,14 @@
       var needModels = keys.some(function (k) { return k.needs_models; });
       var card = el('div', 'pcard' + (anyOn ? '' : ' off'));
       var top = el('div', 'top');
-      top.append(el('span', 'emblem', emblemOf(g.name)));
+      top.append(el('span', 'emblem', emblemOf(g.display_name || g.name)));
       /* 2026-11-16：官方 / 第三方标识。判据是地址落没落在官方预设表里（后端
          group_view 算好 official 一起下发），不看名字 —— 叫「DeepSeek 官方」
          却指向中转站的，照样算第三方。 */
       top.append(g.official ? badge('官方', 'pri') : badge('第三方'));
       top.append(!anyOn ? badge('停用') : (needModels ? badge('缺模型', 'warn') : badge('正常', 'ok')));
       card.append(top);
-      card.append(el('div', 'nm', g.name || '未命名服务'));
+      card.append(el('div', 'nm', g.display_name || g.name || '未命名服务'));
       /* 2026-11-16：卡片上不再显示服务商地址。用户原话「保存完的卡片上不要显示
          服务商地址了」。卡片要回答的是「这服务能用吗、几把密钥、几个模型」，
          地址是配置细节，编辑面板里看得到，铺在首页只是噪音。 */
@@ -674,10 +674,10 @@
         M.sheets.providerEdit && M.sheets.providerEdit(S, keys[0]);
       }));
       foot.append(btn(anyOn ? '停用' : '启用', 'btn', function () {
-        svcToggle(S, keys, anyOn, g.name || '未命名服务');
+        svcToggle(S, keys, anyOn, g.display_name || g.name || '未命名服务');
       }));
       foot.append(btn('删除', 'btn danger', function () {
-        svcDeleteConfirm(S, keys, g.name || '未命名服务');
+        svcDeleteConfirm(S, keys, g.display_name || g.name || '未命名服务');
       }));
       card.append(foot);
       cards.append(card);
@@ -799,7 +799,7 @@
       return out;
     }
     out.append(panel('DeepSeek 官方', [
-      kv('服务商', ds.name || ds.id),
+      kv('服务商', ds.display_name || ds.name || ds.id),
       kv('地址', ds.base_url || '—'),
       kv('启用模型', (ds.models || []).filter(function (m) { return m.enabled; }).map(function (m) { return m.id; }).join(', ') || '—')
     ], badge('extra_body 明确支持', 'info')));

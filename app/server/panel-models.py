@@ -109,6 +109,10 @@ def public_provider(identifier,entry,legacy=None,env=None):
  for mid,value in legacy_by_id.items():
   if mid and mid not in model_ids(item,origin):models.append({'id':mid,'name':str(value.get('name') or mid),'enabled':False})
  return {'id':identifier,'origin':origin,'name':str(item.get('name') or identifier),'revision':revision(item),'enabled':enabled(item),
+  # 2026-11-18：配置里存的 name 带上了密钥标签（ZeroAPI · Gemini-稳定通道 0.23x），
+  # 只有读 name 的地方才需要它。面板上到处都显示服务商名，露着后缀就是满屏长串，
+  # 所以另发一个剥干净的基础名 —— 显示层一律用 display_name，写配置一律用 name。
+  'display_name':name_with_key_label(str(item.get('name') or identifier),'',str(item.get('key_label') or '')),
   'group':str(item.get('group') or ''),'key_label':str(item.get('key_label') or ''),
   **fields,'models':models,
   'api_key_configured':credential_ready(credentials,env),
@@ -138,6 +142,9 @@ def group_view(providers):
    # 末尾斜杠归一，https://api.deepseek.com 和 .../ 视为同一个端点。
    base_url=str(provider.get('base_url') or '')
    card={'group':name,'name':str(provider.get('name') or provider['id']),'base_url':base_url,
+    # 卡片标题用剥掉标签的基础名（配置里存的是「ZeroAPI · Gemini-稳定通道 0.23x」，
+    # 卡片上只该出现「ZeroAPI」—— 通道信息在密钥行里，不占标题）
+    'display_name':name_with_key_label(str(provider.get('name') or provider['id']),'',str(provider.get('key_label') or '')),
     'official':norm_endpoint(base_url) in OFFICIAL_URLS,'keys':[]}
    index[slot]=card;groups.append(card)
   index[slot]['keys'].append({'id':provider['id'],'key_label':str(provider.get('key_label') or ''),'name':provider['name'],
@@ -368,6 +375,33 @@ def write_secrets(env_path,values):
  atomic_env_write(env_path,('\n'.join(out)+'\n').encode('utf-8'))
  return sorted(names)
 
+NAME_JOIN_SEP = ' · '
+
+def name_with_key_label(name, key_label, old_key_label=''):
+ '''把服务名称和密钥标签拼成配置里存的那个 name（2026-11-18）。
+
+ 同一个中转站常挂几条计费通道（Gemini 0.23x / DeepSeek 0.4x /
+ Claude 0.45x），配置里的 name 全叫 ZeroAPI —— 凡是只读 name 的地方
+ （/model 下拉、日志、账单）就彻底分不清谁是谁。
+ 约定：name = 基础名 + ' · ' + 密钥标签。面板显示时会把这个后缀剥掉
+ （ui/js/panel-model-v2-sheets.js 的 nameBase），所以界面上仍然是
+ 干净的「ZeroAPI」，只有 config.yaml 里唯一可辨。
+
+ 幂等：old_key_label 是**上次真存进配置的**标签，先从尾部剥掉再拼这次的。
+ 改标签能替换旧后缀，连点两次保存也不会叠成「A · L1 · L1」。
+ 表单里刚改还没保存的标签永远不参与这里的计算。
+ '''
+ base=str(name or '').strip()
+ label=str(key_label or '').strip()
+ old=str(old_key_label or '').strip()
+ if old:
+  tail=NAME_JOIN_SEP+old
+  while len(base)>len(tail) and base.endswith(tail):base=base[:-len(tail)].strip()
+ if not label:return base
+ if not base or base==label:return base or label
+ if base.endswith(NAME_JOIN_SEP+label):return base
+ return base+NAME_JOIN_SEP+label
+
 def patch(old,changes,origin='providers',legacy=None,identifier=None,secrets=None):
  if not isinstance(changes,dict) or set(changes)-{'name','base_url','api_mode','default_model','models','credential','headers','note','context_length','max_output_tokens','request_timeout_seconds','rate_limit_delay','ssl_verify','headers_json','request_extra','group','key_label'}:raise ConfigError('模型服务修改字段不正确')
  new=copy.deepcopy(old)
@@ -395,6 +429,17 @@ def patch(old,changes,origin='providers',legacy=None,identifier=None,secrets=Non
     cleaned=text(raw,label,120)
     if cleaned:new[field]=cleaned
     else:new.pop(field,None)
+ # name 落盘时带上这把密钥的标签（2026-11-18，见 name_with_key_label）。
+ # 位置必须在这儿：key_label 已经在上面校验/剔除过，new['key_label'] 才是
+ # 这次真正要存的标签；group_update 走的是「shared.name + 每把 key 自己的
+ # key_label」，所以每条 provider 各得一个名字，不会被广播成同一个。
+ if 'name' in changes or 'key_label' in changes:
+  _lbl=str(new.get('key_label') or '').strip()
+  _old_lbl=str((old or {}).get('key_label') or '').strip()
+  _base_name=new.get('name') or str((old or {}).get('name') or '')
+  _joined=name_with_key_label(_base_name,_lbl,_old_lbl)
+  if len(_joined)>120:raise ConfigError('服务名称加上密钥标签超过 120 字，名字或标签改短一点')
+  new['name']=_joined
  if 'api_mode' in changes:
   mode=changes['api_mode']
   if mode not in ('',*MODES):raise ConfigError('模型接口协议不正确')

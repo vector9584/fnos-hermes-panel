@@ -401,6 +401,50 @@
      2026-11-18 之后模型区也两态都开（见下方 4-5 的模型段注释）——新增时
      还没有 provider id，但模型区只需要地址 + 明文密钥，这两样新增态就有。
      所以现在两态字段完全一致，新增保存后仍跳编辑页只是为了补测连通。 */
+  /* ── 服务商名的两段式：写进配置带标签，界面上只见基础名 ──────────────
+     同一个中转站常挂着好几条计费通道（Gemini 0.23x / DeepSeek 0.4x /
+     Claude 0.45x），在配置里名字都叫 ZeroAPI，凡是只读 name 的地方
+     （/model 下拉、日志、账单）就彻底分不清谁是谁。
+
+     所以约定：**写进 config 的 name = 基础服务名 + ' · ' + 密钥标签**。
+     面板自己显示时再把标签剥掉，看到的还是干干净净的「ZeroAPI」——
+     界面不变，存档唯一可辨。
+
+     剥后缀只认「已经存进配置的标签」（members[].key_label）。
+     表单里刚改、还没按保存的标签一律不参与计算：名字一旦会跟着输入框飘，
+     就等于让草稿改写了已保存的状态 —— 2026-11-17 那次「临时配置和
+     已保存配置混在一起」就是从这个缝里漏出来的。 */
+  var NAME_SEP = ' · ';
+  function nameBase(raw, savedLabels) {
+    var s = String(raw || '').trim();
+    var labs = (savedLabels || []).map(function (x) { return String(x || '').trim(); })
+      .filter(function (x) { return !!x; })
+      .sort(function (a, b) { return b.length - a.length; });  /* 长的先剥，别让短标签先啃掉长标签的尾巴 */
+    var hit = true;
+    while (hit && s) {
+      hit = false;
+      for (var i = 0; i < labs.length; i++) {
+        var tail = NAME_SEP + labs[i];
+        if (s.length > tail.length && s.slice(-tail.length) === tail) {
+          s = s.slice(0, -tail.length).trim();
+          hit = true;
+          break;
+        }
+      }
+    }
+    return s;
+  }
+  function nameWithLabel(base, label) {
+    var b = String(base || '').trim();
+    var l = String(label || '').trim();
+    if (!l) return b;
+    if (!b) return l;
+    if (b === l) return b;
+    /* 已经带着同一段标签的不再拼第二次 —— 幂等的最后一层保险 */
+    if (b.slice(-(NAME_SEP.length + l.length)) === NAME_SEP + l) return b;
+    return b + NAME_SEP + l;
+  }
+
   M.sheets.providerForm = function (S, opts) {
     opts = opts || {};
     var all = (S.catalog || {}).providers || [];
@@ -419,7 +463,9 @@
 
     var seed = opts.preset || {};
     var sheet = M.sheet({
-      title: editing ? '编辑 ' + (self.name || p.id) : '添加 LLM 服务',
+      /* 弹层标题也走基础名：配置里存的是「ZeroAPI · Gemini-稳定通道 0.23x」，
+         标题栏只想显示「ZeroAPI」，不然一条通道名字能占半行 */
+      title: editing ? '编辑 ' + nameBase(self.name || p.id, members.map(function (m) { return m.key_label || ''; })) : '添加 LLM 服务',
       sub: editing ? (members.length + ' 把密钥 · 共用名称和地址') : '密钥 · 模型 · 一次填完',
       wide: true
     });
@@ -440,7 +486,11 @@
       return normUrl(x.base_url) === normUrl(editing ? self.base_url : seed.base_url);
     })[0];
 
-    var nameI = input(editing ? (self.name || '') : (seed.name || ''), '例如 ZeroAPI');
+    /* 编辑态载入的是配置里的 name，可能已经是「ZeroAPI · Gemini-稳定通道 0.23x」。
+       剥掉**已保存**的标签再塞进输入框 —— 界面上看到的仍是「ZeroAPI」，
+       用户改完基础名点保存，后缀由保存那一步重新拼，不会越存越长。 */
+    var savedKeyLabels = members.map(function (m) { return m.key_label || ''; });
+    var nameI = input(editing ? nameBase(self.name || '', savedKeyLabels) : (seed.name || ''), '例如 ZeroAPI');
     var urlI = input(editing ? (self.base_url || '') : (seed.base_url || ''), 'https://api.example.com/v1');
     var modeSel = select([
       ['', '由内核识别'],
@@ -660,6 +710,17 @@
       clearErr();
       var list = collectKeys();
       if (!list) return;
+
+      /* ── 名字里带密钥标签这件事，落点在后端 patch()（2026-11-18）──────
+         一开始想在前端拼好再提交，查了 panel-models.py 才发现一张服务卡
+         （同一个 group 下的多条 provider）的 name 是**共用**的：后端按
+         `row = dict(shared)` 广播给每一把密钥，只有 key_label 各是各的。
+         在 group_update 里拼第一把的标签，会把三条通道的 name 全写成同一个
+         「ZeroAPI · Gemini-稳定通道 0.23x」—— 比原来还糟。
+
+         所以：前端只传基础名，拼接和幂等都在 patch() 里按每把密钥的
+         key_label 各拼各的。这里一个字节都不预先写。
+         表单里、卡片上、标题栏看到的仍是基础名（见 nameBase）。 */
 
       if (editing) {
         /* 一次 group_update 全量提交：名称、地址、密钥、模型清单一起走 */
