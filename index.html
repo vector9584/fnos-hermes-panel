@@ -284,6 +284,22 @@ canvas{display:block;width:100%;height:100%;touch-action:manipulation}
 @keyframes mq{to{transform:translateX(-50%)}}
 
 /* ---------- Footer ---------- */
+/* ===== 下载区 ===== */
+.dl{padding-top:clamp(56px,7vw,100px);padding-bottom:clamp(56px,7vw,100px);border-top:1px solid var(--line);scroll-margin-top:70px}
+.dl .big{font:400 clamp(27px,4.8vw,62px)/1.14 var(--serif);letter-spacing:-.03em;text-wrap:balance;max-width:15em}
+.dl .big em{font-style:normal;color:var(--acc)}
+.dl .dld{margin-top:22px;max-width:34em;font-size:14px;line-height:1.9;color:var(--dim);text-wrap:pretty}
+.dla{display:flex;flex-wrap:wrap;align-items:center;gap:14px;margin-top:34px}
+.dlp{display:flex;flex-direction:column;gap:7px;padding:17px 24px;border:1px solid var(--acc);background:var(--acc);color:#0b0e14;transition:.22s}
+.dlp:hover{background:var(--acc-hi);border-color:var(--acc-hi)}
+.dlp b{font:600 14px/1.25 var(--mono);letter-spacing:.01em}
+.dlp span{font:9px var(--mono);letter-spacing:.08em;opacity:.74}
+.dls{font:9px var(--mono);letter-spacing:.09em;padding:13px 17px;border:1px solid var(--line);color:var(--dim);background:var(--card);transition:.2s}
+.dls:hover{border-color:var(--acc);color:var(--acc)}
+.dlm{margin-top:24px;font:9px var(--mono);letter-spacing:.08em;color:var(--dim)}
+.dlm b{color:var(--dim);font-weight:600}
+.dl .nw{white-space:nowrap}
+@media(max-width:560px){.dl .dld{font-size:13px;line-height:1.85}.dlp{width:100%}.dla{gap:10px}.dls{width:100%;text-align:center}}
 .foot{padding-top:clamp(52px,6.6vw,92px);padding-bottom:38px;border-top:1px solid var(--line)}
 .foot .big{font:400 clamp(27px,4.8vw,62px)/1.14 var(--serif);letter-spacing:-.03em;text-wrap:balance}
 .foot .big em{font-style:normal;color:var(--blue)}
@@ -815,7 +831,7 @@ body{
     <div class="rv" style="--d:130ms">
       <div style="height:1px;background:var(--line);margin-bottom:16px"></div>
       <p class="mini">不是聊天框。说一句，它去翻文件、改代码、开浏览器、敲命令，做完回来汇报。中间每一步都摊开，觉得不对随时喊停。</p>
-      <div class="cta"><a class="pri" href="#ch1">从面板开始 ↓</a><a href="#ch8">能干什么 ↗</a><a href="https://vector9584.github.io/fnos-hermes-panel/" target="_blank" rel="noopener">项目主页 ↗</a></div>
+      <div class="cta"><a class="pri" href="#ch1">从面板开始 ↓</a><a href="#ch8">能干什么 ↗</a><a href="#dl">下载安装包 ↓</a></div>
     </div>
     <div class="meta rv" style="--d:180ms">
       <b>162</b> 会话按项目归档<br>
@@ -1153,11 +1169,24 @@ body{
   </div>
 </section>
 
+<!-- ===== 下载 ===== -->
+<section class="dl" id="dl">
+  <div class="wrap">
+    <div class="big rv">装到自己的 NAS 上，<br><em>数据不出门</em></div>
+    <p class="dld rv">包里就是这九块面板本身，不是演示。装完自己填模型 key——包里一个密钥都不带，也不会背着你调谁家的接口。磁盘留 2 GB，解包后约 350 MB。</p>
+    <div class="dla rv">
+      <a class="dlp" href="https://github.com/vector9584/fnos-hermes-panel/releases/download/v0.21.149/hermes-agent_0.21.149.fpk"><b>↓ hermes-agent_0.21.149.fpk</b><span>65.8 MB · 架构无关 · 需要 fnOS</span></a>
+      <a class="dls" href="https://github.com/vector9584/fnos-hermes-panel/releases/tag/v0.21.149" target="_blank" rel="noopener">安装步骤与校验值 ↗</a>
+    </div>
+    <div class="dlm rv">应用名 <b>hermes-agent-clean</b>，跟已经装着的原实例并存不冲突 · <span class="nw">GPL-3.0</span></div>
+  </div>
+</section>
+
 <footer class="foot">
   <div class="wrap">
     <div class="big rv">没有最终版，<br><em>改到满意为止</em></div>
     <div class="foot-links rv">
-      <a href="https://vector9584.github.io/fnos-hermes-panel/" target="_blank">项目主页 ↗</a>
+      <a href="#dl">下载安装包 ↓</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel" target="_blank">GitHub 仓库 ↗</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/README.md" target="_blank">README ↗</a>
       <a href="https://github.com/vector9584/fnos-hermes-panel/blob/main/app/ui/ARCHITECTURE.md" target="_blank">ARCHITECTURE ↗</a>
