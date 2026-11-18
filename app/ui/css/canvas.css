@@ -378,13 +378,36 @@ body.theme-light .cv-node.cv-node-active { animation-name: cv-sel-breathe-light;
    所以不再挂 .cv-floating 限定，两个视图共用一个 box：chip 一律浮在输入框上沿之上，
    不占它高度；间距从 6px 收到 4px，下 padding 的 8px 也去掉 —— 那个 8px 是它看着「太高」
    的真正来源，光调 margin 治不了。 */
-#chatComposer .skill-chips {
+/* 输入框上沿浮层（2026-11-18 重做）：附件条 / 能力 chip / 技能 chip 三块统一进
+   #composerOverlays，靠 flex column 管上下顺序，谁也不再用 bottom:100% 各自定位。
+   旧写法：附件条是 #chatComposer 的流内第一个子元素，两个 chip 行各自
+   position:absolute;bottom:100%，一旦上传附件三块就叠成一张图 —— 实测 1440×900
+   两视图都是 附件×能力 758×28 px²、附件×技能 758×26、能力×技能 758×26。
+   容器自己脱流、贴输入框上沿；子元素全部回到正常流，高度多少就占多少。 */
+#chatComposer .composer-overlays {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   margin: 0 0 4px 0;
   padding: 0 2px;
+  z-index: 1;
+  /* 浮层本身不接鼠标，否则透明区域会挡住画布拖动；子元素各自放行 */
+  pointer-events: none;
+}
+#chatComposer .composer-overlays > * { pointer-events: auto; }
+/* chip 行在浮层里按流排列。左右 padding 跟附件条对齐（它自己 padding:6px 10px），
+   否则附件条比 chip 行缩进 10px，左边线看着是歪的。 */
+#chatComposer .skill-chips { position: static; margin: 0; padding: 0 10px; }
+/* 附件条从「通栏 + 下边框」改成浮层里的圆角卡片，和 chip 一个观感 */
+#chatComposer .composer-overlays .attach-chips {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 6px 10px;
 }
 /* chip 脱离流之后，`.chat-composer` 那条 column-gap 也跟着少了 8px，
    输入框会比 chip 没脱离时矮 8px、顶边反而往下掉。两个视图现在都脱离了，

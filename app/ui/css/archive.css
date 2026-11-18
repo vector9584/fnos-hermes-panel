@@ -682,6 +682,15 @@ body.theme-light .arc-code-dots i:nth-child(3) { background: #2fa98c; }
 }
 .arc-seg button + button { border-left: 1px solid var(--border); }
 .arc-seg button.on { color: var(--accent); background: var(--accent-bg); }
+/* 图谱视图切换（双链 / 主题 / 类型）：单独一行放在标题下、说明上。
+   按钮样式与右侧工具条那组 .arc-seg（力导向 / 分层）同源，这里只补位置，
+   不另造一套配色 —— 同一个页面里两套分段控件长得不一样才是真的乱。 */
+.arc-gview { margin-top: 10px; width: max-content; max-width: 100%; }
+/* 按钮上的计数：告诉人这个维度到底有多少东西。没选时压成次要色，
+   免得三个数字抢走「双链 / 主题 / 类型」这三个词的主次。 */
+.arc-gviewbtn .arc-gviewn { margin-left: 6px; font-size: 10px; line-height: 1;
+  font-variant-numeric: tabular-nums; opacity: .55; }
+.arc-gviewbtn.on .arc-gviewn { opacity: .9; }
 
 .arc-gmain { position: relative; display: flex; flex: 1 1 auto; min-width: 0; min-height: 320px; }
 .arc-gmain-canvas {

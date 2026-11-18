@@ -20,6 +20,17 @@
   async function request(path, method, body, signal) {
     const response = await fetch(apiUrl(path), {method:method || 'GET',cache:'no-store',signal,
       headers:{'Content-Type':'application/json','X-Monitor-Token':monitorToken || ''},body:body === undefined ? undefined : JSON.stringify(body)});
+    /* 2026-11-18（用户手机实测「一直在排队」）：网关/反代偶尔回一整页 HTML
+       （配对页、502 页、路由没匹配上的 SPA 页）。以前直接 response.json() 抛 SyntaxError，
+       这个异常不带 status，被 submit 的 `!e.status` 分支当成「网络不确定」塞进 outbox
+       静默重试 —— 没有报错、没有超时、输入框也不还原，界面就永远停在「排队中」。
+       现在非 JSON 一律带 status 抛出，让上层走真报错那条路。 */
+    const _ct = String(response.headers.get('content-type') || '');
+    if (_ct.indexOf('json') < 0) {
+      const raw = await response.text().catch(() => '');
+      const status = response.status >= 400 ? response.status : 502;
+      throw Object.assign(new Error('服务端返回了非 JSON 响应（HTTP ' + response.status + '）'), {status, result:{raw:String(raw).slice(0, 200)}});
+    }
     const result = await response.json();
     if (!response.ok) throw Object.assign(new Error(result.error || '操作失败（'+response.status+'）'), {status:response.status, result});
     return result;
@@ -32,7 +43,7 @@
   }
   function finish(state, status, error) {
     if (state.finished) return;
-    state.finished = true; state.controller?.abort(); clearTimeout(state.retry); clearInterval(state.stall);
+    state.finished = true; state.controller?.abort(); clearTimeout(state.retry); clearInterval(state.stall); clearTimeout(state.watchdog);
     subscriptions.delete(state.id);
     state.cb.onDone?.(status === 'cancelled' || status === 'interrupted');
     if (error && status !== 'cancelled') state.cb.onError?.(error);
@@ -131,6 +142,27 @@
       forgetAccepted(id);state.status=result.job.status;
       cb.onAccepted?.(result.job);
       refreshQueue();subscribe(state);
+      /* 2026-11-18（用户手机实测「一直在排队」）：POST 返回 202 只代表服务端接下了这条，
+         不代表任务真在队列里 —— 反代吞包、进程刚重启、存储写失败都可能让它凭空消失，
+         而前端不会再收到任何事件，view.status 永远停在 'pending'。
+         20 秒后回查一次：还挂着排队态、服务端却查不到这个 id → 明确报错并还原输入。 */
+      clearTimeout(state.watchdog);
+      state.watchdog = setTimeout(async function(){
+        if(state.finished || state.status !== 'pending') return;
+        try{
+          const j = await request('/api/chat/queue/' + encodeURIComponent(id));
+          if(j && j.id) return;                 // 确实还排在服务端，接着等
+        }catch(e){ /* 404/非 JSON 都算「服务端没有这条」 */ }
+        if(state.finished) return;
+        state.finished = true;
+        clearTimeout(state.watchdog); clearInterval(state.stall);
+        subscriptions.delete(id);
+        try{forget(id);}catch{}
+        cb.onError?.('消息没有送达服务器（排队超时），已还原到输入框，请重发');
+        cb.onDone?.(false);
+        restoreUnsent(payload);
+        refreshQueue(); updateSend();
+      }, 20000);
     }catch(e){
       subscriptions.delete(id);
       _tabStreaming[state.sid]=false;renderSessionTabs();updateSend();

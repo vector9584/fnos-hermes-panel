@@ -1352,7 +1352,11 @@ function imgStackHTML(imgs){
   for(var i=0;i<n;i++){
     html += '<img class="img-stack-item" src="'+DOM.escAttr(chatThumbSrc(imgs[i]))+'" data-full="'+DOM.escAttr(list[i])+'" alt="图片'+(i+1)+'" loading="lazy" style="left:'+(i*off)+'px;top:'+(i*off)+'px;z-index:'+(i+1)+'">';
   }
-  html += '<span style="position:absolute;left:'+((n-1)*off+156)+'px;top:'+((n-1)*off+60)+'px;font-size:11px;color:var(--text);background:var(--accent);border-radius:12px;padding:3px 10px;font-weight:600;z-index:'+(n+1)+'">'+list.length+' 张 ▸</span></div>';
+  /* 2026-11-18（用户手机实测「对话视图格式很怪」）：这张角标原来写成
+     left:(n-1)*9+156px —— 容器总宽就是 150+(n-1)*9，156 已经越过右边界，
+     整个「2 张 ▸」被甩到气泡外面，手机上一眼就是「一个孤零零的标签贴着气泡」。
+     改成压在最后一张图右下角（容器内部），不再溢出。 */
+  html += '<span style="position:absolute;right:6px;bottom:6px;font-size:11px;color:#fff;background:rgba(0,0,0,.55);border-radius:12px;padding:2px 9px;font-weight:600;z-index:'+(n+1)+';pointer-events:none">'+list.length+' 张 ▸</span></div>';
   return html;
 }
 function openImgLightbox(jsonList, idx){
@@ -1632,14 +1636,26 @@ function watchComposerHeight(){
        不属于 #chatComposer 的子节点（原写法 wrap.querySelector 永远是 null），
        也不算进 offsetHeight，于是留白少了整整一行，最后一条气泡里的按钮被 chip 盖住。
        直接量「chip 顶端 → 输入框底端」的真实跨度，比累加各自高度准（还含中间的间距）。 */
-    var chips=document.getElementById('capabilityChips');
-    if(!chips||!chips.offsetHeight){
-      chips=null;
-      var allChips=document.querySelectorAll('.skill-chips');
-      for(var ci=0;ci<allChips.length;ci++){ if(allChips[ci].offsetHeight){ chips=allChips[ci]; break; } }
+    /* 2026-11-18：留白按「浮层里最靠上的那一块」算。浮层 #composerOverlays 里是
+       附件条 + 能力 chip + 技能 chip 的 flex 列，谁在最上面不固定（附件条只在有
+       附件时才出现）。只量 chip 顶会让附件条压住最后一条气泡里的按钮。 */
+    var topEl=null;
+    var ov=document.getElementById('composerOverlays');
+    if(ov){
+      var kids=ov.children;
+      for(var ki=0;ki<kids.length;ki++){ if(kids[ki].offsetHeight){ topEl=kids[ki]; break; } }
     }
-    if(chips){
-      var cr=chips.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
+    if(!topEl){
+      var chips=document.getElementById('capabilityChips');
+      if(!chips||!chips.offsetHeight){
+        chips=null;
+        var allChips=document.querySelectorAll('.skill-chips');
+        for(var ci=0;ci<allChips.length;ci++){ if(allChips[ci].offsetHeight){ chips=allChips[ci]; break; } }
+      }
+      topEl=chips;
+    }
+    if(topEl){
+      var cr=topEl.getBoundingClientRect(), wr=wrap.getBoundingClientRect();
       var span=Math.round(wr.bottom-cr.top);
       if(span>h) h=span;
     }

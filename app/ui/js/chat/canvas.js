@@ -911,7 +911,12 @@ var CanvasMode = (function () {
       if (!S._origKey) S._origKey = ta.onkeydown;
       ta.onkeydown = function (ev) {
         /* isComposing：中文输入法选词时敲 Enter 不能发出去 */
-        if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing) {
+        /* 2026-11-18（用户手机实测）：移动端键盘没有 Shift，`!ev.shiftKey` 这个判据
+           等于「一敲回车就发」，永远换不了行。触摸设备一律把 Enter 让给换行，
+           发送固定走发送按钮；PC 保持回车发送、Shift+回车换行不变。 */
+        var _coarse = false;
+        try { _coarse = !!(window.matchMedia && window.matchMedia('(pointer:coarse)').matches); } catch (e) {}
+        if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing && !_coarse) {
           ev.preventDefault();
           submitFromComposer();
           return;
@@ -1016,7 +1021,20 @@ var CanvasMode = (function () {
       S.imageTargets = (res && Array.isArray(res.targets)) ? res.targets : [];
       /* 没选过就给个默认，省得发出去的生图指令里没有目标 */
       if (S.sid && !window._cvImageTarget[S.sid] && S.imageTargets.length) {
-        window._cvImageTarget[S.sid] = S.imageTargets[0].label || S.imageTargets[0].model;
+        /* 2026-11-18（用户实测）：新建画板时选的 gemini 进来还是 image2。
+           原因：新建对话框选的模型只写进 _selectedModelMap（对话模型），画板这个
+           生图目标 chip 走的是另一套，兜底永远取 targets[0]。
+           现在先拿该会话已选的模型去 imageTargets 里认一次（model 或 label 对上就算），
+           认不出才退回 targets[0] —— 老会话没选过模型的行为不变。 */
+        var _wantM = (typeof _getSessionModel === 'function') ? _getSessionModel(S.sid) : '';
+        var _hitT = null;
+        if (_wantM) {
+          for (var _ti = 0; _ti < S.imageTargets.length; _ti++) {
+            var _t = S.imageTargets[_ti];
+            if (_t.model === _wantM || _t.label === _wantM) { _hitT = _t; break; }
+          }
+        }
+        window._cvImageTarget[S.sid] = _hitT ? (_hitT.label || _hitT.model) : (S.imageTargets[0].label || S.imageTargets[0].model);
       }
       syncTargetLabel();
     }).catch(function () {
@@ -1125,7 +1143,19 @@ var CanvasMode = (function () {
        实际是这个实打实的画布节点。连线只该表达「谁派生自谁」，提示词放浮层里看，
        不该在图之间插一块方框占位。
        提示词本身一个字都没丢：下面照样写进 pend.injected，浮层和认父都靠它。 */
-    var pos = parent ? placeChild(parentId) : freeSpot();
+    /* 首图的落位（2026-11-18）：画布上只剩一颗 plus「开始」时，parent 是 null，
+       原来走 freeSpot() —— 包围盒右侧 +160，等于把第一张图丢到 plus 右边老远，
+       用户点完「开始」眼睛盯着的那个位置反而什么都没长出来。
+       有 plus 就直接占用它的坐标：他点的哪儿，图就从哪儿出现。 */
+    var plusNode = null;
+    if (!parent) {
+      for (var pi = 0; pi < S.order.length; pi++) {
+        var pn = S.nodes[S.order[pi]];
+        if (pn && pn.kind === 'plus') { plusNode = pn; break; }
+      }
+    }
+    var pos = parent ? placeChild(parentId)
+      : (plusNode ? { x: plusNode.x, y: plusNode.y } : freeSpot());
     var pend = addNode({
       kind: 'pending',
       x: pos.x,
@@ -1589,7 +1619,14 @@ var CanvasMode = (function () {
         removed = true;
       }
     });
-    if (removed) { relayoutAll(); save(); }
+    /* 删 plus 不重排（2026-11-18 实测根因，别再改回去）：
+       原来这里调 relayoutAll()，而 relayoutAll 给每个 root 无条件写 n.x=cursor、n.y=0。
+       首图刚在 sendFrom 里按 plus 坐标算好位置，紧接着 addNode 触发本函数，
+       pending 被提成唯一 root 后一把拉去世界原点 (0,0) —— 用户在画布中心
+       只看到空白，占位框孤零零挂在左上角，才会说「点了开始没反应，得去对话里看」。
+       删 plus 的连带责任只有三件：子节点提成 root、摘连线、删 DOM，上面都做完了。
+       重排会把用户手拖过的位置一起覆盖掉，本就不该在这个时机发生。 */
+    if (removed) save();
   }
 
   function removeNode(id) {
@@ -2196,7 +2233,17 @@ var CanvasMode = (function () {
       var targets = (res && Array.isArray(res.targets)) ? res.targets : [];
       if (!targets.length || !S.sid) return;
       window._cvImageTarget = window._cvImageTarget || {};
-      if (!window._cvImageTarget[S.sid]) window._cvImageTarget[S.sid] = targets[0].label || targets[0].model;
+      if (!window._cvImageTarget[S.sid]) {
+        /* 与 initImageTarget 同一判据：先认会话已选模型，再退回 targets[0]（2026-11-18） */
+        var _wantM2 = (typeof _getSessionModel === 'function') ? _getSessionModel(S.sid) : '';
+        var _hitT2 = null;
+        if (_wantM2) {
+          for (var _tj = 0; _tj < targets.length; _tj++) {
+            if (targets[_tj].model === _wantM2 || targets[_tj].label === _wantM2) { _hitT2 = targets[_tj]; break; }
+          }
+        }
+        window._cvImageTarget[S.sid] = _hitT2 ? (_hitT2.label || _hitT2.model) : (targets[0].label || targets[0].model);
+      }
     }).catch(function () {});
   }
 

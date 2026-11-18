@@ -22,7 +22,7 @@
 <script src="js/panel-tree.js?v=f2a6ae1c"></script>
 <link rel="stylesheet" href="css/panel-workspace.css?v=d4884665">
     <link rel="stylesheet" href="css/panel-maintenance.css?v=699c4471">
-    <link rel="stylesheet" href="css/archive.css?v=89be6b4c">
+    <link rel="stylesheet" href="css/archive.css?v=3f73376b">
 <link rel="stylesheet" href="css/panel-model-ref.css?v=18b4afab">
 <link rel="stylesheet" href="css/ui-kit.css?v=380b419d">
 </head>
@@ -152,9 +152,16 @@
 
           <div class="chat-composer" id="chatComposer">
             <div class="gen-bar" id="genBar" hidden aria-hidden="true"></div>
-            <div class="input-outer">
+            <!-- 输入框上沿浮层（2026-11-18）：附件条 + 能力 chip + 技能 chip 三块共用一个
+                 flex 列，垂直排开。原先附件条插在 #chatComposer 第一个子元素（流内），
+                 chip 靠 position:absolute;bottom:100% 各自脱流，附件一上传三块就叠成一张
+                 图（实测重叠 758×28 / 758×26 px²）。改成一个容器管顺序，谁也不靠百分比定位。 -->
+            <div class="composer-overlays" id="composerOverlays">
+              <div class="attach-chips" id="attachChips" style="display:none"></div>
               <div class="skill-chips" id="capabilityChips" style="display:none"></div>
               <div class="skill-chips" id="skillChips" style="display:none"></div>
+            </div>
+            <div class="input-outer">
               <div class="input-wrap">
   <div class="input-tools">
     <button type="button" class="toolbar-toggle tool-btn" id="toolbarToggle" onclick="toggleToolbar()" aria-label="展开输入工具" aria-expanded="false" aria-controls="toolbar" title="输入工具"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5.5v13"/><path d="M5.5 12h13"/></svg></button>
@@ -717,14 +724,14 @@
 <script src="js/core/api.js?v=8e7dd4b5"></script>
 <script src="js/core/markdown.js?v=546acd82"></script>
 <script src="js/chat/toolcard.js?v=4a17df4b"></script>
-<script src="js/chat/tabs.js?v=6d514222"></script>
+<script src="js/chat/tabs.js?v=1c736aa6"></script>
 <script src="js/panels/workspace.js?v=1480bb6a"></script>
 <script src="js/panels/terminal.js?v=3d002036"></script>
 <script src="js/chat/message-ops.js?v=56dbc7af"></script>
 <script src="js/chat/roundtable.js?v=71e58827"></script>
 <script src="js/chat/new-dialog.js?v=8ddb80d7"></script>
-<script src="js/chat/compose.js?v=f0bffee1"></script>
-<script src="js/chat/canvas.js?v=4d9f5377"></script>
+<script src="js/chat/compose.js?v=22fb18bb"></script>
+<script src="js/chat/canvas.js?v=24d0f109"></script>
 <script src="js/core/mini-popup.js?v=00952d8e"></script>
 <script src="js/core/router.js?v=b117c07c"></script>
 <script src="js/panels/tunnel.js?v=1e1aca8c"></script>
@@ -750,7 +757,7 @@
 <script src="js/panel-compress-ui.js?v=ed61d9c5"></script>
 <script src="js/panel-slash.js?v=c162e6e9"></script>
 <link rel="stylesheet" href="css/panel-durable.css?v=e3c38973">
-<script src="js/panel-durable.js?v=c3549cea"></script>
+<script src="js/panel-durable.js?v=db49b2cd"></script>
 <script src="js/panel-tooltip.js?v=2726db9d"></script>
 <script src="js/panel-cron-editor.js?v=742c2739"></script>
 <script src="js/panel-cron-hooks-ui.js?v=bed7905c"></script>
@@ -775,7 +782,7 @@
 <link rel="stylesheet" href="css/panel-clarify.css?v=7a80bb23">
 <link rel="stylesheet" href="css/panel-compress.css?v=ccc66959">
 <link rel="stylesheet" href="css/components.css?v=72bfc85e">
-<link rel="stylesheet" href="css/canvas.css?v=6263db6c">
+<link rel="stylesheet" href="css/canvas.css?v=b6f81564">
 <script src="js/panel-channel-pairing-ui.js?v=41bbe1cb"></script>
 <script src="js/panel-channels-ui.js?v=79ed9a69"></script>
 <script src="js/panel-typing-ui.js?v=f308c763"></script>
@@ -793,7 +800,7 @@
 <script src="js/archive/archive-doc.js?v=2775e273"></script>
 <script src="js/archive/archive-info.js?v=67af34d1"></script>
 <script src="js/archive/archive-arch.js?v=7b40be49"></script>
-<script src="js/archive/archive-graph.js?v=2b5fbbc9"></script>
+<script src="js/archive/archive-graph.js?v=c6699721"></script>
 <script src="js/archive/archive-trajectory.js?v=a4ecb974"></script>
 <script src="js/archive/archive-vault.js?v=71eb1bb7"></script>
 <script src="js/archive/archive-boot.js?v=43ffdda0"></script>

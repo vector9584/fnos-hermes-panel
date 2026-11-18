@@ -990,9 +990,20 @@ function attachFile(){
 function renderAttachChips(){
   var comp = document.getElementById('chatComposer');
   if(!comp) return;
+  /* 附件条住在 #composerOverlays 里（index.html 里的静态节点，2026-11-18）。
+     原来用 comp.insertBefore(box, comp.firstChild) 插到 #chatComposer 首位，
+     和两个 chip 行的 bottom:100% 抢同一块位置，一上传附件就三块叠在一起。
+     兜底：老页面没有浮层容器时才自己建一个。 */
   var box = document.getElementById('attachChips');
-  if(!box){ box=document.createElement('div'); box.id='attachChips'; box.className='attach-chips'; comp.insertBefore(box, comp.firstChild); }
-  if(!_pendingAttachments.length){ box.style.display='none'; box.innerHTML=''; return; }
+  if(!box){
+    var ov = document.getElementById('composerOverlays') || comp;
+    box = document.createElement('div'); box.id='attachChips'; box.className='attach-chips';
+    ov.insertBefore(box, ov.firstChild);
+  }
+  /* 浮层是绝对定位、不改变 #chatComposer 高度，ResizeObserver 收不到通知，
+     留白必须自己喊一声，否则附件条会把最后一条气泡盖住。 */
+  var recalc = function(){ if(typeof window.__recalcComposerH === 'function') window.__recalcComposerH(); };
+  if(!_pendingAttachments.length){ box.style.display='none'; box.innerHTML=''; recalc(); return; }
   box.style.display='flex';
   box.innerHTML = _pendingAttachments.map(function(a,i){
     var isImg = a.type && /^image\//.test(a.type);
@@ -1000,6 +1011,7 @@ function renderAttachChips(){
     var name = esc(a.name || (isImg ? '图片' : '附件'));
     return '<span class="attach-chip"><span class="file-icon">'+icon+'</span><span class="file-name" title="'+name+'">'+name+'</span><span class="x" onclick="removeAttach('+i+')" title="移除">×</span></span>';
   }).join('');
+  recalc();
 }
 function removeAttach(i){
   _pendingAttachments.splice(i,1);

@@ -8,7 +8,7 @@ window.Archive.register('graph', (function () {
   'use strict';
 
   /* 力导向物理引擎的坐标缓存版本，力学模型一改就 +1 */
-  var SIM_VER = 3;
+  var SIM_VER = 4;
   var A = window.Archive;
   var SIM_ASSET_V = 'g7';   /* 引力模型 v3：簇半径按节点数分面积 + 圆盘松弛布点 + 近距软化（2026-11-14） */
   var simCode = null;
@@ -115,7 +115,15 @@ window.Archive.register('graph', (function () {
           这条边删掉，目录只用来上色和分 chip，不参与拓扑。
        ② 没被任何笔记引用的（孤立笔记）默认不画：几百个悬空点会把真正的关系压成一团。
           需要时点「未连接」chip 把它们加进来。 */
-  function buildLinkGraph(data, includeIsolated, catalogRows) {
+  function buildLinkGraph(data, includeIsolated, catalogRows, view) {
+    /* 三种视图共用同一套节点/边结构，只有「谁是边」不一样：
+       link  = 正文 [[双链]] 与 frontmatter related（原始关系图）
+       topic = 每篇笔记连到自己的 topic 枢纽节点（语义归类）
+       type  = 同理，按 type 归类
+       主题/类型视图的数据来自 frontmatter，是后端回的全量映射，不受「有没有双链」限制。 */
+    view = (view === 'topic' || view === 'type') ? view : 'link';
+    var dimMap = view === 'topic' ? (data && data.topics) : view === 'type' ? (data && data.types) : null;
+    if (view !== 'link' && !dimMap) view = 'link';   /* 后端没重启时没有这份映射，别画空图 */
     var nodes = [], byPath = {};
     /* 标签映射：后端 graph() 回全部笔记的 frontmatter tags（不只入图那批），
        后端没重启时是 undefined —— 那就没有标签维度，chip 不出现，绝不拿目录名假装标签。 */
@@ -141,13 +149,44 @@ window.Archive.register('graph', (function () {
     });
 
     var edges = [], seen = {};
-    (data.edges || []).forEach(function (edge) {
-      if (!byPath[edge.from] || !byPath[edge.to]) return;
-      var key = edge.from + '\u0000' + edge.to;
-      if (seen[key]) return;
-      seen[key] = 1;
-      edges.push({ from: edge.from, to: edge.to, kind: 'link' });
-    });
+    if (view === 'link') {
+      (data.edges || []).forEach(function (edge) {
+        if (!byPath[edge.from] || !byPath[edge.to]) return;
+        var key = edge.from + '\u0000' + edge.to;
+        if (seen[key]) return;
+        seen[key] = 1;
+        edges.push({ from: edge.from, to: edge.to, kind: edge.kind === 'related' ? 'related' : 'link' });
+      });
+    } else {
+      /* 主题/类型视图：节点与边都来自 frontmatter 全量映射，不依赖双链 ——
+         没有这两个字段的笔记在这个视图里没有位置，不画，也不编一个「未归类」大杂烩。 */
+      var hubOf = {}, hubNodes = [];
+      nodes = []; byPath = {};
+      (catalogRows || []).forEach(function (item) {
+        if (!/\.md$/i.test(item.path) || item.missing) return;
+        var dimKey = dimMap[item.path];
+        if (!dimKey) return;
+        var dimName = view === 'topic' ? '主题' : '类型';
+        var doc = { id: item.path, label: shortLabel(item.title || item.path), group: dimKey, kind: 'doc', deg: 0, tags: tagsOf(item.path), tip: item.path + '\n' + dimName + '：' + dimKey };
+        byPath[doc.id] = doc; nodes.push(doc);
+        var hubId = '#' + view + ':' + dimKey;
+        if (!hubOf[hubId]) {
+          hubOf[hubId] = { id: hubId, label: dimKey, group: dimKey, kind: 'cat', value: 0, deg: 0, tags: [], tip: '' };
+          hubNodes.push(hubOf[hubId]);
+        }
+        hubOf[hubId].value++;
+        var hubKey = doc.id + '\u0000' + hubId;
+        if (!seen[hubKey]) { seen[hubKey] = 1; edges.push({ from: doc.id, to: hubId, kind: 'dim' }); }
+      });
+      var dimLabel = view === 'topic' ? '主题' : '类型';
+      hubNodes.forEach(function (h) { h.tip = h.label + '\n' + dimLabel + '下有 ' + h.value + ' 篇'; h.deg = h.value; byPath[h.id] = h; });
+      /* hub 必须排在数组前部：archive-sim.js 把 nodes[0..anchors-1] 当骨架锚点钉死，
+         锚点 i 的簇心取 grpX[i]，前提就是「节点 i 的 group 序号正好是 i」。
+         之前是 nodes.concat(hubNodes) —— hub 排在 977 个文档后面，于是被钉死的是
+         前 23 篇文档，23 个 hub 自身 parent=-1 落进 sim 的兜底 p=0，全吸到 grpX[0]，
+         表现就是「主题视图所有枢纽糊成一团」。2026-11-18 实测，改前 23 个枢纽全叠在右侧。 */
+      nodes = hubNodes.concat(nodes);
+    }
 
     /* 双向互链（A→B 且 B→A）：从画上去的边自己数，不等后端 totals——
        后端没重启时拿不到 totals，回退成 0 就是在统计栏摆一个假数字。 */
@@ -159,7 +198,7 @@ window.Archive.register('graph', (function () {
 
     /* 孤立笔记：目录里有、但一条引用边都没沾上。名字与路径取自目录，不让后端多回传。 */
     var linkedCount = nodes.length;
-    if (includeIsolated && catalogRows) {
+    if (view === 'link' && includeIsolated && catalogRows) {
       catalogRows.forEach(function (item) {
         if (!/\.md$/i.test(item.path) || item.missing) return;
         if (byPath[item.path]) return;
@@ -187,10 +226,12 @@ window.Archive.register('graph', (function () {
       return (tagCount[b] - tagCount[a]) || a.localeCompare(b, 'zh');
     });
     return {
-      nodes: nodes, edges: edges, byPath: byPath,
+      nodes: nodes, edges: edges, byPath: byPath, view: view,
       catList: catList, catCounts: catCount,
       tagList: tagList, tagCounts: tagCount, untagged: untagged,
       hasTags: tagList.length > 0,
+      hasTopics: !!(data && data.topics && Object.keys(data.topics).length),
+      hasTypes: !!(data && data.types && Object.keys(data.types).length),
       totals: data.totals || {},
       linked: linkedCount, reciprocal: reciprocal, shown: nodes.length, links: edges.length
     };
@@ -198,7 +239,7 @@ window.Archive.register('graph', (function () {
 
   function renderGraphPage(st, host, api, data) {
     var rows = (st.catalog && st.catalog.items || []).filter(function (item) { return item.source === 'knowledge'; });
-    var built = buildLinkGraph(data, !!st.showIsolated, rows);
+    var built = buildLinkGraph(data, !!st.showIsolated, rows, st.gview);
     /* 后端新加的 totals 要重启才生效；没重启时用目录里真实文件数自己算，别把
        「0 篇未连接」当成真数据摆出去。 */
     var totals = built.totals || {};
@@ -220,8 +261,45 @@ window.Archive.register('graph', (function () {
     );
     line.append(title);
     var UNTAGGED = '\u0000untagged';
-    var desc = A.el('p', '圆点 = 笔记，连线 = 正文里的 [[引用]]；颜色只表示所在目录，不参与连接。上面一排 chip 按 frontmatter 的 tags 筛选（多选取并集），目录是第二维。点节点打开笔记，滚轮缩放、拖拽摆位。', 'arc-gdesc');
-    top.append(line, desc);
+    /* 视图切换：双链 / 主题 / 类型。三种视图共用同一块画布与力导向，只有「边代表什么」不同。
+       状态名用 st.gview，不能用 st.graphView —— 后者早就被下面的绘图状态对象占了
+       （{scale,tx,ty,mode}），同名会把它覆盖成字符串，一点就白屏。
+       按钮选中态认 st.gview（用户点了什么），而不是 built.view —— 后者在维度没数据时会回退成
+       link，此时按钮仍应停在用户选的那一档，旁边给出「这个维度还没有数据」的说明。 */
+    var VIEWS = [['link', '双链'], ['topic', '主题'], ['type', '类型']];
+    /* 计数放在按钮上：一眼看出这个维度有多少东西，也免得出现「点了没反应」其实是数据太少。
+       topic / type 数的是不同取值个数（即枢纽节点数），不是笔记篇数 —— 21 个主题比 26 篇
+       更能说明这张图长什么样。 */
+    var cntOf = { link: (data && data.edges ? data.edges.length : 0), topic: 0, type: 0 };
+    ['topic', 'type'].forEach(function (dim) {
+      var map = (data && data[dim + 's']) || {}, seenDim = {};
+      Object.keys(map).forEach(function (path) { seenDim[map[path]] = 1; });
+      cntOf[dim] = Object.keys(seenDim).length;
+    });
+    var chosen = (st.gview === 'topic' || st.gview === 'type') ? st.gview : 'link';
+    var viewSeg = A.el('div', null, 'arc-seg arc-gview');
+    VIEWS.forEach(function (pair) {
+      var b = A.el('button', null, 'arc-gviewbtn' + (chosen === pair[0] ? ' on' : ''));
+      b.type = 'button';
+      b.append(A.el('span', pair[1]));
+      b.append(A.el('span', String(cntOf[pair[0]]), 'arc-gviewn'));
+      if (pair[0] === 'link') b.title = '正文 [[双链]] 与基本信息里的 related 字段构成的关系图';
+      if (pair[0] === 'topic') b.title = '按笔记「基本信息」里的 topic 归类，每篇连到自己的主题枢纽';
+      if (pair[0] === 'type') b.title = '按笔记「基本信息」里的 type 归类，每篇连到自己的类型枢纽';
+      b.onclick = function () {
+        st.gview = pair[0];
+        if (api && api.rerender) api.rerender();
+      };
+      viewSeg.append(b);
+    });
+    var DESC = {
+      link: '圆点 = 笔记，连线 = 正文里的 [[引用]] 与基本信息里的 related；颜色只表示所在目录，不参与连接。',
+      topic: '每个主题是一个枢纽节点，笔记连到自己 topic 对应的枢纽，数据来自笔记「基本信息」里的 topic 字段。',
+      type: '每个类型是一个枢纽节点，笔记连到自己 type 对应的枢纽，数据来自笔记「基本信息」里的 type 字段。'
+    };
+    var missingDim = chosen !== built.view;
+    var desc = A.el('p', DESC[built.view] + (missingDim ? '（这个维度还没有数据，先落在双链视图；把笔记的「基本信息」填上就会出来。）' : '') + '上面一排 chip 按 frontmatter 的 tags 筛选（多选取并集），目录是第二维。点节点打开笔记，滚轮缩放、拖拽摆位。', 'arc-gdesc');
+    top.append(line, viewSeg, desc);
 
     /* 筛选状态挂在 st 上：切页签、切主题、切未连接再回来，不该把用户选的东西清掉。
        选中但这一轮已经不存在的标签（换了数据源）自动丢掉，免得筛出一个空图。 */
