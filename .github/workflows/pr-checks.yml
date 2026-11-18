@@ -1,0 +1,70 @@
+name: PR checks
+
+# 外部 PR 进来时自动跑的三道检查。
+# 设计原则：只拦「这个 PR 新带来的问题」，不翻存量旧账 —— 否则第一个 PR 就会被
+# 117 条历史违规卡死，谁都不想提第二个。
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  commit-message:
+    name: 提交说明说得清吗
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # 要算 base..head 的全部提交，浅克隆拿不到
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 检查 commit message
+        run: |
+          python3 dev/check_commit_msg.py \
+            --base "origin/${{ github.base_ref }}" \
+            --head HEAD
+
+  arch-gate:
+    name: 架构门禁（只拦新增债）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: arch_lint
+        run: python3 dev/arch_lint.py
+      - name: 说明
+        if: failure()
+        run: |
+          echo "::error::新增了架构违规。"
+          echo "常见两类："
+          echo "  1. 自建按钮/卡片类名 —— 改用 .btn + primary/danger/sm/xs，.card + card--*"
+          echo "  2. 属性里用 esc() 拼 HTML —— 改用 DOM.escAttr()"
+          echo "确实是误报，在 PR 里说明理由，维护者会判断要不要收进 baseline。"
+
+  hygiene:
+    name: 敏感信息与外链
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: 扫描新增行
+        run: |
+          python3 dev/check_hygiene.py \
+            --base "origin/${{ github.base_ref }}" \
+            --head HEAD

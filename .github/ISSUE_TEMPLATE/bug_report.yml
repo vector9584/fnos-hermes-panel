@@ -1,0 +1,76 @@
+name: Bug 报告
+description: 面板某个功能不对、报错、白屏
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        填得越具体，修得越快。**「不能用」三个字没法定位任何东西。**
+
+  - type: textarea
+    id: symptom
+    attributes:
+      label: 症状
+      description: 你看到什么不对劲？说具体现象，别说"坏了"。
+      placeholder: |
+        例：档案页搜索框输入关键词后，命中高亮是薄荷绿底配浅绿字，看不清。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: 从打开面板开始，一步步写。能稳定复现最好，偶尔出现也要说清大概频率。
+      placeholder: |
+        1. 打开面板 → 05 档案
+        2. rail 搜索框输入「高血压」
+        3. 正文命中处底色是 --accent（薄荷绿），字也是绿的
+      render: text
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 面板设置页或应用中心里能看到。也可以写 fpk 文件名。
+      placeholder: "例：0.21.149"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: env
+    attributes:
+      label: 环境
+      description: 怎么打开的
+      options:
+        - fnOS 应用面板（5666 端口）
+        - 面板直连端口
+        - 手机浏览器
+        - 外网反代 / HTTPS 入口
+        - 其他（在下面说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志或截图
+      description: |
+        浏览器控制台报错、`data/logs/` 里的相关片段、或者截图。
+        直接粘贴文本，别只发"报错了"。
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: tried
+    attributes:
+      label: 试过什么
+      description: 重启过没？换浏览器试过没？清过 `?v=` 缓存没？
+      render: text
+    validations:
+      required: false

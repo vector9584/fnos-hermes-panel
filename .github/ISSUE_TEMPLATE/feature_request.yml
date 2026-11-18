@@ -1,0 +1,68 @@
+name: 功能建议
+description: 想要某个能力、或者觉得某处能更好
+title: "[feat] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先说清**你要解决什么问题**，再说想要什么功能。
+        反过来说的，通常做出来也用不上。
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 现在哪里不顺手
+      description: 具体到场景。别写"不够好用"，写你当时在干什么、卡在哪。
+      placeholder: |
+        例：我有 162 个会话，想在两个会话之间对比同一段代码，
+        但切过去之后回来要找半天。列表按时间排，不按项目排。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 你希望它变成什么样
+      description: 描述你想要的交互或结果，不用写实现方案。
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: 现在怎么绕过去的
+      description: |
+        这条很重要。如果你现在有办法凑合，说明问题没那么急；
+        如果你完全没辙，说明这是个真缺口。
+      render: text
+    validations:
+      required: false
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: 这属于哪一层
+      description: 不确定就选"不知道"
+      options:
+        - 面板 UI / 交互
+        - 会话与数据管理
+        - 技能 / 工具 / 专家
+        - 模型与能力后端
+        - 定时任务
+        - 安装、升级、部署
+        - 不知道，你来判断
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: willing
+    attributes:
+      label: 你愿意动手吗
+      options:
+        - label: 愿意提 PR（我会先开 issue 对方案）
+          required: false
+        - label: 只提建议，实现靠维护者
+          required: false
