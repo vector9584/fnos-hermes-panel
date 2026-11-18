@@ -562,7 +562,8 @@
           <div class="page-header"><h1>定时任务</h1><button class="ov-actbtn" onclick="window._cronShowArchived=!window._cronShowArchived;this.textContent=window._cronShowArchived?'隐藏归档':'查看归档';renderCronJobs()">查看归档</button><button class="ov-actbtn" onclick="openCronModal()" style="margin-left:auto">+ 创建任务</button></div>
           <div class="page-body">
             <div class="wf-intro" style="margin-bottom:12px">使用 Cron 表达式或自然语言调度自动化任务。任务由网关守护进程每 60 秒检查一次，到期后在全新 Agent 会话中执行。支持附加技能、指定投递目标、暂停/恢复/立即触发。</div>
-            <div class="mcp-server-list" id="cronJobList"><div class="empty-state">加载中…</div></div>
+            <div id="cronTabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px"></div>
+            <div class="mcp-server-list" id="cronJobList"><div class="empty-state" style="grid-column:1/-1">加载中…</div></div>
           </div>
         </section>
 
@@ -731,7 +732,7 @@
 <script src="js/panels/overview.js?v=fbe49f30"></script>
 <script src="js/panels/models.js?v=61a55fc1"></script>
 <script src="js/panels/extensions.js?v=3bf55b2d"></script>
-<script src="js/panels/cron.js?v=fea600a5"></script>
+<script src="js/panels/cron.js?v=beff94f0"></script>
 <!-- 2026-11-14：js/panels/memory.js 已移除。它只服务 page-memory 里那三个 textarea
      （memSoul/memMemory/memNotes）和 saveAllMemory()，这些 DOM 已随档案板块改版删掉，
      留着的脚本只会在每次 page 事件上白跑一遍。档案页现在由 js/archive/ 接管。 -->
@@ -791,7 +792,7 @@
 <script src="js/archive/archive-md.js?v=26fec538"></script>
 <script src="js/archive/archive-doc.js?v=2775e273"></script>
 <script src="js/archive/archive-info.js?v=67af34d1"></script>
-<script src="js/archive/archive-arch.js?v=6df10aca"></script>
+<script src="js/archive/archive-arch.js?v=7b40be49"></script>
 <script src="js/archive/archive-graph.js?v=2b5fbbc9"></script>
 <script src="js/archive/archive-trajectory.js?v=a4ecb974"></script>
 <script src="js/archive/archive-vault.js?v=71eb1bb7"></script>

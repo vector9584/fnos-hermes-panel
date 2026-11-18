@@ -1,15 +1,16 @@
 /* 档案 · 架构体系（提示词页第二个视图）
- * 内容：用户给的《Hermes 的文件即思维：谁写、谁读、什么时候生效》全图。
- *   SOUL 是常量（你写）／MEMORY·USER 是变量（Agent 写）／notes 与 AGENT.md 是索引—详情变体。
+ * 内容：《Hermes 上下文与技能治理》技术路线图（2026-11-18 重绘，取代旧的《文件即思维》图）。
+ *   四列文件分工（你写 / Agent 写 / 按需读 / 治理巡检）＋ 运行机理五步闭环 ＋ 三层架构（逻辑/组织/业务）。
  * 交互：滚轮缩放（跟鼠标位置对齐）、按住拖动平移、适应宽度 / 原始大小、下载原图。
  * 说明：图是静态资源（app/ui/images/arch-hermes-files.png），不走接口，也不参与搜索索引——
- *   它讲的是「文件分工」，不是知识库的一部分。
+ *   它讲的是「文件分工与生效时机」，不是知识库的一部分。
  */
 window.Archive.register('arch', (function () {
   'use strict';
 
   var A = window.Archive;
-  var IMG_PATH = '/images/arch-hermes-files.png';
+  /* ?v= 版本号：路径不变浏览器会吃旧缓存，换图必须 bump */
+  var IMG_PATH = '/images/arch-hermes-files.png?v=20261118';
   var NATIVE = { w: 1920, h: 1300 };   /* 原图尺寸；onload 会再按实际值校正 */
 
   function el(tag, text, cls) { return A.el(tag, text, cls); }

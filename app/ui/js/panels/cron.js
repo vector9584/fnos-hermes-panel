@@ -3,30 +3,68 @@
  * 2026-11-13 按原分区纯搬运外移，逻辑零改动。全局作用域与执行顺序与原内联块一致。 */
 /* ============================ 定时任务管理 ============================ */
 var _cronJobs = [];
+/* 一次性且已跑完 —— 收起判定与计数必须共用同一套判据，
+   否则「已收起 N 条」会把归档任务也算进去，数字虚高（2026-11-18 修）。 */
+function _isOnceDone(j){
+  var once = (j.schedule && j.schedule.kind === 'once')
+          || String(j.repeat || '').indexOf('once') >= 0
+          || (j.repeat && j.repeat.times === 1);
+  var done = (j.state === 'completed') || (j.enabled === false && j.last_run_at);
+  return !!(once && done);
+}
+/* 页签栏：周期 / 一次性 / 历史，计数由调用方算好传进来 */
+function _renderCronTabs(counts){
+  var t = document.getElementById('cronTabs'); if(!t) return;
+  var cur = window._cronTab || 'recurring';
+  var defs = [['recurring','周期任务',counts.recurring],['once','一次性',counts.once],['history','历史',counts.history]];
+  t.innerHTML = defs.map(function(d){
+    var on = d[0] === cur;
+    return '<button type="button" onclick="window._cronTab=\''+d[0]+'\';renderCronJobs()" style="'
+      + 'border:1px solid '+(on?'var(--accent)':'var(--border)')+';'
+      + 'background:'+(on?'var(--accent)':'transparent')+';'
+      + 'color:'+(on?'#fff':'var(--text3)')+';'
+      + 'border-radius:8px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;'
+      + 'display:inline-flex;align-items:center;gap:6px;transition:all .15s">'
+      + d[1]+'<span style="opacity:'+(on?'.85':'.6')+';font-weight:400">'+d[2]+'</span></button>';
+  }).join('');
+}
 function renderCronJobs(){
   var el = document.getElementById('cronJobList'); if(!el) return;
   apiGet('/api/cron-jobs').then(function(res){
-    if(!res || !res.ok){ el.innerHTML='<div class="empty-state" role="alert" aria-live="assertive">加载失败</div>'; return; }
+    if(!res || !res.ok){ el.innerHTML='<div class="empty-state" role="alert" aria-live="assertive" style="grid-column:1/-1">加载失败</div>'; return; }
     var _allJobs = res.jobs || [];
     var cronWebhooks = res.webhooks || {};
-    // 一次性任务跑完自动收起：定时页只显示待执行的 + 周期任务
-    // （2026-11-04 用户反馈：定时页被历史 once 卡片刷满）
+    // 页签分流：周期 / 一次性待执行 / 历史（已跑完的一次性）
+    // 2026-11-04 是「收起已完成」的提示条，2026-11-18 改成页签——
+    // 那条提示是 grid 容器里的第一个子元素，会占掉第一个格子，让首卡错位。
+    window._cronAll = _allJobs;
+    var _tab = window._cronTab || 'recurring';
+    var _isOnce = function(j){
+      return (j.schedule && j.schedule.kind === 'once')
+          || String(j.repeat || '').indexOf('once') >= 0
+          || (j.repeat && j.repeat.times === 1);
+    };
+    var counts = { recurring:0, once:0, history:0 };
+    _allJobs.forEach(function(j){
+      if(j.panel_archived) return;
+      counts[_isOnceDone(j) ? 'history' : (_isOnce(j) ? 'once' : 'recurring')]++;
+    });
+    _renderCronTabs(counts);
     _cronJobs = _allJobs.filter(function(j){
       if(j.panel_archived) return !!window._cronShowArchived;
-      if(window._cronShowDone) return true;
-      var once = (j.schedule && j.schedule.kind === 'once')
-              || String(j.repeat || '').indexOf('once') >= 0
-              || (j.repeat && j.repeat.times === 1);
-      var done = (j.state === 'completed') || (j.enabled === false && j.last_run_at);
-      return !(once && done);
+      var od = _isOnceDone(j), io = _isOnce(j);
+      if(_tab === 'history') return od;
+      if(_tab === 'once') return io && !od;
+      return !io;
     });
-    var _hiddenDone = _allJobs.filter(function(job){ return !job.panel_archived && _cronJobs.indexOf(job)<0; }).length;
-    var _doneBar = _hiddenDone
-      ? '<div style="font-size:11px;color:var(--text3);margin-bottom:8px">已收起 '+_hiddenDone+' 条已完成的一次性任务 · <a href="javascript:void 0" onclick="window._cronShowDone=true;renderCronJobs()" style="color:#22c55e">查看</a></div>'
-      : '';
-    if(!_cronJobs.length){ el.innerHTML = _doneBar + '<div class="empty-state">尚无待执行的定时任务。点右上角「+ 创建任务」开始配置。</div>'; return; }
+    if(!_cronJobs.length){
+      var _empty = _tab === 'history' ? '还没有已完成的一次性任务。'
+                 : _tab === 'once' ? '没有待执行的一次性任务。'
+                 : '没有周期任务。点右上角「+ 创建任务」开始配置。';
+      el.innerHTML = '<div class="empty-state" style="grid-column:1/-1">'+_empty+'</div>'; return;
+    }
     var delIcons = { local:'💾', origin:'💬', weixin:'💬', telegram:'✈️', discord:'🎮', feishu:'📘', dingtalk:'📱', wecom:'💼' };
-    el.innerHTML = _doneBar + _cronJobs.map(function(j){
+    el.innerHTML = _cronJobs.map(function(j){
       var id = j.id || j.job_id || '';
       var name = j.name || j.prompt || '未命名任务';
       if(name.length > 60) name = name.slice(0,60) + '…';
@@ -89,7 +127,7 @@ function renderCronJobs(){
           '<button class="ov-actbtn" onclick="cronAction(\''+esc(id)+'\',\'archive\')">归档</button>' +
         '</div></div>';
     }).join('');
-  }).catch(function(){ el.innerHTML='<div class="empty-state">加载失败</div>'; });
+  }).catch(function(){ el.innerHTML='<div class="empty-state" style="grid-column:1/-1">加载失败</div>'; });
 }
 async function cronAction(jobId, action){
   if(action==='archive' && !(await ui.confirm('归档后停止后续调度，任务与执行记录会保留，可以恢复。已开始的执行不会被终止。'))) return;
@@ -104,7 +142,7 @@ async function cronAction(jobId, action){
   }).catch(function(e){ toast('连接中断，请刷新核对任务状态','error'); }).finally(function(){window._cronActionBusy=false;});
 }
 function openCronModalById(id){
-  var job = (_cronJobs||[]).find(function(j){ return (j.id||j.job_id)===id; });
+  var job = (window._cronAll||_cronJobs||[]).find(function(j){ return (j.id||j.job_id)===id; });
   if(job) openCronModal(job);
   else toast('未找到任务','error');
 }

@@ -4,7 +4,7 @@
 
 改完 index.html 必跑。页面里有两套"块"，标准不同，别混：
 
-  条带（.marq）  = 页面下面 10 个章节的 data-title，滚动预览用
+  条带（.marq）  = 页面下面每个章节的 data-title，滚动预览用（章数由 names 定）
   面板地图(arch) = 真实面板的 8 个板块，来自 app/ui/js/panel-navigation.js
                    的 groups，「设置」在里面、「画布」「下载」不在
 
@@ -57,10 +57,20 @@ def main():
             page)
         secs = [(c, t) for t, c in secs]
     chapters = [t for _, t in sorted(secs, key=lambda x: int(x[0]))]
-    if len(chapters) != 10:
-        fails.append(f"读到 {len(chapters)} 个章节 data-title，预期 10 个 —— 结构可能变了")
+
+    # names 数组（第 0 项是「目录」）
+    _nm = re.search(r"var names=\[([^\]]*)\]", page)
+    names_arr = re.findall(r"'([^']*)'", _nm.group(1)) if _nm else []
+
+    if not chapters:
+        fails.append("没读到任何 section.chapter 的 data-title —— 结构可能变了")
+    elif not names_arr:
+        fails.append("没读到 var names 数组 —— 目录文案可能改了写法")
+    elif names_arr[1:] != chapters:
+        fails.append("names 与章节 data-title 不一致：names=" + " / ".join(names_arr[1:])
+                     + " · chapters=" + " / ".join(chapters))
     else:
-        oks.append(f"页面章节 {len(chapters)} 个：" + " / ".join(chapters))
+        oks.append(f"页面章节 {len(chapters)} 个，与 names 一致：" + " / ".join(chapters))
 
     # ── 真源二：panel-navigation.js 的 groups（地图标准） ──
     nav = open(NAV, encoding="utf-8").read()
@@ -79,7 +89,7 @@ def main():
         else:
             oks.append(f"禁用词 {word!r} : 0")
 
-    # 2) 条带 = 10 个章节标题
+    # 2) 条带 = 页面各章节标题
     m = re.search(r'<div class="marq"[^>]*><div class="in">(.*?)\n</div></div>', page, re.S)
     if not m:
         fails.append("找不到 .marq 条带（结构变了）")
