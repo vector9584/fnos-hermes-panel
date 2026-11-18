@@ -107,8 +107,16 @@ def main():
     r = subprocess.run([sys.executable, "dev/arch_lint.py"], cwd=ROOT,
                        capture_output=True, text=True)
     ck("G1 arch_lint exit 0", r.returncode == 0, "exit=%d" % r.returncode)
-    ck("G2 存量 99、新增 18（18 条待还，清单见 ARCHITECTURE §0.3）",
-       "存量 99" in r.stdout and "新增 18" in r.stdout, r.stdout.strip().split("\n")[0])
+    # 存量条数从 baseline 文件读，不硬编码 —— 每次收紧 baseline 都要回来改
+    # 脚本，改漏了这项就永远红，红久了就没人看了。真正该守的是「新增 0」。
+    try:
+        _bl = json.load(open(os.path.join(ROOT, "dev", "arch_lint_baseline.json"),
+                             encoding="utf-8"))
+        _bl_n = len(_bl["items"]) if isinstance(_bl, dict) and "items" in _bl else len(_bl)
+    except Exception:
+        _bl_n = -1
+    ck("G2 新增 0（存量 %s 条，清单见 ARCHITECTURE §0.3）" % _bl_n,
+       "新增 0" in r.stdout, r.stdout.strip().split("\n")[0])
 
     # H 生成器幂等
     r2 = subprocess.run([sys.executable, "dev/arch_doc_gen.py", "--write"],

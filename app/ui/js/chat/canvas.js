@@ -50,12 +50,6 @@ var CanvasMode = (function () {
     return e;
   }
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
-
   function storeKey(sid) { return 'hermes_canvas_' + sid; }
 
   function save() {
@@ -212,7 +206,7 @@ var CanvasMode = (function () {
       /* 图片上不再压一行「点击继续编辑」（2026-11-17 用户）：那句话挡住图的一角，
          选中态本来就有发光边框，写着字反而多余。 */
       e = mk('div', 'cv-node cv-image',
-        '<img src="' + esc(n.url) + '" alt="">');
+        '<img src="' + DOM.escAttr(n.url) + '" alt="">');
       /* 图片下载完尺寸才定型（2026-11-17）：节点刚建时 img 还没加载，
          节点尺寸只有边框的 2px，靠 nodeSize 的后备值算出来的位置只是近似。
          图真出来之后重画一次连线，端点才对得上；父节点同理要跟着修正子节点。
@@ -246,7 +240,7 @@ var CanvasMode = (function () {
         '<div class="cv-spin"></div><div>正在生成…</div>');
     } else {
       e = mk('div', 'cv-node cv-text',
-        '<span class="cv-text-tag">提示</span>' + esc(n.text));
+        '<span class="cv-text-tag">提示</span>' + DOM.escAttr(n.text));
       e.onclick = function (ev) { ev.stopPropagation(); openComposer(n.id); };
       bindPromptTip(n, e);
     }
@@ -486,9 +480,9 @@ var CanvasMode = (function () {
     var t = ensurePromptTip();
     var html = '<div class="cv-tip-label">生成这张图的提示词</div>';
     html += f.prompt
-      ? '<div class="cv-tip-text">' + esc(f.prompt) + '</div>'
+      ? '<div class="cv-tip-text">' + DOM.escAttr(f.prompt) + '</div>'
       : '<div class="cv-tip-empty">老节点，画板开始记录提示词之前生成的</div>';
-    if (f.target) html += '<div class="cv-tip-meta">' + esc(f.target) + '</div>';
+    if (f.target) html += '<div class="cv-tip-meta">' + DOM.escAttr(f.target) + '</div>';
     t.innerHTML = html;
     t.classList.remove('cv-hidden');
     /* 贴图片右侧；右边放不下翻到左侧；上下都夹进视口。
@@ -1062,7 +1056,7 @@ var CanvasMode = (function () {
     m.innerHTML = S.imageTargets.map(function (t) {
       var name = t.label || t.model;
       var on = cur && cur.model === t.model;
-      return '<button type="button" class="' + (on ? 'on' : '') + '" data-target="' + esc(name) + '">' + esc(name) + '</button>';
+      return '<button type="button" class="' + (on ? 'on' : '') + '" data-target="' + DOM.escAttr(name) + '">' + DOM.escAttr(name) + '</button>';
     }).join('');
     m.addEventListener('click', function (ev) {
       var b = ev.target && ev.target.closest ? ev.target.closest('button') : null;
@@ -1673,9 +1667,9 @@ var CanvasMode = (function () {
       }
       list.innerHTML = imgs.map(function (im, i) {
         return '<div class="cv-drawer-item" data-i="' + i + '">' +
-          '<div class="cv-drawer-thumb"><img src="' + esc(im.url) + '" loading="lazy" alt=""></div>' +
+          '<div class="cv-drawer-thumb"><img src="' + DOM.escAttr(im.url) + '" loading="lazy" alt=""></div>' +
           '<div class="cv-drawer-meta">' +
-            '<div class="cv-drawer-name" title="' + esc(im.name) + '">' + esc(im.name) + '</div>' +
+            '<div class="cv-drawer-name" title="' + DOM.escAttr(im.name) + '">' + DOM.escAttr(im.name) + '</div>' +
             '<div class="cv-drawer-sub">' + fmtSize(im.size) + ' · ' + fmtTime(im.mtime) + '</div>' +
           '</div>' +
           '<div class="cv-drawer-acts">' +
