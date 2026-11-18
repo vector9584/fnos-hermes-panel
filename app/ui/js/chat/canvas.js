@@ -2269,6 +2269,17 @@ var CanvasMode = (function () {
     document.body.classList.remove('cv-mode');
   }
 
+  /* 切页面收浮层（2026-11-18 用户报「提示词弹出时切到别的页面就一直留着、关不掉」）：
+     #cvPromptTip 是 position:fixed + pointer-events:none 挂在 document.body 上，
+     收紧它的三条老路径全在画板内部 —— stage 点空白、setViewMode('chat')、leave()。
+     switchPage() 一个都不经过，于是钉住的浮层悬在新页面最上层（z-index 240），
+     又因为点不到它自己、新页面也没有画布的点击监听，用户没有任何办法关掉。
+     switchPage 末尾本来就派发 hermes:page，接上即可；留在 chat 页时不动。 */
+  document.addEventListener('hermes:page', function (ev) {
+    var p = ev && ev.detail && ev.detail.page;
+    if (p !== 'chat') hidePromptTip();
+  });
+
   return {
     enter: enter,
     leave: leave,
@@ -2280,8 +2291,11 @@ var CanvasMode = (function () {
     showChat: function () { if (S.on) setViewMode('chat'); },
     viewMode: function () { return S.viewMode; },
     openGallery: function () { if (S.on) toggleDrawer(true); },
-    /* 供外部在会话切换时判断 */
-    refresh: function (sid) { if (S.on && S.sid !== sid) enter(sid); },
+    /* 供外部在会话切换时判断；顺手把提示词浮层收掉（2026-11-18）：
+       左树点同一个画板会话走的是 refresh 而不是 enter，钉住的浮层会跟着跨会话带过去。 */
+    refresh: function (sid) { if (S.on) hidePromptTip(); if (S.on && S.sid !== sid) enter(sid); },
+    /* 给外部（页面切换 / 会话切换）一个明确入口，省得以后又漏一条路径 */
+    hideTip: hidePromptTip,
     /* 只读调试口（2026-11-17）：S 在闭包里，连线出问题时外部连"有几个节点、
        谁是谁的父节点"都看不到，只能靠截图猜。给一个只读快照，
        不含任何写操作，也不改布局。 */
